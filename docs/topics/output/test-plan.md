@@ -15,7 +15,10 @@ under `test/fixtures/languages/`, in the same `changed-files.txt` convention as 
 fixtures: a pure function over paths, needing neither git nor graft. The computation behind the
 fourth result lives in `test/overlap.test.ts`, over `{number, title, isDraft, files}` records and
 over the text `gh` writes when it fails, so no test needs the network or an open pull request on
-this repository.
+this repository. `test/languages-drift.test.ts` holds the drift case against the *installed*
+graft (flyingrobots/footprint#21): it reads `src/languages.ts`'s extension list from source and
+the installed `@flyingrobots/graft`'s own `dist/parser/lang.js` from disk, so it needs graft
+installed and fails loudly, naming the path, rather than skipping, if either is missing.
 
 | ID | Requirement |
 | --- | --- |
@@ -31,6 +34,7 @@ this repository.
 | OUT-10 | A run emits a third result line, `footprint.blast_radius` 1.1.0, after the landing plan; it validates against its schema, reaches the receipt, and `--help` declares it |
 | OUT-11 | The export surface is parsed from graft's `graft.cli.struct_exports` 1.0.0 JSON by a pure function: a renamed export is reported removed and added, and a failed, unreadable or differently versioned answer is `available: false` with a stated reason, never a throw |
 | OUT-12 | The blast-radius result (`footprint.blast_radius` 1.1.0) names the changed files, by file extension with a count, in languages footprint does not recognise as one graft's grammars can parse; the list is present and empty when every changed file was in a supported language; a parse failure in a *supported* language is never counted here, because detection is extension-only and never looks at whether graft ran or what it answered |
+| OUT-12g | The extension list behind OUT-12 is checked against the *installed* graft, not just against fixtures: a grammar graft adds or drops cannot change footprint's `unanalysed_languages` output without a test turning red (flyingrobots/footprint#21) |
 
 | ID | Case | Oracle | Evidence | Status |
 | --- | --- | --- | --- | --- |
@@ -95,6 +99,8 @@ this repository.
 | OUT-12d | Changed files across several unsupported extensions, uneven counts, out of order | grouped by extension with the right count each, sorted by extension so the digest does not follow input order | `... > multiple unsupported extensions, uneven counts, out of input order, group and sort by extension` | implemented |
 | OUT-12e | `exportsRecord` with and without an unanalysed-languages list | the record validates against `schemas/footprint.blast_radius.schema.json` 1.1.0 either way; `unanalysed_languages` is present and empty when there is nothing to report; the digest moves when the list does | `the unanalysed-languages field on the blast-radius result > the record validates against schemas/footprint.blast_radius.schema.json 1.1.0, with or without unanalysed languages`, `... > unanalysed_languages is present and empty when there is nothing to report`, `... > a changed Haskell file is named by extension with a count`, `... > the digest moves when the unanalysed-languages list does, same exports surface otherwise` | implemented |
 | OUT-12f | `blastRadius` rendering with and without unanalysed languages | the `## Blast radius` section lists the extensions and counts, or states that every changed file was in a supported language | `... > --human lists the unanalysed languages by extension and count`, `... > --human states that every changed file was in a supported language when there is nothing to report`, `... > the unanalysed-languages section appears even when the export surface itself is unavailable` | implemented |
+| OUT-12g | `src/languages.ts`'s extensions against the installed `@flyingrobots/graft`'s `dist/parser/lang.js` | every footprint extension maps, through graft's own `detectLang`, to exactly graft's `SUPPORTED_LANGS`; editing one extension out of `src/languages.ts` turns this red | `footprint's supported-language list against the installed graft > every footprint extension maps, through graft's own detectLang, to exactly graft's SUPPORTED_LANGS` | implemented |
+| OUT-12h | graft's module missing from its expected path, or missing `SUPPORTED_LANGS`/`detectLang` | the test fails with a message naming the path, never skips or passes | by inspection of the `existsSync`/export-type guards in `test/languages-drift.test.ts`; no fixture simulates a missing module (see "Known gaps") | not implemented |
 
 ## Known gaps
 
@@ -104,6 +110,11 @@ this repository.
   export-surface behavior is pinned by OUT-11's fixtures instead.
 - No test asserts that graft's live output still matches the fixtures. A graft release that changed
   the shape under the same `_schema` version would be caught only by OUT-10a's `counts` invariant.
+- OUT-12h (graft's language module missing, or missing the exports the drift test depends on) is
+  not exercised by an automated case: doing so would mean moving or breaking the real installed
+  `@flyingrobots/graft`, which no fixture stands in for. The guard is in the code
+  (`test/languages-drift.test.ts`'s `existsSync` and export-type checks throwing with the path
+  named) and was read, not run.
 - No test runs the CLI with `gh` present, so `overlap.available: true` is never asserted
   end to end. The suite removes `gh` from the PATH deliberately: a test that listed this
   repository's open pull requests would depend on the network and on which pull requests happen to

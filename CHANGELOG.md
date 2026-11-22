@@ -42,6 +42,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `docs/topics/blast-radius/README.md`: what the export-surface diff lists, which graft contract it
   comes from, and the two failure modes it inherits (re-exports read as changes, dynamic dispatch
   invisible).
+- `test/languages-drift.test.ts`: checks `src/languages.ts`'s hand-mirrored extension list against
+  the extensions the *installed* `@flyingrobots/graft` actually recognises, by reading its
+  `dist/parser/lang.js` from disk and running footprint's extensions through its own `detectLang`.
+  Fails loudly, naming the path, if that module moves or no longer exports what the test depends
+  on, rather than skipping. (flyingrobots/footprint#21)
 - **Cross-pull-request overlap.** A fourth result in the same run, `footprint.overlap` 1.0.0
   (`schemas/footprint.overlap.schema.json`), emitted after the blast radius: the open pull requests
   that change a file this change changes, named by number and title; the conflict graph between the
