@@ -8,7 +8,7 @@ General rules live in `~/.agents/AGENTS.md`. This records what is specific to `f
 bun test
 ```
 
-No build step and no `package.json` dependencies: Bun runs the TypeScript directly.
+No build step. One runtime dependency, `@flyingrobots/parley-emit`; Bun runs the TypeScript directly.
 
 ## The rule that matters
 
@@ -18,6 +18,18 @@ believed. There is a test asserting the category rows sum to the reported total;
 
 **Report, never judge.** Flags are observations. The moment this becomes a merge gate, people will
 shape diffs to satisfy it.
+
+## Output
+
+footprint emits through `@flyingrobots/parley-emit`. The result's contract is
+`schemas/footprint.composition.schema.json`; `test/cli.test.ts` runs the CLI against this
+repository and validates every stream line by line. Do not write to stdout or stderr directly;
+go through the run (`run.result`, `run.step`, `run.warning`, `run.error`). Prose is `--human`
+only. A new field on the result is a schema version bump.
+
+The package is versioned on its own and the schemas shipped inside it are the parley drafts at a
+pinned commit; `bun install` needs the package on npm, or a `bun link` to a local checkout of
+`flyingrobots/parley` while it is not.
 
 ## Classification
 

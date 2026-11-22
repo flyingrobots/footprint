@@ -7,11 +7,18 @@ of the change each kind accounts for — so you can tell at a glance whether the
 way you think it is.
 
 ```bash
-bun src/cli.ts                    # compare the default branch to HEAD
+bun src/cli.ts                    # compare the default branch to HEAD; JSON Lines on stdout
 bun src/cli.ts origin/main        # explicit base
 bun src/cli.ts abc123..def456     # explicit range
-bun src/cli.ts | gh pr comment 42 --body-file -
+bun src/cli.ts --human | gh pr comment 42 --body-file -   # the Markdown comment
+bun src/cli.ts --help             # what it emits, as JSON Lines
 ```
+
+footprint speaks the [Parley output protocol](https://github.com/flyingrobots/parley): one
+`result` line on stdout with the composition, the gut check, the structural summary and a digest;
+errors on stderr as structured lines; a receipt per run under `.parley/receipts/` with every
+decision and the file listing. `--human` is the opt-in for prose. See
+[`docs/topics/output/README.md`](docs/topics/output/README.md).
 
 ## Why
 

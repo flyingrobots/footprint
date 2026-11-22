@@ -19,9 +19,9 @@ Evidence lives in `test/footprint.test.ts`.
 | CO-3a | Binary reports zeroes and a flag | `{added: 0, removed: 0, binary: true}` | `parseNumstat > a binary file reports no line counts rather than NaN` | implemented |
 | CO-4a | Zero-line change has share 0 | no `NaN` | `compose > a change with no line edits does not divide by zero` | implemented |
 | CO-5a | Unknown extension is source | `classify("weird/thing.xyz") === "source"` | `classify > anything unrecognised is source, never silently dropped` | implemented |
-| CO-6a | End-to-end against a real range | output names the right categories | — | **gap** |
+| CO-6a | End-to-end against a real range | the result's category rows sum to its totals; every line validates | `the CLI speaks the Parley output protocol > a real range validates line by line and closes with end` (`test/cli.test.ts`) | implemented |
 
 ## Known gaps
 
-- **CO-6a has no automated evidence.** The CLI was run by hand against `theme-book@5e19fa3` and
-  correctly reported "Documentation only. No executable surface touched.", but nothing pins that.
+- None recorded. CO-6a runs against this repository's own last commit, so which categories it
+  names depends on that commit; the invariant it pins is the sum, not a fixed category list.

@@ -5,10 +5,11 @@ The composition report answers one question: **is this change shaped the way you
 ## Reading it
 
 ```bash
-bun src/cli.ts origin/main
+bun src/cli.ts origin/main --human
 ```
 
-The output opens with the gut check — a file and line count, then any flags — because that is what
+The default output is JSON Lines (see [Output](../output/README.md)); `--human` prints the
+comment. The comment opens with the gut check — a file and line count, then any flags — because that is what
 a reviewer reads first. Everything else is collapsed behind `<details>`.
 
 | Flag | Fires when |
