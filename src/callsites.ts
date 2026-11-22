@@ -11,9 +11,13 @@
 //   a call site is a whole-word occurrence of the symbol's name in a tracked, non-binary file.
 //
 // "Whole-word" is `grep -w`'s own rule -- the match may not be preceded or followed by a word
-// constituent character, `[A-Za-z0-9_]` -- which is what lets the test compare footprint's answer
-// with real `grep -I -n -w` over `git ls-files` line for line, instead of with a hand-written
-// expectation. The limits are stated everywhere the result is: it counts the declaration itself, a
+// constituent character -- which is what lets the test compare footprint's answer with real
+// `grep -I -n -w` over `git ls-files` line for line, instead of with a hand-written expectation.
+// A word character is a letter, a digit or an underscore, in any script: `[\p{L}\p{N}_]`. The
+// Unicode part is not decoration. A differential fuzz against real grep caught an ASCII-only
+// `[A-Za-z0-9_]` reporting a call site for `r` inside `rünïcode`, which grep does not and which an
+// identifier scan must not either: in a UTF-8 locale grep's word characters are the locale's
+// alphanumerics, and `ü` is one of them. The limits are stated everywhere the result is: it counts the declaration itself, a
 // mention in a comment, a string or prose, and it cannot see a call through dynamic dispatch or a
 // re-export under another name. It is evidence a reviewer can check, not a call graph.
 //
@@ -31,7 +35,9 @@ export interface CallSite {
 export const SCAN_METHOD = "identifier_scan";
 
 /** The word boundary, named once: `grep -w`'s rule, and the schema and the docs quote this. */
-export const WORD_CHARACTER = "[A-Za-z0-9_]";
+export const WORD_CHARACTER = "[\\p{L}\\p{N}_]";
+
+const DECODER = new TextDecoder();
 
 /** How much of a file is read to decide it is binary. GNU grep decides on its first buffer too. */
 const BINARY_SNIFF_BYTES = 8192;
@@ -89,7 +95,7 @@ export function isBinary(bytes: Uint8Array): boolean {
 
 function wordPattern(symbol: string): RegExp {
   const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?<!${WORD_CHARACTER})${escaped}(?!${WORD_CHARACTER})`, "g");
+  return new RegExp(`(?<!${WORD_CHARACTER})${escaped}(?!${WORD_CHARACTER})`, "gu");
 }
 
 /**
@@ -185,7 +191,7 @@ export async function scanCallSites(repo: string, symbols: readonly string[]): P
       continue;
     }
     filesScanned += 1;
-    const text = new TextDecoder().decode(bytes);
+    const text = DECODER.decode(bytes);
     for (const [symbol, lines] of matchLines(text, wanted)) {
       const sites = found.get(symbol)!;
       for (const line of lines) sites.push({ file, line });

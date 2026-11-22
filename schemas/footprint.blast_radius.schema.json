@@ -50,7 +50,7 @@
           "description": "graft's own semver judgement for the surface change, passed through verbatim; null when graft reported none. footprint does not derive it."
         },
         "call_site_scan": {
-          "description": "How the call sites on the symbols above were found, or why they were not. `method` is `identifier_scan`: every whole-word occurrence of the symbol's name in a tracked, non-binary file of the working tree, where a word character is `[A-Za-z0-9_]` on both sides -- `grep -w`'s own rule, which is what makes the independent grep oracle in footprint's test suite exact. When `available` is false no symbol carries `call_sites` at all, so a scan that did not run can never be read as one that found nothing.",
+          "description": "How the call sites on the symbols above were found, or why they were not. `method` is `identifier_scan`: every whole-word occurrence of the symbol's name in a tracked, non-binary file of the working tree, where a word character is a letter, a digit or an underscore in any script (`[\\p{L}\\p{N}_]`) on both sides -- `grep -w`'s own rule, which is what makes the independent grep oracle in footprint's test suite exact for an ASCII symbol name. When `available` is false no symbol carries `call_sites` at all, so a scan that did not run can never be read as one that found nothing.",
           "type": "object",
           "required": ["available", "method"],
           "additionalProperties": false,

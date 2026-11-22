@@ -41,7 +41,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   carries a `referenceCount` and no per-reference list, and `struct review`, `symbol difficulty`
   and `struct test-coverage` carry referencing file paths only. So the rule is the most
   conservative one an independent oracle can check: every whole-word occurrence of the name in the
-  tracked, non-binary files of the working tree, `grep -w`'s boundary. It counts the declaration,
+  tracked, non-binary files of the working tree, `grep -w`'s boundary — a letter, digit or
+  underscore in any script, which a differential fuzz against real grep proved had to be Unicode
+  rather than ASCII. It counts the declaration,
   comments, strings and prose, and misses dynamic dispatch and a re-export under another name;
   both limits are stated in the result, in the schema and under the list in the comment. A binary
   file is skipped exactly as `grep -I` skips it and a tracked file no longer on disk is counted,

@@ -83,8 +83,8 @@ graft's, is [Blast radius](../blast-radius/README.md); these are its fields:
 | `digest` | SHA-256 over the canonical JSON of `range` and `exports` |
 
 Every `symbol`, `kind` and `signature` is graft's, passed through unchanged. The `call_sites` are
-footprint's own conservative whole-word identifier scan — `grep -w`'s boundary, over
-`git ls-files` — so they count the declaration itself and a mention in a comment, a string or
+footprint's own conservative whole-word identifier scan — `grep -w`'s boundary, a letter, digit or
+underscore in any script, over `git ls-files` — so they count the declaration itself and a mention in a comment, a string or
 prose, and they miss dynamic dispatch and a re-export under another name. Both limits are printed
 under the list in the `--human` section. The receipt copy carries the `markdown` of this section.
 
@@ -103,7 +103,9 @@ and the `FOOTPRINT_GRAFT` setting. footprint declares no file inputs, because th
 is the two commits rather than files on disk; the commit ids are its content addresses, so the
 same `inv` means the same comparison of the same trees, and a new commit on either end changes it.
 What `inv` does not cover: which graft version answered, so a structural section can differ under
-one `inv` when graft is upgraded. Resolving the range costs two `git rev-parse` calls before the
+one `inv` when graft is upgraded; nor the state of the **working tree**, which the call-site scan
+reads. Two runs under one `inv` can therefore carry different `footprint.blast_radius` digests if
+the checkout moved between them while the two commits did not. Resolving the range costs two `git rev-parse` calls before the
 bootstrap line is written; that is the only work done before it. The derivation is the writer's, documented in
 `@flyingrobots/parley-emit`'s README.
 

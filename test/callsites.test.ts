@@ -136,11 +136,21 @@ describe("the call-site scan is a pure function over one file's text", () => {
         "$render",
         "pre-render",
         "RENDER",
+        // A differential fuzz against real grep caught an ASCII-only boundary claiming a call
+        // site for `r` inside `rünïcode`. A letter is a word character in any script, and grep
+        // in a UTF-8 locale agrees; these three lines are that bug, pinned.
+        "rünïcode",
+        "renderü(d);",
+        "ürender(e);",
       ].join("\n");
       writeFileSync(join(dir, "sample.ts"), `${text}\n`);
       gitAdd(dir, ["sample.ts"]);
-      const mine = new Set((matchLines(text, ["render"]).get("render") ?? []).map((l) => `sample.ts:${l}`));
-      expect([...mine].sort()).toEqual([...grepOracle("render", dir)].sort());
+      for (const symbol of ["render", "r"]) {
+        const mine = new Set((matchLines(text, [symbol]).get(symbol) ?? []).map((l) => `sample.ts:${l}`));
+        expect([...mine].sort()).toEqual([...grepOracle(symbol, dir)].sort());
+      }
+      // The pinned regression, stated as itself rather than only as an oracle agreement.
+      expect(matchLines("rünïcode", ["r"]).get("r")).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -324,7 +334,9 @@ describe("the record carries the call sites", () => {
   });
 
   test("the scan's word boundary is the one the schema and the docs name", () => {
-    expect(WORD_CHARACTER).toBe("[A-Za-z0-9_]");
+    expect(WORD_CHARACTER).toBe("[\\p{L}\\p{N}_]");
+    expect(new RegExp(WORD_CHARACTER, "u").test("ü")).toBe(true);
+    expect(new RegExp(WORD_CHARACTER, "u").test("-")).toBe(false);
     expect(notRunScan().available).toBe(false);
   });
 });

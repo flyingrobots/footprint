@@ -70,10 +70,19 @@ check:
 > A call site is a **whole-word occurrence** of the symbol's name in a tracked, non-binary file of
 > the working tree.
 
-"Whole word" is `grep -w`'s own rule — the match may be neither preceded nor followed by
-`[A-Za-z0-9_]` — which is exactly why footprint's answer can be compared with real
-`grep -I -n -w` over `git ls-files`, line for line, instead of with a hand-written expectation.
-That comparison is the test, not a one-off: OUT-12a in the [output test plan](../output/test-plan.md).
+"Whole word" is `grep -w`'s own rule — the match may be neither preceded nor followed by a word
+character, which is a letter, a digit or an underscore **in any script** (`[\p{L}\p{N}_]`) —
+which is exactly why footprint's answer can be compared with real `grep -I -n -w` over
+`git ls-files`, line for line, instead of with a hand-written expectation. That comparison is the
+test, not a one-off: OUT-12a in the [output test plan](../output/test-plan.md).
+
+The Unicode part is not decoration. A differential fuzz against real grep, 2,400 comparisons over
+random hostile text, caught an ASCII-only `[A-Za-z0-9_]` reporting a call site for `r` inside
+`rünïcode`; grep in a UTF-8 locale reports none, and an identifier scan must not either. One limit
+remains, stated rather than papered over: for a symbol name that is **not** ASCII the two can
+disagree, because grep's word characters are its locale's and BSD grep's `-w` does not handle a
+multibyte pattern consistently with its own rule. Every symbol in the golden case, and every
+symbol graft has produced for this repository, is ASCII.
 
 The scan is over `git ls-files` of the **working tree**, so it reports what a reviewer would find
 in the checkout in front of them. One entry per line, however many times the name occurs on it,
@@ -90,6 +99,10 @@ prose, the same name belonging to something else entirely, and a name in a lockf
 **What it under-reports.** A call through dynamic dispatch, a re-export under another name, a
 symbol reached through a computed property. A diff of declarations cannot see those, and neither
 can a scan of names.
+
+**It is per name, not per declaration.** Two exported symbols that share a name in different files
+share one call-site list, because an occurrence of the name is not attributable to one of them
+without resolving imports. The list is the union, and it is the same list on both entries.
 
 It is evidence a reviewer can check in one `grep`, not a call graph — and the `--human` section
 says so under every list it prints.
