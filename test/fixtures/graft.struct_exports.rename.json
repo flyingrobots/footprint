@@ -1,0 +1,77 @@
+{
+  "_receipt": {
+    "burden": {
+      "kind": "search",
+      "nonRead": true
+    },
+    "compressionRatio": null,
+    "cumulative": {
+      "burdenByKind": {
+        "diagnostic": {
+          "bytesReturned": 0,
+          "calls": 0
+        },
+        "read": {
+          "bytesReturned": 0,
+          "calls": 0
+        },
+        "search": {
+          "bytesReturned": 1203,
+          "calls": 1
+        },
+        "shell": {
+          "bytesReturned": 0,
+          "calls": 0
+        },
+        "state": {
+          "bytesReturned": 0,
+          "calls": 0
+        }
+      },
+      "bytesAvoided": 0,
+      "bytesReturned": 1203,
+      "cacheHits": 0,
+      "nonReadBytesReturned": 1203,
+      "outlines": 0,
+      "reads": 0,
+      "refusals": 0
+    },
+    "fileBytes": null,
+    "latencyMs": 111,
+    "projection": "none",
+    "reason": "none",
+    "returnedBytes": 1203,
+    "seq": 1,
+    "sessionId": "1910b15c-ed90-4120-9237-ef19ee822bfe",
+    "tool": "graft_exports",
+    "traceId": "f197d3d1-3f2b-45c9-8641-48ca3b0b89f6",
+    "ts": "2026-11-22T22:28:48.997Z"
+  },
+  "_schema": {
+    "id": "graft.cli.struct_exports",
+    "version": "1.0.0"
+  },
+  "added": [
+    {
+      "changeType": "added",
+      "filePath": "src/footprint.ts",
+      "kind": "function",
+      "signature": "pieChart(composition: Composition): string",
+      "symbol": "pieChart"
+    }
+  ],
+  "base": "HEAD~1",
+  "changed": [],
+  "head": "HEAD",
+  "removed": [
+    {
+      "changeType": "removed",
+      "filePath": "src/footprint.ts",
+      "kind": "function",
+      "signature": "mermaidPie(composition: Composition): string",
+      "symbol": "mermaidPie"
+    }
+  ],
+  "semverImpact": "major",
+  "summary": "+1 added, -1 removed exported symbols. Semver impact: major."
+}

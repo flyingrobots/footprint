@@ -2,11 +2,13 @@
 
 Evidence lives in `test/cli.test.ts`, which runs the CLI as a subprocess against this repository
 and validates every line of every stream against the schema for its exact `(id, version)` pair:
-the protocol schemas shipped by `@flyingrobots/parley-emit`, `schemas/footprint.composition.schema.json`
-and `schemas/footprint.landing.schema.json`. The landing plan's derivation is pure, so its evidence
+the protocol schemas shipped by `@flyingrobots/parley-emit`, `schemas/footprint.composition.schema.json`,
+`schemas/footprint.landing.schema.json` and `schemas/footprint.blast_radius.schema.json`. The landing plan's derivation is pure, so its evidence
 is in `test/landing.test.ts`, over the fixture repositories under `test/fixtures/landing/` — each a
 directory holding the documents footprint reads and a `changed-files.txt` standing in for the diff,
-so the suite needs neither git nor the network.
+so the suite needs neither git nor the network. `test/exports.test.ts` holds the export-surface
+cases, which are a pure function over graft's JSON and run without graft: its fixtures under
+`test/fixtures/` were captured from real `graft struct exports --json` runs on this repository.
 
 | ID | Requirement |
 | --- | --- |
@@ -18,6 +20,8 @@ so the suite needs neither git nor the network.
 | OUT-6 | `--help` and `--schema` are runs that describe the tool |
 | OUT-7 | The head carries the resolved range with both commit ids; `inv` is stable for one comparison and differs between comparisons |
 | OUT-9 | A run emits a `footprint.landing` 1.0.0 result after the composition result: separate Before merge and After merge sections, after-merge steps that cite the file and heading they were read from, a stated fallback when no document declares steps, "nothing to do after merge" when the change touches no executable surface, and a loud warning when the diff changes source and no changed file is a migration, a flag, or a version/changelog entry |
+| OUT-10 | A run emits a second result line, `footprint.blast_radius` 1.0.0, after the composition result; it validates against its schema, reaches the receipt, and `--help` declares it |
+| OUT-11 | The export surface is parsed from graft's `graft.cli.struct_exports` 1.0.0 JSON by a pure function: a renamed export is reported removed and added, and a failed, unreadable or differently versioned answer is `available: false` with a stated reason, never a throw |
 
 | ID | Case | Oracle | Evidence | Status |
 | --- | --- | --- | --- | --- |
@@ -47,8 +51,24 @@ so the suite needs neither git nor the network.
 | OUT-9q | `HEAD~1..HEAD` against this repository | two results in order, `footprint.composition` then `footprint.landing`; the landing line validates; `after_merge.read` names `RELEASE.md` then `AGENTS.md`; both results are in the receipt | `the CLI speaks the Parley output protocol > the landing result follows the composition result in the same run` | implemented |
 | OUT-9r | `HEAD~1..HEAD --human` | the composition comment, then `## Before merge`, then `## After merge` | `... > --human prints Before merge and After merge after the composition comment` | implemented |
 | OUT-9s | `--help` | the declared schemas are `footprint.composition`, `footprint.landing` and `parley.error`, in that order | `... > --help and --schema are runs that describe the tool` | implemented |
+| OUT-10a | `HEAD~1..HEAD` against this repository | two result lines in order, `footprint.composition` then `footprint.blast_radius`; the blast-radius line validates, carries the range and a 64-hex digest, `counts` equal to the list lengths when available and a stated `reason` when not; both results reach the receipt; `--human` prints the `## Blast radius` section | `the CLI speaks the Parley output protocol > the blast-radius result follows the composition result in the same run` | implemented |
+| OUT-10b | `--help` | the declared schemas are `footprint.composition@1.0.0`, `footprint.blast_radius@1.0.0`, `parley.error@2.0.0`, in that order | `... > --help and --schema are runs that describe the tool` | implemented |
+| OUT-11a | `graft.struct_exports.rename.json`, captured from the real command on a commit renaming the exported `mermaidPie` to `pieChart` | `removed` is exactly `mermaidPie` and `added` exactly `pieChart`, both with file, kind and signature; `signatureChanged` empty; `semverImpact` `major` | `the export surface is a pure function of graft's JSON > a renamed export is reported removed and added` | implemented |
+| OUT-11b | A `changed` entry carrying `previousSignature` | the previous and new signatures are both kept, verbatim | `... > a signature change carries the previous signature` | implemented |
+| OUT-11c | `graft.struct_exports.unchanged.json` | three empty lists and `counts` all zero with `available: true` — an empty surface is not an unavailable one | `... > no exported symbol changed is three empty lists, not an unavailable section` | implemented |
+| OUT-11d | Entries given out of order | sorted by file then symbol, so the digest does not follow graft's ordering | `... > symbols are listed in a stable order, so the digest does not follow graft's ordering` | implemented |
+| OUT-11e | graft not resolved | `available: false`, `reason.code` `graft.not_resolved`, a non-empty detail, and no symbol lists | `... > graft that could not be resolved is available: false with a stated reason` | implemented |
+| OUT-11f | The rename fixture with `_schema.version` set to `2.0.0`, and with `_schema.id` set to another graft contract | `available: false`, `reason.code` `graft.schema_mismatch`, the detail naming both versions; no throw | `... > a different graft.cli.struct_exports version is unavailable and stated, never a throw` | implemented |
+| OUT-11g | Empty output, non-JSON text, `{}`, an envelope with no arrays, and an entry with no `filePath` | `available: false` with `graft.output_unreadable` or `graft.schema_mismatch`; no throw | `... > output that is not graft's answer is unavailable and stated` | implemented |
+| OUT-11h | The record from each of the three surfaces, with the writer's envelope | every line validates against `schemas/footprint.blast_radius.schema.json`; the digest is 64 hex; `contract` names `graft.cli.struct_exports` 1.0.0 | `... > the record validates against schemas/footprint.blast_radius.schema.json, available or not` | implemented |
+| OUT-11i | The same surface twice, and a different surface | equal digests for the repeat, different for the other | `... > the digest is the same for the same surface and moves when the surface does` | implemented |
+| OUT-11j | The Markdown section for the rename fixture, the unchanged fixture, a multi-line signature and an unavailable surface | the symbols, their files and the graft subcommand appear; every table row closes with a pipe; an empty surface says no exported symbol moved; an unavailable one states the reason | `the blast-radius section of the Markdown comment > lists added, removed and signature-changed symbols with file and name`, `... > says no exported symbol moved rather than printing an empty table`, `... > states the limitation when graft is unavailable` | implemented |
 
 ## Known gaps
 
 - The structural branch is exercised with whatever graft the test machine has; no test pins
-  `structural.available: true`, because graft is optional and the test must pass without it.
+  `structural.available: true`, because graft is optional and the test must pass without it. The
+  same holds for the blast radius: OUT-8a accepts either branch from the live CLI, and the
+  export-surface behavior is pinned by OUT-9's fixtures instead.
+- No test asserts that graft's live output still matches the fixtures. A graft release that changed
+  the shape under the same `_schema` version would be caught only by OUT-8a's `counts` invariant.

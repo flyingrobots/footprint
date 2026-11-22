@@ -55,6 +55,17 @@ Nothing here is estimated. Totals come from `git diff --numstat`, and the catego
 required by test to sum to the reported total. This is the bug that made the original hand-written
 version untrustworthy: a draft reported `+151` for a `+157` change, with hand-estimated shares.
 
+## Blast radius: which exports moved
+
+With graft available, a run also reports its **export surface**: the exported symbols the change
+added, removed or re-signed, each with its file and name, as a second result line
+(`footprint.blast_radius` 1.0.0) and a `## Blast radius` section in the Markdown comment. A renamed
+export shows up as a removal and an addition. The symbols come from graft's CLI contract
+`graft struct exports <base-ref> <head-ref> --json`, passed through verbatim; a three-dot range is
+compared from the merge base. When graft cannot answer — absent, failing, or speaking a contract
+version footprint does not read — the result says so with a reason instead of omitting the section.
+See [`docs/topics/blast-radius/README.md`](docs/topics/blast-radius/README.md).
+
 ## Structural analysis is optional
 
 With [graft](https://github.com/flyingrobots/graft) available, the report adds what paths cannot
@@ -71,8 +82,9 @@ than quietly omitting it. A degraded run should never read as a clean one.
 
 ## Status
 
-**v0.2** — composition. The landing plan above is on the default branch and not yet released.
-Call-site blast radius and cross-pull-request merge ordering are
+**v0.2.0** — composition, as JSON Lines through the Parley output protocol. On `main` and not yet
+released: the landing plan and the export-surface diff above. Call sites for those symbols,
+grouping by system, and cross-pull-request merge ordering are
 [tracked as issues](https://github.com/flyingrobots/footprint/issues).
 
 Documentation: [`docs/README.md`](docs/README.md). Working agreement: [`AGENTS.md`](AGENTS.md).

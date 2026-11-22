@@ -21,7 +21,8 @@ footprint --human | gh pr comment 42 --body-file -
 
 ## The results
 
-Two result lines, in this order and in the same run: the composition, then the landing plan.
+Three result lines, in this order and in the same run: the composition, then the landing plan,
+then the blast radius. One result type per message, each with its own schema and its own version.
 
 ### `footprint.composition` 1.0.0
 
@@ -60,6 +61,30 @@ read and how the guard rule is computed is [landing](../landing/README.md).
 The receipt copy also carries `markdown`, the two `--human` sections. Under `--human` the landing
 plan prints as **Before merge** and **After merge**, after the composition comment.
 
+### `footprint.blast_radius` 1.0.0
+
+The export-surface diff, emitted after the composition result in the same run
+(`schemas/footprint.blast_radius.schema.json`). What it lists, and the graft contract it comes
+from, is [Blast radius](../blast-radius/README.md); these are its fields:
+
+| Field | Meaning |
+| --- | --- |
+| `range` | The git range compared, as given to `git diff` |
+| `exports.available` | `false` when graft could not be resolved, failed, or answered under a contract version footprint does not read |
+| `exports.reason` | Present when `available` is `false`: `code` — one of `graft.not_resolved`, `graft.exports_failed`, `graft.output_unreadable`, `graft.schema_mismatch`, `range.unresolved` — and a `detail` to act on. The section is stated, never omitted. |
+| `exports.base`, `exports.head` | The refs passed to graft: the merge base for a three-dot range, the given base otherwise |
+| `exports.added`, `exports.removed`, `exports.signature_changed` | The symbols, each with `symbol` and `file`, plus `kind` and `signature` when graft reported them, and `previous_signature` on a signature change. Sorted by file then symbol, so the digest follows the surface rather than graft's ordering. |
+| `exports.counts` | `added`, `removed`, `signature_changed` — the lengths of those three lists, and footprint's only arithmetic here |
+| `exports.semver_impact` | graft's own judgement, verbatim; `null` when it reported none. footprint derives no semver impact. |
+| `exports.contract` | The graft CLI contract that answered: `graft.cli.struct_exports` 1.0.0 |
+| `digest` | SHA-256 over the canonical JSON of `range` and `exports` |
+
+Everything under `added`, `removed` and `signature_changed` is graft's, passed through unchanged.
+The receipt copy carries the `markdown` of this section.
+
+`--human` prints both sections, the composition's `## Footprint` and then `## Blast radius`, so one
+run is one comment.
+
 ## Identity
 
 Every line carries the run id. The bootstrap line and the receipt head also carry `inv`, the
@@ -81,8 +106,10 @@ bootstrap line is written; that is the only work done before it. The derivation 
 | `git.diff_failed` | `git diff --numstat` exited non-zero; `problem` carries git's message | 2 |
 | `uncaught.exception` | A defect in footprint; `detail.stack` is in the receipt | 2 |
 
-A warning, `graft.review_failed`, says graft resolved but its review could not be read; the run
-still succeeds with `structural.available: false`.
+Two warnings say graft resolved but could not be read, and the run still succeeds:
+`graft.review_failed` with `structural.available: false`, and `graft.exports_failed` with
+`exports.available: false` and the reason on the result. graft being absent entirely is not a
+warning — it is the `graft.not_resolved` reason on the result and a step saying so.
 
 ## Discovery
 
@@ -90,6 +117,8 @@ still succeeds with `structural.available: false`.
 one `command` line and the schemas footprint can emit, and close with `end`. `--help` carries
 `footprint.composition`, `footprint.landing` and `parley.error`; `--schema` adds every protocol
 schema the writer itself emits.
+`footprint.composition`, `footprint.blast_radius` and `parley.error`; `--schema` adds every
+protocol schema the writer itself emits.
 
 ## Exit status
 
