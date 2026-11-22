@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Added
 
+- A measured wall-time bound for the call-site scan on a large repository: 4,823 tracked files,
+  169 changed files, 142 changed symbols, 7,735 call sites, median 38.72s over three runs. See
+  [Performance](docs/topics/blast-radius/README.md#performance). (flyingrobots/footprint#13)
 - CI: a GitHub Actions workflow (`.github/workflows/ci.yml`) runs `bun install --frozen-lockfile`
   and `bun test` on every push to `main` and on every pull request. See
   [`docs/workflows/ci/README.md`](docs/workflows/ci/README.md). (flyingrobots/footprint#22)
