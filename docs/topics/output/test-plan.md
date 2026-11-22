@@ -9,6 +9,9 @@ directory holding the documents footprint reads and a `changed-files.txt` standi
 so the suite needs neither git nor the network. `test/exports.test.ts` holds the export-surface
 cases, which are a pure function over graft's JSON and run without graft: its fixtures under
 `test/fixtures/` were captured from real `graft struct exports --json` runs on this repository.
+`test/languages.test.ts` holds the unanalysed-language cases, over the fixture changed-file lists
+under `test/fixtures/languages/`, in the same `changed-files.txt` convention as the landing
+fixtures: a pure function over paths, needing neither git nor graft.
 
 | ID | Requirement |
 | --- | --- |
@@ -22,6 +25,7 @@ cases, which are a pure function over graft's JSON and run without graft: its fi
 | OUT-9 | A run emits a `footprint.landing` 1.0.0 result after the composition result: separate Before merge and After merge sections, after-merge steps that cite the file and heading they were read from, a stated fallback when no document declares steps, "nothing to do after merge" when the change touches no executable surface, and a loud warning when the diff changes source and no changed file is a migration, a flag, or a version/changelog entry |
 | OUT-10 | A run emits a second result line, `footprint.blast_radius` 1.0.0, after the composition result; it validates against its schema, reaches the receipt, and `--help` declares it |
 | OUT-11 | The export surface is parsed from graft's `graft.cli.struct_exports` 1.0.0 JSON by a pure function: a renamed export is reported removed and added, and a failed, unreadable or differently versioned answer is `available: false` with a stated reason, never a throw |
+| OUT-12 | The blast-radius result (`footprint.blast_radius` 1.1.0) names the changed files, by file extension with a count, in languages footprint does not recognise as one graft's grammars can parse; the list is present and empty when every changed file was in a supported language; a parse failure in a *supported* language is never counted here, because detection is extension-only and never looks at whether graft ran or what it answered |
 
 | ID | Case | Oracle | Evidence | Status |
 | --- | --- | --- | --- | --- |
@@ -63,6 +67,12 @@ cases, which are a pure function over graft's JSON and run without graft: its fi
 | OUT-11h | The record from each of the three surfaces, with the writer's envelope | every line validates against `schemas/footprint.blast_radius.schema.json`; the digest is 64 hex; `contract` names `graft.cli.struct_exports` 1.0.0 | `... > the record validates against schemas/footprint.blast_radius.schema.json, available or not` | implemented |
 | OUT-11i | The same surface twice, and a different surface | equal digests for the repeat, different for the other | `... > the digest is the same for the same surface and moves when the surface does` | implemented |
 | OUT-11j | The Markdown section for the rename fixture, the unchanged fixture, a multi-line signature and an unavailable surface | the symbols, their files and the graft subcommand appear; every table row closes with a pipe; an empty surface says no exported symbol moved; an unavailable one states the reason | `the blast-radius section of the Markdown comment > lists added, removed and signature-changed symbols with file and name`, `... > says no exported symbol moved rather than printing an empty table`, `... > states the limitation when graft is unavailable` | implemented |
+| OUT-12a | `test/fixtures/languages/unanalysed` (a Haskell file among TypeScript ones) | `unsupportedLanguages` reports exactly `[{ extension: ".hs", count: 1 }]` | planned |
+| OUT-12b | `test/fixtures/languages/all-supported` (TypeScript, Rust, Go, Python, JSON, YAML, TOML) | `unsupportedLanguages` reports `[]` — present, not absent | planned |
+| OUT-12c | A changed `.ts` file, with an `Exports` whose `available` is `false` (`graft.exports_failed`) | the `.ts` file is never counted as unanalysed: detection is extension-only and does not consult `exports` at all | planned |
+| OUT-12d | Changed files across several unsupported extensions, uneven counts, out of order | grouped by extension with the right count each, sorted by extension so the digest does not follow input order | planned |
+| OUT-12e | `exportsRecord` with and without an unanalysed-languages list | the record validates against `schemas/footprint.blast_radius.schema.json` 1.1.0 either way; `unanalysed_languages` is present and empty when there is nothing to report; the digest moves when the list does | planned |
+| OUT-12f | `blastRadius` rendering with and without unanalysed languages | the `## Blast radius` section lists the extensions and counts, or states that every changed file was in a supported language | planned |
 
 ## Known gaps
 
