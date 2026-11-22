@@ -7,6 +7,8 @@ import { classify } from "./classify.ts";
 import { structuralSummary, type StructuralReview } from "./graft.ts";
 import type { BeforeMergeKind, Landing } from "./landing.ts";
 import type { Exports, ExportedSymbol } from "./exports.ts";
+import type { UnsupportedLanguage } from "./languages.ts";
+import type { Overlap } from "./overlap.ts";
 
 export interface GutCheck {
   readonly headline: string;
@@ -143,13 +145,15 @@ export function renderLanding(l: Landing): string {
  * symbols moved, a sentence when none did, and the stated reason when graft could not answer —
  * an absent section would read like a clean one.
  */
-export function blastRadius(exports: Exports): string {
+export function blastRadius(exports: Exports, unanalysed: readonly UnsupportedLanguage[] = []): string {
   const out: string[] = ["## Blast radius", ""];
   if (!exports.available) {
     out.push(
       `<sub>Export-surface diff unavailable (\`${exports.reason.code}\`): ${exports.reason.detail}.</sub>`,
       "",
       FROM_GRAFT,
+      "",
+      unanalysedSection(unanalysed),
     );
     return out.join("\n");
   }
@@ -193,6 +197,7 @@ export function blastRadius(exports: Exports): string {
 
   out.push(FROM_GRAFT);
   if (scan.available) out.push("", FROM_SCAN);
+  out.push("", unanalysedSection(unanalysed));
   return out.join("\n");
 }
 
@@ -214,7 +219,21 @@ function callSiteLines(x: ExportedSymbol): string {
 }
 
 const FROM_SCAN =
-  "<sub>Call sites are footprint's own whole-word identifier scan, not graft's: every whole-word occurrence of the name in the tracked, non-binary files of the working tree (`grep -w`'s boundary, `[A-Za-z0-9_]`). It counts the declaration itself and a mention in a comment, a string or prose, and it cannot see a call through dynamic dispatch or a re-export under another name. Evidence to check, not a call graph.</sub>";
+  "<sub>Call sites are footprint's own whole-word identifier scan, not graft's: every whole-word occurrence of the name in the tracked, non-binary files of the working tree (`grep -w`'s boundary -- a letter, digit or underscore in any script). It counts the declaration itself and a mention in a comment, a string or prose, and it cannot see a call through dynamic dispatch or a re-export under another name. Evidence to check, not a call graph.</sub>";
+
+/**
+ * The languages this change could not have been symbol-analysed in, independent of whether graft
+ * itself ran: present whether the exports section above succeeded, failed, or was unavailable
+ * (flyingrobots/footprint#12).
+ */
+function unanalysedSection(unanalysed: readonly UnsupportedLanguage[]): string {
+  if (unanalysed.length === 0) {
+    return "<sub>Every changed source file was in a language footprint recognises graft's grammars can parse.</sub>";
+  }
+  const total = unanalysed.reduce((n, u) => n + u.count, 0);
+  const byExtension = unanalysed.map((u) => `${u.count} \`${u.extension}\``).join(", ");
+  return `**${total} changed file${total === 1 ? "" : "s"} in unanalysed language${unanalysed.length === 1 ? "" : "s"}:** ${byExtension}.`;
+}
 
 const FROM_GRAFT =
   "<sub>Exported symbols from `graft struct exports --json` (`graft.cli.struct_exports` 1.0.0). Whatever graft parses counts as an export surface, including fields in config and lock files.</sub>";
@@ -223,4 +242,43 @@ const FROM_GRAFT =
 function cell(signature: string | undefined): string {
   if (signature === undefined) return "";
   return `\`${signature.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim()}\``;
+}
+
+/**
+ * The cross-pull-request section of the comment, rendered from the same record the
+ * `footprint.overlap` result carries. It is its own section with its own provenance note, so the
+ * composition section above stays exactly what it was.
+ */
+export function renderOverlap(o: Overlap): string {
+  // The leading blank line keeps the heading off the end of the composition section above it.
+  const out: string[] = ["", "### Open pull requests", ""];
+
+  if (!o.available) {
+    out.push(`<sub>${o.summary}</sub>`);
+    return out.join("\n");
+  }
+
+  out.push(`**${o.summary}**`, "");
+
+  for (const p of o.overlapping) {
+    out.push(`- **#${p.number}** ${p.title}${p.isDraft ? " _(draft)_" : ""} — ${p.sharedFiles.map((f) => `\`${f}\``).join(", ")}`);
+  }
+  if (o.overlapping.length > 0) out.push("");
+
+  for (const u of o.undetermined) out.push(`- **#${u.number}** ${u.title} — files unknown: ${u.reason}`);
+  if (o.undetermined.length > 0) out.push("");
+
+  if (o.waves.length > 0) {
+    const waves = o.waves
+      .map((w) => `**Wave ${w.wave}** — ${w.pullRequests.map((n) => `#${n}`).join(", ")}${w.wave === 1 ? "" : `, after wave ${w.wave - 1}`}`)
+      .join("\n\n");
+    const edges = o.conflicts.length === 0
+      ? "No two open pull requests change the same file, so they can land in any order."
+      : o.conflicts.map((c) => `- ${c.reason}`).join("\n");
+    out.push(details(`Proposed merge order (${o.waves.length} wave${o.waves.length === 1 ? "" : "s"})`, `${waves}\n\n${edges}`), "");
+  }
+
+  if (o.truncated) out.push(`<sub>The pull-request list came back at the ${o.limit}-request limit; there may be more.</sub>`, "");
+  out.push("<sub>Pull requests from `gh pr list`; their files from `gh pr diff --name-only`. Merge waves are greedy first-fit over the conflict graph: a proposal, not a minimum, and not a gate.</sub>");
+  return out.join("\n");
 }

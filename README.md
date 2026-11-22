@@ -14,9 +14,10 @@ bun src/cli.ts --human | gh pr comment 42 --body-file -   # the Markdown comment
 bun src/cli.ts --help             # what it emits, as JSON Lines
 ```
 
-footprint speaks the [Parley output protocol](https://github.com/flyingrobots/parley): one
-`result` line on stdout with the composition, the gut check, the structural summary and a digest;
-errors on stderr as structured lines; a receipt per run under `.parley/receipts/` with every
+footprint speaks the [Parley output protocol](https://github.com/flyingrobots/parley): four
+`result` lines on stdout — the composition with its gut check, structural summary and digest, then
+the landing plan, the blast radius and the cross-pull-request overlap; errors on stderr as
+structured lines; a receipt per run under `.parley/receipts/` with every
 decision and the file listing. `--human` is the opt-in for prose. See
 [`docs/topics/output/README.md`](docs/topics/output/README.md).
 
@@ -58,8 +59,8 @@ version untrustworthy: a draft reported `+151` for a `+157` change, with hand-es
 ## Blast radius: which exports moved
 
 With graft available, a run also reports its **export surface**: the exported symbols the change
-added, removed or re-signed, each with its file and name **and where it is called from**, as a
-second result line (`footprint.blast_radius` 1.1.0) and a `## Blast radius` section in the Markdown
+added, removed or re-signed, each with its file and name **and where it is called from**, as the
+third result line (`footprint.blast_radius` 1.1.0) and a `## Blast radius` section in the Markdown
 comment. A renamed export shows up as a removal and an addition. The symbols come from graft's CLI
 contract `graft struct exports <base-ref> <head-ref> --json`, passed through verbatim; a three-dot
 range is compared from the merge base. When graft cannot answer — absent, failing, or speaking a
@@ -73,6 +74,17 @@ empty list rather than dropped. It counts the declaration, comments and prose, a
 dynamic dispatch or a re-export under another name — it is evidence a reviewer can check with one
 `grep`, not a call graph, and the test suite checks it against exactly that.
 See [`docs/topics/blast-radius/README.md`](docs/topics/blast-radius/README.md).
+
+## Cross-pull-request overlap
+
+A fourth result says which **open pull requests** change a file this change changes — by number and
+title — and proposes an order the open pull requests could land in, as waves where no two pull
+requests in a wave share a file, with the shared files named for every edge that forces one. The
+open pull requests come from `gh pr list`, their files from `gh pr diff --name-only`, and nothing
+is merged or rebased: the order is a proposal, not a gate. When `gh` is absent or cannot answer,
+the result says so with a code and `gh`'s own message and the run still succeeds, because an
+omitted section would read as "nothing overlaps". See
+[`docs/topics/overlap/README.md`](docs/topics/overlap/README.md).
 
 ## Structural analysis is optional
 
@@ -91,8 +103,8 @@ than quietly omitting it. A degraded run should never read as a clean one.
 ## Status
 
 **v0.2.0** — composition, as JSON Lines through the Parley output protocol. On `main` and not yet
-released: the landing plan, the export-surface diff above, and the call sites of each changed
-symbol. Grouping by system and cross-pull-request merge ordering are
+released: the landing plan, the export-surface diff with the call sites of each changed symbol,
+and the cross-pull-request overlap above. Grouping by system and symbol-level overlap are
 [tracked as issues](https://github.com/flyingrobots/footprint/issues).
 
 Documentation: [`docs/README.md`](docs/README.md). Working agreement: [`AGENTS.md`](AGENTS.md).

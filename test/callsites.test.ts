@@ -35,6 +35,7 @@ import {
   type Exports,
 } from "../src/exports.ts";
 import { blastRadius } from "../src/render.ts";
+import type { UnsupportedLanguage } from "../src/languages.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 const SIGNATURE_CHANGE = readFileSync(join(ROOT, "test/fixtures/graft.struct_exports.signature_change.json"), "utf8");
@@ -279,8 +280,11 @@ describe("the record carries the call sites", () => {
     ]),
   };
 
-  function record(exports: Exports) {
-    return enveloped(exportsRecord("origin/main...HEAD", exports));
+  // The third argument is flyingrobots/footprint#12's unanalysed-language list, which rides the
+  // same unreleased 1.1.0 draft. Empty here: nothing in these cases is about it, and both
+  // additive fields have to validate side by side, which the first case below asserts.
+  function record(exports: Exports, unanalysed: UnsupportedLanguage[] = []) {
+    return enveloped(exportsRecord("origin/main...HEAD", exports, unanalysed));
   }
 
   test("the record validates against schemas/footprint.blast_radius.schema.json at 1.1.0", () => {
@@ -297,6 +301,15 @@ describe("the record carries the call sites", () => {
     expect(changed.call_sites).toEqual([{ file: "src/cli.ts", line: 7 }, { file: "test/cli.test.ts", line: 90 }]);
     const dev = (ex.added as Array<Record<string, unknown>>).find((s) => s.symbol === "devDependencies")!;
     expect(dev.call_sites).toEqual([]);
+  });
+
+  test("the call sites and the unanalysed languages ride the same 1.1.0 draft side by side", () => {
+    const unanalysed: UnsupportedLanguage[] = [{ extension: ".hs", count: 2 }];
+    const line = record(withCallSites(parseExportSurfaceText(SIGNATURE_CHANGE), SCAN), unanalysed) as Record<string, unknown>;
+    if (!validate(line)) throw new Error(ajv.errorsText(validate.errors));
+    expect(line.unanalysed_languages).toEqual([{ extension: ".hs", count: 2 }]);
+    const ex = (line as { exports: Record<string, unknown> }).exports;
+    expect((ex.counts as Record<string, number>).call_sites).toBe(7);
   });
 
   test("a surface parsed without a scan says so rather than listing empty call sites", () => {
@@ -327,7 +340,7 @@ describe("the record carries the call sites", () => {
     const base = withCallSites(parseExportSurfaceText(SIGNATURE_CHANGE), SCAN);
     const moved: CallSiteScan = { ...SCAN, sites: new Map(SCAN.sites).set("render", [{ file: "src/cli.ts", line: 8 }, { file: "test/cli.test.ts", line: 90 }]) };
     const other = withCallSites(parseExportSurfaceText(SIGNATURE_CHANGE), moved);
-    const digest = (e: Exports) => exportsRecord("r", e).digest as string;
+    const digest = (e: Exports) => exportsRecord("r", e, []).digest as string;
     expect(digest(base)).toBe(digest(withCallSites(parseExportSurfaceText(SIGNATURE_CHANGE), SCAN)));
     expect(digest(base)).not.toBe(digest(other));
     expect(digest(base)).not.toBe(digest(parseExportSurfaceText(SIGNATURE_CHANGE)));
@@ -358,7 +371,7 @@ describe("the blast-radius section carries the call sites", () => {
   };
 
   test("call sites are listed with file and line under each symbol", () => {
-    const md = blastRadius(withCallSites(parseExportSurfaceText(SIGNATURE_CHANGE), SCAN));
+    const md = blastRadius(withCallSites(parseExportSurfaceText(SIGNATURE_CHANGE), SCAN), []);
     expect(md).toContain("`src/cli.ts:7`");
     expect(md).toContain("`src/cli.ts:66`");
     expect(md).toContain("identifier scan");
@@ -371,7 +384,7 @@ describe("the blast-radius section carries the call sites", () => {
   });
 
   test("an unavailable call-site scan states its reason rather than reading as no call sites", () => {
-    const md = blastRadius(withCallSites(parseExportSurfaceText(SIGNATURE_CHANGE), { available: false, reason: { code: "scan.ls_files_failed", detail: "git ls-files -z exited 128" } }));
+    const md = blastRadius(withCallSites(parseExportSurfaceText(SIGNATURE_CHANGE), { available: false, reason: { code: "scan.ls_files_failed", detail: "git ls-files -z exited 128" } }), []);
     expect(md).toContain("scan.ls_files_failed");
     expect(md).toContain("git ls-files -z exited 128");
     expect(md).not.toMatch(/0 call sites/);

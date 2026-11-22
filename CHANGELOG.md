@@ -19,9 +19,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   flag, or a version or changelog entry. The guard rule is documented path patterns, never a
   judgement: [`docs/topics/landing/README.md`](docs/topics/landing/README.md).
   (flyingrobots/footprint#3)
-- **Blast radius: the export-surface diff.** A second result line per run,
-  `footprint.blast_radius` 1.0.0 (`schemas/footprint.blast_radius.schema.json`), emitted after the
-  composition result, listing the exported symbols the change added, removed and signature-changed,
+- **Blast radius: the export-surface diff.** A third result line per run,
+  `footprint.blast_radius` (`schemas/footprint.blast_radius.schema.json`), emitted after the
+  landing plan, listing the exported symbols the change added, removed and signature-changed,
   each with its file and name. `--human` gains a `## Blast radius` section. The facts come from
   graft's CLI contract `graft struct exports <base-ref> <head-ref> --json`, bound to `_schema`
   `graft.cli.struct_exports` 1.0.0; a three-dot range is compared from the merge base. When graft
@@ -29,6 +29,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   `exports.available: false` with a `reason` — the section is stated, never omitted — and a
   `graft.exports_failed` warning is emitted when graft resolved but could not be read.
   (flyingrobots/footprint#9)
+  - **1.1.0** (still unreleased, so recorded in this same entry rather than a new one): a required
+    `unanalysed_languages` field names the changed source files, by extension with a count, in
+    languages footprint does not recognise as one graft's grammars can parse — present and empty
+    when every changed file was in a supported language, never omitted. Independent of `exports`:
+    a parse failure in a *supported* language is never counted, because detection is extension-only
+    and never looks at whether graft ran or what it returned. `--human`'s `## Blast radius` section
+    states it alongside the symbol list. (flyingrobots/footprint#12)
 - `docs/topics/blast-radius/README.md`: what the export-surface diff lists, which graft contract it
   comes from, and the two failure modes it inherits (re-exports read as changes, dynamic dispatch
   invisible).
@@ -43,13 +50,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   conservative one an independent oracle can check: every whole-word occurrence of the name in the
   tracked, non-binary files of the working tree, `grep -w`'s boundary — a letter, digit or
   underscore in any script, which a differential fuzz against real grep proved had to be Unicode
-  rather than ASCII. It counts the declaration,
-  comments, strings and prose, and misses dynamic dispatch and a re-export under another name;
+  rather than ASCII. It counts the declaration, comments, strings and prose, and misses dynamic dispatch and a re-export under another name;
   both limits are stated in the result, in the schema and under the list in the comment. A binary
   file is skipped exactly as `grep -I` skips it and a tracked file no longer on disk is counted,
   not fatal; a scan that could not run is `call_site_scan.available: false` with a reason and a
   `callsites.scan_failed` warning, and then no symbol carries `call_sites` at all.
   (flyingrobots/footprint#10)
+- **Cross-pull-request overlap.** A fourth result in the same run, `footprint.overlap` 1.0.0
+  (`schemas/footprint.overlap.schema.json`), emitted after the blast radius: the open pull requests
+  that change a file this change changes, named by number and title; the conflict graph between the
+  open pull requests, with the shared files and a reason for every edge; and a proposed merge order
+  as waves, where no two pull requests in a wave share a file. `--human` renders it as an
+  `### Open pull requests` section. (flyingrobots/footprint#1)
+- The open pull requests come from `gh pr list --json` and their files from
+  `gh pr diff --name-only`; this branch's own pull request comes from `gh pr view --json number`
+  and is excluded from the overlap while staying in the waves. When `gh` is absent,
+  unauthenticated, rate-limited, without a GitHub remote, or returns unreadable JSON, the result
+  carries `available: false` with a stable code and `gh`'s own message, and the run still exits 0.
+  A pull request whose files `gh` would not report is `undetermined` rather than assumed disjoint;
+  a list that came back at the limit sets `truncated`.
+- [`docs/topics/overlap/README.md`](docs/topics/overlap/README.md): the conflict graph, the merge
+  waves, and why the greedy grouping is a reimplementation of graft's `findParallelGroups` rather
+  than an import.
 
 ### Decided
 

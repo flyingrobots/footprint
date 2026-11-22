@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { canonical, sha256 } from "@flyingrobots/parley-emit";
 import { SCAN_METHOD, notRunScan, scanCallSites, sitesFor, type CallSite, type CallSiteScan } from "./callsites.ts";
+import type { UnsupportedLanguage } from "./languages.ts";
 
 export const BLAST_RADIUS_SCHEMA = JSON.parse(
   readFileSync(join(import.meta.dir, "../schemas/footprint.blast_radius.schema.json"), "utf8"),
@@ -228,9 +229,14 @@ export async function attachCallSites(exports: Exports, repo: string): Promise<E
   return withCallSites(exports, scan);
 }
 
-/** The result record. Semantic content only enters the digest, so two runs compare with one string. */
-export function exportsRecord(range: string, exports: Exports): Record<string, unknown> {
-  const semantic = { range, exports: exportsPayload(exports) };
+/**
+ * The result record. Semantic content only enters the digest, so two runs compare with one
+ * string. `unanalysed` is independent of `exports`: it names changed files in languages graft's
+ * grammars cannot parse at all, regardless of whether graft ran or what it returned
+ * (flyingrobots/footprint#12).
+ */
+export function exportsRecord(range: string, exports: Exports, unanalysed: readonly UnsupportedLanguage[]): Record<string, unknown> {
+  const semantic = { range, exports: exportsPayload(exports), unanalysed_languages: unanalysed.map((u) => ({ ...u })) };
   return { event: "result", ...semantic, digest: sha256(canonical(semantic)) };
 }
 

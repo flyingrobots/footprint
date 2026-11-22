@@ -23,6 +23,7 @@ import {
   type Exports,
 } from "../src/exports.ts";
 import { blastRadius } from "../src/render.ts";
+import { unsupportedLanguages } from "../src/languages.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 const fixture = (name: string) => readFileSync(join(ROOT, "test/fixtures", name), "utf8");
@@ -91,7 +92,7 @@ describe("the export surface is a pure function of graft's JSON", () => {
     expect(s.removed).toEqual([]);
     expect(s.signatureChanged).toEqual([]);
     expect(s.semverImpact).toBe("none");
-    const record = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(UNCHANGED)) as { exports: { available: boolean; counts: Record<string, number> } };
+    const record = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(UNCHANGED), []) as { exports: { available: boolean; counts: Record<string, number> } };
     expect(record.exports.available).toBe(true);
     expect(record.exports.counts).toEqual({ added: 0, removed: 0, signature_changed: 0 });
   });
@@ -113,7 +114,7 @@ describe("the export surface is a pure function of graft's JSON", () => {
   test("graft that could not be resolved is available: false with a stated reason", () => {
     const e = unavailableExports("graft.not_resolved", "graft could not be resolved through the package or PATH");
     expect(e.available).toBe(false);
-    const record = exportsRecord("origin/main...HEAD", e) as { exports: { available: boolean; reason: { code: string; detail: string } } };
+    const record = exportsRecord("origin/main...HEAD", e, []) as { exports: { available: boolean; reason: { code: string; detail: string } } };
     expect(record.exports.available).toBe(false);
     expect(record.exports.reason.code).toBe("graft.not_resolved");
     expect(record.exports.reason.detail.length).toBeGreaterThan(0);
@@ -155,18 +156,18 @@ describe("the export surface is a pure function of graft's JSON", () => {
 
   test("the record validates against schemas/footprint.blast_radius.schema.json, available or not", () => {
     for (const e of [parseExportSurfaceText(RENAME), parseExportSurfaceText(UNCHANGED), unavailableExports("graft.not_resolved", "no graft")]) {
-      const line = enveloped(exportsRecord("HEAD~1..HEAD", e));
+      const line = enveloped(exportsRecord("HEAD~1..HEAD", e, []));
       expect(validate(line), ajv.errorsText(validate.errors)).toBe(true);
     }
-    const line = enveloped(exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(RENAME))) as { digest: string; exports: { contract: unknown } };
+    const line = enveloped(exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(RENAME), [])) as { digest: string; exports: { contract: unknown } };
     expect(line.digest).toMatch(/^[0-9a-f]{64}$/);
     expect(line.exports.contract).toEqual({ id: "graft.cli.struct_exports", version: "1.0.0" });
   });
 
   test("the digest is the same for the same surface and moves when the surface does", () => {
-    const a = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(RENAME)) as { digest: string };
-    const b = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(RENAME)) as { digest: string };
-    const c = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(UNCHANGED)) as { digest: string };
+    const a = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(RENAME), []) as { digest: string };
+    const b = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(RENAME), []) as { digest: string };
+    const c = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(UNCHANGED), []) as { digest: string };
     expect(a.digest).toBe(b.digest);
     expect(a.digest).not.toBe(c.digest);
   });
@@ -202,5 +203,61 @@ describe("the blast-radius section of the Markdown comment", () => {
     expect(md).toContain("Blast radius");
     expect(md).toMatch(/unavailable/i);
     expect(md).toContain("graft could not be resolved");
+  });
+});
+
+// ---- unanalysed languages (flyingrobots/footprint#12) -------------------------------------------
+
+describe("the unanalysed-languages field on the blast-radius result", () => {
+  const HASKELL = unsupportedLanguages(["src/Main.hs", "src/app.ts"]);
+
+  test("the record validates against schemas/footprint.blast_radius.schema.json 1.1.0, with or without unanalysed languages", () => {
+    for (const unanalysed of [[], HASKELL]) {
+      const line = enveloped(exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(RENAME), unanalysed));
+      expect(validate(line), ajv.errorsText(validate.errors)).toBe(true);
+    }
+  });
+
+  test("unanalysed_languages is present and empty when there is nothing to report", () => {
+    const record = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(RENAME), []) as { unanalysed_languages: unknown[] };
+    expect(record.unanalysed_languages).toEqual([]);
+  });
+
+  test("a changed Haskell file is named by extension with a count", () => {
+    const record = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(RENAME), HASKELL) as { unanalysed_languages: Array<{ extension: string; count: number }> };
+    expect(record.unanalysed_languages).toEqual([{ extension: ".hs", count: 1 }]);
+  });
+
+  test("the digest moves when the unanalysed-languages list does, same exports surface otherwise", () => {
+    const a = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(RENAME), []) as { digest: string };
+    const b = exportsRecord("HEAD~1..HEAD", parseExportSurfaceText(RENAME), HASKELL) as { digest: string };
+    expect(a.digest).not.toBe(b.digest);
+  });
+
+  test("a changed file in a supported language is never counted here, whatever graft's run turned out", () => {
+    // RENAME's surface is `available: true`; the unavailable-surface fixture exercises the other
+    // branch. Either way, detection never consults `exports` -- only the changed-file list.
+    const unavailable = unavailableExports("graft.exports_failed", "graft struct exports exited 1: parse error in src/app.ts");
+    const record = exportsRecord("HEAD~1..HEAD", unavailable, unsupportedLanguages(["src/app.ts"])) as { unanalysed_languages: unknown[] };
+    expect(record.unanalysed_languages).toEqual([]);
+  });
+
+  test("--human lists the unanalysed languages by extension and count", () => {
+    const md = blastRadius(parseExportSurfaceText(RENAME), HASKELL);
+    expect(md).toContain("Blast radius");
+    expect(md).toContain(".hs");
+    expect(md).toMatch(/1 changed file/);
+  });
+
+  test("--human states that every changed file was in a supported language when there is nothing to report", () => {
+    const md = blastRadius(parseExportSurfaceText(RENAME), []);
+    expect(md).toMatch(/every changed source file/i);
+  });
+
+  test("the unanalysed-languages section appears even when the export surface itself is unavailable", () => {
+    const md = blastRadius(unavailableExports("graft.not_resolved", "graft could not be resolved through the package or PATH"), HASKELL);
+    expect(md).toContain("Blast radius");
+    expect(md).toMatch(/unavailable/i);
+    expect(md).toContain(".hs");
   });
 });
