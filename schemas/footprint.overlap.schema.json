@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.overlap/1.0.0",
+  "title": "footprint.overlap 1.0.0",
+  "description": "The fourth result of a footprint run: which open pull requests touch a file this change touches, the conflict graph between the open pull requests, and a proposed merge order as waves. Every figure comes from gh pr list --json and gh pr diff --name-only; when gh cannot answer, available is false and the reason is stated rather than the section being omitted.",
+  "type": "object",
+  "required": ["event", "t", "seq", "run", "range", "overlap", "digest", "_schema"],
+  "properties": {
+    "event": { "const": "result" },
+    "t": { "type": "integer", "minimum": 0 },
+    "seq": { "type": "integer", "minimum": 1 },
+    "run": { "type": "string", "minLength": 1 },
+    "range": { "type": "string", "minLength": 1, "description": "The git range whose files were compared against the open pull requests" },
+    "overlap": {
+      "type": "object",
+      "required": ["available", "summary"],
+      "oneOf": [
+        {
+          "properties": { "available": { "const": true } },
+          "required": ["self", "openPullRequests", "limit", "truncated", "overlapping", "conflicts", "waves", "undetermined"]
+        },
+        {
+          "properties": { "available": { "const": false } },
+          "required": ["code", "reason"]
+        }
+      ],
+      "properties": {
+        "available": { "type": "boolean", "description": "False when gh is absent, unauthenticated, rate-limited or unreadable; the section is stated, never omitted" },
+        "code": { "enum": ["gh.not_found", "gh.unauthenticated", "gh.rate_limited", "gh.no_remote", "gh.list_failed", "gh.list_unreadable"], "description": "Why the overlap is unavailable; present only when available is false" },
+        "reason": { "type": "string", "minLength": 1, "description": "gh's own message, or why gh could not be found" },
+        "summary": { "type": "string", "minLength": 1, "description": "The plain statement: the counts, or that there is no overlap, or the limitation. Never an empty section." },
+        "self": { "type": ["integer", "null"], "description": "This change's own pull request, excluded from overlapping and kept in the waves; null when this branch has none" },
+        "openPullRequests": { "type": "integer", "minimum": 0, "description": "How many open pull requests gh listed" },
+        "limit": { "type": "integer", "minimum": 1, "description": "The gh pr list --limit used" },
+        "truncated": { "type": "boolean", "description": "True when the list came back at the limit, so there may be more open pull requests than were considered" },
+        "overlapping": {
+          "type": "array",
+          "description": "Open pull requests that change a file this change changes, ascending by number",
+          "items": {
+            "type": "object",
+            "required": ["number", "title", "isDraft", "sharedFiles"],
+            "properties": {
+              "number": { "type": "integer", "minimum": 1 },
+              "title": { "type": "string" },
+              "isDraft": { "type": "boolean", "description": "An observation, not a verdict" },
+              "sharedFiles": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        },
+        "conflicts": {
+          "type": "array",
+          "description": "One edge per pair of open pull requests that change the same file, with the files named",
+          "items": {
+            "type": "object",
+            "required": ["a", "b", "sharedFiles", "reason"],
+            "properties": {
+              "a": { "type": "integer", "minimum": 1 },
+              "b": { "type": "integer", "minimum": 1 },
+              "sharedFiles": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+              "reason": { "type": "string", "minLength": 1, "description": "Why the edge exists, in prose" }
+            }
+          }
+        },
+        "waves": {
+          "type": "array",
+          "description": "The proposed merge order. No two pull requests in a wave share a file; wave N+1 lands after wave N. Greedy first-fit, so a proposal rather than a minimum.",
+          "items": {
+            "type": "object",
+            "required": ["wave", "pullRequests"],
+            "properties": {
+              "wave": { "type": "integer", "minimum": 1 },
+              "pullRequests": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1 } }
+            }
+          }
+        },
+        "undetermined": {
+          "type": "array",
+          "description": "Open pull requests whose changed files gh would not report. Kept out of the conflict graph and the waves rather than assumed disjoint.",
+          "items": {
+            "type": "object",
+            "required": ["number", "title", "reason"],
+            "properties": {
+              "number": { "type": "integer", "minimum": 1 },
+              "title": { "type": "string" },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 over the canonical JSON of range and overlap (spec §7.1). Unlike inv, it moves with the live state of the open pull requests." },
+    "_schema": {
+      "type": "object",
+      "required": ["id", "version"],
+      "additionalProperties": false,
+      "properties": { "id": { "const": "footprint.overlap" }, "version": { "const": "1.0.0" } }
+    }
+  }
+}

@@ -5,27 +5,31 @@ import { $ } from "bun";
 import { defineTool, main, type Run } from "@flyingrobots/parley-emit";
 import pkg from "../package.json" with { type: "json" };
 import { compose, parseNumstat } from "./footprint.ts";
-import { blastRadius, gutCheck, render } from "./render.ts";
+import { blastRadius, gutCheck, render, renderLanding, renderOverlap } from "./render.ts";
 import { resolveGraft, structuralReview } from "./graft.ts";
 import { landingPlan, readLandingDocs, LANDING_DOCUMENTS } from "./landing.ts";
-import { renderLanding } from "./render.ts";
-import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord } from "./report.ts";
+import { computeOverlap, unavailableOverlap, type Overlap } from "./overlap.ts";
+import { isFailure, listOpenPullRequests, resolveGh } from "./pulls.ts";
+import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord, OVERLAP_SCHEMA, OVERLAP_TYPE, overlapRecord } from "./report.ts";
 import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, exportSurface, exportsRecord } from "./exports.ts";
 import { unsupportedLanguages } from "./languages.ts";
 
 let markdown = "";
 let landingMarkdown = "";
 let blastMarkdown = "";
+let overlapMarkdown = "";
 
 const tool = defineTool({
   name: "footprint",
   version: pkg.version,
   commands: {
     footprint: {
-      intent: "Report what a change touches: its composition by file kind, the gut-check flags, whether anything's shape moved, and how it lands -- what the diff puts before a reviewer, and the after-merge steps read from the repository's own RELEASE.md and AGENTS.md",
-      effects: { reads: ["<cwd>/.git"], writes: [], network: false, idempotent: true },
+      intent: "Report what a change touches: its composition by file kind, the gut-check flags, whether anything's shape moved, how it lands -- what the diff puts before a reviewer, and the after-merge steps read from the repository's own RELEASE.md and AGENTS.md -- and which open pull requests it overlaps",
+      // The network is read-only and optional: `gh` for the open pull requests, nothing else.
+      effects: { reads: ["<cwd>/.git"], writes: [], network: true, idempotent: true },
+      // No secret reaches footprint: `gh` holds its own credential and footprint never reads it.
       secrets: [],
-      emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }, { ...LANDING_TYPE, schema: LANDING_SCHEMA }, { ...BLAST_RADIUS_TYPE, schema: BLAST_RADIUS_SCHEMA }],
+      emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }, { ...LANDING_TYPE, schema: LANDING_SCHEMA }, { ...BLAST_RADIUS_TYPE, schema: BLAST_RADIUS_SCHEMA }, { ...OVERLAP_TYPE, schema: OVERLAP_SCHEMA }],
     },
   },
   retention: { count: 50 },
@@ -34,6 +38,7 @@ const tool = defineTool({
     const id = (line._schema as { id?: string } | undefined)?.id;
     if (id === LANDING_TYPE.id) return landingMarkdown;
     if (id === BLAST_RADIUS_TYPE.id) return blastMarkdown;
+    if (id === OVERLAP_TYPE.id) return overlapMarkdown;
     return markdown;
   },
 });
@@ -88,7 +93,7 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   landingMarkdown = renderLanding(landing);
   run.result(landingRecord(range, landing), LANDING_TYPE, { markdown: landingMarkdown });
 
-  // The export surface, after the composition result and in the same run (flyingrobots/footprint#9).
+  // The export surface, the third result in the same run (flyingrobots/footprint#9).
   const surface = await exportSurface(graft, run.cwd, range);
   if (!surface.available && surface.reason.code !== "graft.not_resolved") {
     run.warning({ code: "graft.exports_failed", problem: `the export-surface diff is unavailable (${surface.reason.code}): ${surface.reason.detail}`, remedy: "run graft struct exports <base> <head> --json by hand to see why", remedy_target: graft ?? range });
@@ -98,6 +103,39 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   const unanalysed = unsupportedLanguages(changes.map((c) => c.path));
   blastMarkdown = blastRadius(surface, unanalysed);
   run.result(exportsRecord(range, surface, unanalysed), BLAST_RADIUS_TYPE, { markdown: blastMarkdown });
+
+  // Cross-pull-request overlap: the fourth result in the same run, after the blast radius.
+  const overlap = await crossPullRequest(run, changes.map((c) => c.path));
+  overlapMarkdown = renderOverlap(overlap);
+  run.result(overlapRecord(range, overlap), OVERLAP_TYPE, { markdown: overlapMarkdown });
+}
+
+/**
+ * The open pull requests that share a file with this change, and an order they could land in.
+ * `gh` absent, unauthenticated or rate-limited is a stated limitation and the run still succeeds:
+ * an omitted section would read as "nothing overlaps", which is a different claim.
+ */
+async function crossPullRequest(run: Run, changed: readonly string[]): Promise<Overlap> {
+  const gh = resolveGh();
+  if (gh === null) {
+    run.step("cross-pull-request overlap unavailable", "gh is not on PATH; the result states the limitation rather than omitting the section");
+    return unavailableOverlap("gh.not_found", "gh is not installed or not on PATH");
+  }
+  const pulls = await listOpenPullRequests(gh, run.cwd);
+  if (isFailure(pulls)) {
+    run.step("cross-pull-request overlap unavailable", `gh resolved but could not list the open pull requests (${pulls.code}); the result states the limitation rather than omitting the section`);
+    run.warning({ code: pulls.code, problem: `gh could not list the open pull requests: ${pulls.reason}`, remedy: "run gh pr list by hand to see why; the composition result is unaffected", remedy_target: gh });
+    return unavailableOverlap(pulls.code, pulls.reason);
+  }
+  const overlap = computeOverlap(changed, pulls.pullRequests, { self: pulls.self, limit: pulls.limit });
+  run.step(`cross-pull-request overlap over ${overlap.openPullRequests} open pull request${overlap.openPullRequests === 1 ? "" : "s"}`, "gh listed the open pull requests and gh pr diff --name-only their files; waves are greedy first-fit over the conflict graph, a proposal rather than a minimum");
+  if (overlap.undetermined.length > 0) {
+    run.warning({ code: "gh.diff_failed", problem: `gh pr diff --name-only would not report the changed files of ${overlap.undetermined.map((u) => `#${u.number}`).join(", ")}; those pull requests are reported as undetermined rather than assumed disjoint`, remedy: "run gh pr diff --name-only by hand to see why", remedy_target: gh });
+  }
+  if (overlap.truncated) {
+    run.warning({ code: "gh.list_truncated", problem: `gh returned ${overlap.openPullRequests} open pull requests, the limit asked for; there may be more that were not considered`, measured: overlap.openPullRequests, limit: overlap.limit, remedy: "narrow the question, or raise the limit in src/pulls.ts" });
+  }
+  return overlap;
 }
 
 /**

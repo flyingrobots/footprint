@@ -6,8 +6,9 @@
 | [Composition test plan](topics/composition/test-plan.md) | Requirements and evidence |
 | [Landing](topics/landing/README.md) | What footprint reads to say how a change lands, and the guard rule behind the unguarded-change warning |
 | [Blast radius](topics/blast-radius/README.md) | What the export-surface diff lists, and which graft contract it comes from |
+| [Overlap](topics/overlap/README.md) | Cross-pull-request overlap: the conflict graph, the merge waves, and what `gh` is asked. Its requirements are OUT-8 in the output test plan |
 | [Output](topics/output/README.md) | What a caller receives: JSON Lines, the receipt, `--human`, errors, discovery, exit status |
-| [Output test plan](topics/output/test-plan.md) | Requirements and evidence for the output contract |
+| [Output test plan](topics/output/test-plan.md) | Requirements and evidence for the output contract, including the overlap result |
 
 | Elsewhere | Job |
 | --- | --- |

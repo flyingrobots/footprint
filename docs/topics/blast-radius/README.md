@@ -2,7 +2,7 @@
 
 What a change does to the **export surface**: which exported symbols it added, which it removed,
 and which kept their name but changed signature. One result line per run, `footprint.blast_radius`
-1.0.0, emitted after the composition result.
+1.0.0, emitted after the landing plan.
 
 Composition answers how much changed. This answers what moved, which is the part a reviewer cannot
 get from a file list: a renamed export is two lines in a diff and a broken call site everywhere

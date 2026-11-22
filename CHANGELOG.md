@@ -19,9 +19,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   flag, or a version or changelog entry. The guard rule is documented path patterns, never a
   judgement: [`docs/topics/landing/README.md`](docs/topics/landing/README.md).
   (flyingrobots/footprint#3)
-- **Blast radius: the export-surface diff.** A second result line per run,
+- **Blast radius: the export-surface diff.** A third result line per run,
   `footprint.blast_radius` (`schemas/footprint.blast_radius.schema.json`), emitted after the
-  composition result, listing the exported symbols the change added, removed and signature-changed,
+  landing plan, listing the exported symbols the change added, removed and signature-changed,
   each with its file and name. `--human` gains a `## Blast radius` section. The facts come from
   graft's CLI contract `graft struct exports <base-ref> <head-ref> --json`, bound to `_schema`
   `graft.cli.struct_exports` 1.0.0; a three-dot range is compared from the merge base. When graft
@@ -39,6 +39,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `docs/topics/blast-radius/README.md`: what the export-surface diff lists, which graft contract it
   comes from, and the two failure modes it inherits (re-exports read as changes, dynamic dispatch
   invisible).
+- **Cross-pull-request overlap.** A fourth result in the same run, `footprint.overlap` 1.0.0
+  (`schemas/footprint.overlap.schema.json`), emitted after the blast radius: the open pull requests
+  that change a file this change changes, named by number and title; the conflict graph between the
+  open pull requests, with the shared files and a reason for every edge; and a proposed merge order
+  as waves, where no two pull requests in a wave share a file. `--human` renders it as an
+  `### Open pull requests` section. (flyingrobots/footprint#1)
+- The open pull requests come from `gh pr list --json` and their files from
+  `gh pr diff --name-only`; this branch's own pull request comes from `gh pr view --json number`
+  and is excluded from the overlap while staying in the waves. When `gh` is absent,
+  unauthenticated, rate-limited, without a GitHub remote, or returns unreadable JSON, the result
+  carries `available: false` with a stable code and `gh`'s own message, and the run still exits 0.
+  A pull request whose files `gh` would not report is `undetermined` rather than assumed disjoint;
+  a list that came back at the limit sets `truncated`.
+- [`docs/topics/overlap/README.md`](docs/topics/overlap/README.md): the conflict graph, the merge
+  waves, and why the greedy grouping is a reimplementation of graft's `findParallelGroups` rather
+  than an import.
 
 ### Decided
 
