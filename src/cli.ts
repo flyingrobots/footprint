@@ -5,13 +5,17 @@ import { $ } from "bun";
 import { defineTool, main, type Run } from "@flyingrobots/parley-emit";
 import pkg from "../package.json" with { type: "json" };
 import { compose, parseNumstat } from "./footprint.ts";
-import { gutCheck, render, renderOverlap } from "./render.ts";
+import { blastRadius, gutCheck, render, renderLanding, renderOverlap } from "./render.ts";
 import { resolveGraft, structuralReview } from "./graft.ts";
+import { landingPlan, readLandingDocs, LANDING_DOCUMENTS } from "./landing.ts";
 import { computeOverlap, unavailableOverlap, type Overlap } from "./overlap.ts";
 import { isFailure, listOpenPullRequests, resolveGh } from "./pulls.ts";
-import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, OVERLAP_SCHEMA, OVERLAP_TYPE, compositionRecord, overlapRecord } from "./report.ts";
+import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord, OVERLAP_SCHEMA, OVERLAP_TYPE, overlapRecord } from "./report.ts";
+import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, exportSurface, exportsRecord } from "./exports.ts";
 
 let markdown = "";
+let landingMarkdown = "";
+let blastMarkdown = "";
 let overlapMarkdown = "";
 
 const tool = defineTool({
@@ -19,16 +23,23 @@ const tool = defineTool({
   version: pkg.version,
   commands: {
     footprint: {
-      intent: "Report what a change touches: its composition by file kind, the gut-check flags, and whether anything's shape moved",
+      intent: "Report what a change touches: its composition by file kind, the gut-check flags, whether anything's shape moved, how it lands -- what the diff puts before a reviewer, and the after-merge steps read from the repository's own RELEASE.md and AGENTS.md -- and which open pull requests it overlaps",
       // The network is read-only and optional: `gh` for the open pull requests, nothing else.
       effects: { reads: ["<cwd>/.git"], writes: [], network: true, idempotent: true },
       // No secret reaches footprint: `gh` holds its own credential and footprint never reads it.
       secrets: [],
-      emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }, { ...OVERLAP_TYPE, schema: OVERLAP_SCHEMA }],
+      emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }, { ...LANDING_TYPE, schema: LANDING_SCHEMA }, { ...BLAST_RADIUS_TYPE, schema: BLAST_RADIUS_SCHEMA }, { ...OVERLAP_TYPE, schema: OVERLAP_SCHEMA }],
     },
   },
   retention: { count: 50 },
-  human: (line) => (line.event !== "result" ? null : (line._schema as { id?: string } | undefined)?.id === OVERLAP_TYPE.id ? overlapMarkdown : markdown),
+  human: (line) => {
+    if (line.event !== "result") return null;
+    const id = (line._schema as { id?: string } | undefined)?.id;
+    if (id === LANDING_TYPE.id) return landingMarkdown;
+    if (id === BLAST_RADIUS_TYPE.id) return blastMarkdown;
+    if (id === OVERLAP_TYPE.id) return overlapMarkdown;
+    return markdown;
+  },
 });
 
 async function defaultBase(): Promise<string | null> {
@@ -69,7 +80,27 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   markdown = changes.length === 0 ? `No changes in \`${range}\`.` : render(composition, changes, range, review);
   run.result(compositionRecord(range, composition, gut, review), COMPOSITION_TYPE, { files: changes, markdown });
 
-  // Cross-pull-request overlap: a second result in the same run, after the composition.
+  // The landing plan is a second result in the same run: what the diff puts in front of a reviewer
+  // before the merge, and the steps to take after, read from the repository rather than invented.
+  const landing = landingPlan(changes.map((c) => c.path), readLandingDocs(run.cwd));
+  run.step(
+    `landing plan: ${landing.after_merge.statement}`,
+    `after-merge steps are read from ${LANDING_DOCUMENTS.join(" and ")} under the working directory, never invented; ` +
+      `the before-merge guard rule is path patterns over the changed files, and found ${landing.before_merge.guards.length}`,
+    { read: landing.after_merge.read, guards: landing.before_merge.guards },
+  );
+  landingMarkdown = renderLanding(landing);
+  run.result(landingRecord(range, landing), LANDING_TYPE, { markdown: landingMarkdown });
+
+  // The export surface, the third result in the same run (flyingrobots/footprint#9).
+  const surface = await exportSurface(graft, run.cwd, range);
+  if (!surface.available && surface.reason.code !== "graft.not_resolved") {
+    run.warning({ code: "graft.exports_failed", problem: `the export-surface diff is unavailable (${surface.reason.code}): ${surface.reason.detail}`, remedy: "run graft struct exports <base> <head> --json by hand to see why", remedy_target: graft ?? range });
+  }
+  blastMarkdown = blastRadius(surface);
+  run.result(exportsRecord(range, surface), BLAST_RADIUS_TYPE, { markdown: blastMarkdown });
+
+  // Cross-pull-request overlap: the fourth result in the same run, after the blast radius.
   const overlap = await crossPullRequest(run, changes.map((c) => c.path));
   overlapMarkdown = renderOverlap(overlap);
   run.result(overlapRecord(range, overlap), OVERLAP_TYPE, { markdown: overlapMarkdown });

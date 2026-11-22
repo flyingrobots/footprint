@@ -28,6 +28,10 @@ this repository and validates every stream line by line. Do not write to stdout 
 go through the run (`run.result`, `run.step`, `run.warning`, `run.error`). Prose is `--human`
 only. A new field on the result is a schema version bump.
 
+One result type per message: a second answer in the same run is its own type with its own schema
+and its own version, declared in the command's `emits`, not a field bolted onto an existing one.
+`footprint.landing` is the first of those; `schemas/` holds one file per type.
+
 The package is versioned on its own and the schemas shipped inside it are the parley drafts at a
 pinned commit; `bun install` needs the package on npm, or a `bun link` to a local checkout of
 `flyingrobots/parley` while it is not.
@@ -48,13 +52,45 @@ a dev dependency. No global install is needed: `resolveGraft()` finds the binary
 `import.meta.resolve("@flyingrobots/graft/package.json")`, falls back to `PATH`, and returns
 `null` rather than throwing.
 
-**Depend on the CLI's JSON contract, never on graft's internals.** `struct review --json`
+**Depend on the CLI's JSON contract, never on graft's internals.** Every `--json` subcommand
 carries a `_schema` with an id and version; treat that as the interface. Do not import graft
-modules, and do not reach into `node_modules/@flyingrobots/graft/dist`.
+modules, and do not reach into `node_modules/@flyingrobots/graft/dist`. This is enforceable, not
+just a convention: graft 0.14.0's published `exports` map resolves only `"."` and
+`"./package.json"`, so a deep import fails to resolve at all.
 
 This is not fastidiousness. graft's substrate is slated to be rewritten from git-warp onto Echo,
 which changes how structural history is stored at a fundamental level. A consumer bound to the CLI
 contract does not notice that; a consumer bound to internals gets rewritten with it.
+
+### Decision: CLI contract, not a library (flyingrobots/footprint#8)
+
+footprint#2 asked whether call-site/structural analysis should go through graft's CLI
+subcommands or wait for graft to export a library surface (`diffStructure`, `exportSurfaceDiff`)
+through its barrel. Decided: **the CLI contract that exists today**, named here by subcommand and
+`_schema` version, verified by running each against this repository:
+
+| Subcommand | `_schema.id` | version | Used for |
+| --- | --- | --- | --- |
+| `graft struct review --base <ref> --head <ref> --json` | `graft.cli.struct_review` | `2.0.0` | PR-level structural/formatting classification (already wired in `src/graft.ts`) |
+| `graft struct exports <base-ref> <head-ref> --json` | `graft.cli.struct_exports` | `1.0.0` | Export-surface diff — added/removed/signature-changed public symbols |
+| `graft struct diff --base <ref> --head <ref> --json` | `graft.cli.struct_diff` | `2.0.0` | Per-file structural diff |
+| `graft symbol blame <name> --json` | `graft.cli.symbol_blame` | `1.0.0` | Symbol-level references/call sites across history |
+
+Options rejected:
+
+- **MCP tools (`code_refs`, `struct_diff`).** Ruled out by footprint#2 §2a: the agent must not be
+  in the computation path, and MCP mediation (a model choosing which tool to call, with what
+  arguments) makes the same inputs capable of producing different runs. MCP stays useful for
+  interactive exploration, never for the default pipeline.
+- **Depend on `@flyingrobots/graft` as a library**, sending graft a PR to widen its barrel
+  (`exportSurfaceDiff`, `extractOutline`, `detectLang`, `findParallelGroups`) and waiting on it.
+  Rejected because: the export map above is already enforced today, not merely discouraged, so
+  nothing short of an upstream release changes it; the capability the barrel was thought to be
+  gatekeeping — export-surface diffing — is already reachable today as `struct exports --json`;
+  and graft's internal module graph is exactly the surface slated for the git-warp-to-Echo
+  rewrite, while the CLI's `_schema`-carrying JSON is what graft commits to keeping stable across
+  it. Waiting on a library barrel trades a contract that already exists for one that does not,
+  with no committed date.
 
 **`overrides` forces a patched `zod`.** graft pins `zod` at exactly `4.3.6`, which is below the
 `4.6.6` that fixes a high-severity memory-exhaustion advisory (oversized constrained collections).

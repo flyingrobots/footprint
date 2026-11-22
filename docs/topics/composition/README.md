@@ -56,6 +56,30 @@ structural signal answers "did anything's shape actually move".
 
 When graft is unavailable the report says so explicitly. It never omits the section silently.
 
+### Structural history cost
+
+flyingrobots/footprint#7 measured what building graft's structural history costs on a repository
+that has none, from a cold start, on three repositories (small, medium, large; commands and full
+output in that issue's comment):
+
+| Repo | Size | Cold `graft struct review --json` | Full-history `graft index` (no `--path`) |
+| --- | --- | --- | --- |
+| footprint (small) | 14 commits, 32 files, 4,926 lines | 1.1s wall, no `.git` growth | succeeds: 12 files indexed, 2.3s, `.git` +0.7 MB |
+| theme-book (medium) | 17 commits, 41 files, 7,159 lines | 1.3s wall, no `.git` growth | succeeds: 16 files indexed, 3.0s, `.git` +1.1 MB |
+| git-warp (large) | 5,027 commits, 3,944 files, 495,627 lines | 23.9s wall, no `.git` growth | refused: `indexHead refused to index 3493 files in one call. Lazy indexing policy allows at most 64 files; pass explicit paths or index on read.` |
+
+graft has no single command that builds a repository's full structural history up front: `graft
+index` without `--path` is lazy and capped at 64 files per call, and above that cap it refuses
+rather than chunking the work itself. The number that matters for CI is the cost of the first real
+call instead — `graft struct review --json` against a cold repository that has never been
+indexed. That cost tracked total indexable file count, not the size of the diff being reviewed:
+about a second on footprint- and theme-book-sized repositories, about 24 seconds on a
+5,000-commit, ~496k-line repository reviewing a 10-commit range.
+
+**Verdict:** a first-run `graft struct review --json` is acceptable inside a CI job at every size
+measured here, but because its cost scales with the repository's indexable surface rather than
+the pull request's diff, a much larger monorepo should be measured before assuming the same holds.
+
 ## Known gaps
 
 - **No call-site analysis yet.** Graft has the primitives — `struct exports`, `symbol blame`,

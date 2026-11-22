@@ -1,8 +1,8 @@
 # Cross-pull-request overlap
 
 Two open pull requests that change the same file conflict, and nothing says so until the second
-merge fails. footprint answers two questions in one run, as a second result beside the
-composition:
+merge fails. footprint answers two questions in one run, as the fourth result beside the
+composition, the landing plan and the blast radius:
 
 1. **Which open pull requests touch a file this change touches?** Named by number and title.
 2. **In what order could the open pull requests land?** As waves, with a reason for every edge

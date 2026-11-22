@@ -5,6 +5,8 @@ import type { Composition, FileChange } from "./footprint.ts";
 import { mermaidPie } from "./footprint.ts";
 import { classify } from "./classify.ts";
 import { structuralSummary, type StructuralReview } from "./graft.ts";
+import type { BeforeMergeKind, Landing } from "./landing.ts";
+import type { Exports } from "./exports.ts";
 import type { Overlap } from "./overlap.ts";
 
 export interface GutCheck {
@@ -103,6 +105,88 @@ export function render(
 
   out.push("<sub>Figures computed from `git diff --numstat`. Composition is a sanity check, not a verdict.</sub>");
   return out.join("\n");
+}
+
+const BEFORE_MERGE_LABEL: Record<BeforeMergeKind, string> = {
+  migration: "Migration.",
+  generated: "Generated files.",
+  regenerate: "May need regenerating.",
+};
+
+/**
+ * The two landing sections of the comment. Separate from `render` and from the composition result:
+ * one says what the change is, this says what it takes to land it. The unguarded warning is a
+ * GitHub alert because it is the one line here a reader must not scroll past — it is still an
+ * observation about paths, not a verdict, and the sentence says which rule found it.
+ */
+export function renderLanding(l: Landing): string {
+  // Opens with a blank line: this follows the composition comment on the same stream, and two
+  // Markdown blocks run together without one.
+  const out: string[] = ["", "## Before merge", ""];
+  if (l.before_merge.unguarded) {
+    out.push("> [!WARNING]", `> **Nothing in this change guards it.** ${l.before_merge.unguarded_because}`, "");
+  }
+  for (const item of l.before_merge.items) out.push(`- **${BEFORE_MERGE_LABEL[item.kind]}** ${item.says}`);
+  if (l.before_merge.items.length > 0) out.push("");
+  if (!l.before_merge.unguarded && l.before_merge.items.length === 0) out.push(`- ${l.before_merge.unguarded_because}`, "");
+
+  out.push("## After merge", "", l.after_merge.statement, "");
+  for (const s of l.after_merge.steps) out.push(`- [ ] ${s.step} <sub>— \`${s.file}\` › ${s.heading}</sub>`);
+  if (l.after_merge.steps.length > 0) out.push("");
+  out.push("<sub>After-merge steps are read from this repository's own `RELEASE.md` and `AGENTS.md`, never invented. The guard rule is path patterns, documented in footprint's `docs/topics/landing/README.md`.</sub>");
+  return out.join("\n");
+}
+
+// ---- blast radius (flyingrobots/footprint#9) ---------------------------------------------------
+
+/**
+ * The export-surface section of the comment. One section whatever the outcome: a list when
+ * symbols moved, a sentence when none did, and the stated reason when graft could not answer —
+ * an absent section would read like a clean one.
+ */
+export function blastRadius(exports: Exports): string {
+  const out: string[] = ["## Blast radius", ""];
+  if (!exports.available) {
+    out.push(
+      `<sub>Export-surface diff unavailable (\`${exports.reason.code}\`): ${exports.reason.detail}.</sub>`,
+      "",
+      FROM_GRAFT,
+    );
+    return out.join("\n");
+  }
+
+  const s = exports.surface;
+  const rows = [
+    ...s.added.map((x) => ["added", x] as const),
+    ...s.removed.map((x) => ["removed", x] as const),
+    ...s.signatureChanged.map((x) => ["signature-changed", x] as const),
+  ];
+  out.push(
+    `**+${s.added.length} added / -${s.removed.length} removed / ~${s.signatureChanged.length} signature-changed exported symbols**` +
+      ` · \`${s.base}\` → \`${s.head}\`` +
+      (s.semverImpact === null ? "" : ` · graft reads this as a **${s.semverImpact}** change`),
+    "",
+  );
+  if (rows.length === 0) {
+    out.push("- No exported symbol was added, removed or re-signed.", "");
+  } else {
+    const head = "| Change | Symbol | File | Kind | Signature |\n| --- | --- | --- | --- | --- |";
+    const body = rows.map(([change, x]) =>
+      `| ${change} | \`${x.symbol}\` | \`${x.file}\` | ${x.kind ?? ""} | ${cell(x.previousSignature === undefined ? x.signature : `${x.previousSignature} → ${x.signature ?? ""}`)} |`,
+    );
+    out.push(details(`Exported symbols (${rows.length})`, [head, ...body].join("\n")), "");
+  }
+  out.push(FROM_GRAFT);
+  return out.join("\n");
+}
+
+const FROM_GRAFT =
+  "<sub>Exported symbols from `graft struct exports --json` (`graft.cli.struct_exports` 1.0.0). Whatever graft parses counts as an export surface, including fields in config and lock files.</sub>";
+
+/** A signature is verbatim in the result; a table cell cannot carry its newlines or pipes. */
+function cell(signature: string | undefined): string {
+  if (signature === undefined) return "";
+  return `\`${signature.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim()}\``;
 }
 
 /**

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.blast_radius/1.0.0",
+  "title": "footprint.blast_radius 1.0.0",
+  "description": "The export-surface diff of a footprint run: the exported symbols added, removed and signature-changed between the compared refs. Every entry comes from graft's CLI contract `graft struct exports --json` (`graft.cli.struct_exports` 1.0.0); footprint derives nothing of its own beyond the counts and the ordering. When graft is unavailable the section is stated as unavailable with a reason, never omitted.",
+  "type": "object",
+  "required": ["event", "t", "seq", "run", "range", "exports", "digest", "_schema"],
+  "properties": {
+    "event": { "const": "result" },
+    "t": { "type": "integer", "minimum": 0 },
+    "seq": { "type": "integer", "minimum": 1 },
+    "run": { "type": "string", "minLength": 1 },
+    "range": { "type": "string", "minLength": 1, "description": "The git range compared, as given to git diff" },
+    "exports": {
+      "type": "object",
+      "required": ["available"],
+      "properties": {
+        "available": { "type": "boolean", "description": "False when graft could not be resolved, failed, or answered under a contract version footprint does not read" },
+        "reason": {
+          "type": "object",
+          "description": "Present when available is false: why the export surface could not be read",
+          "required": ["code", "detail"],
+          "properties": {
+            "code": {
+              "enum": ["graft.not_resolved", "graft.exports_failed", "graft.output_unreadable", "graft.schema_mismatch", "range.unresolved"],
+              "description": "graft.not_resolved: no graft binary. graft.exports_failed: the subcommand exited non-zero. graft.output_unreadable: the answer was not JSON footprint could read. graft.schema_mismatch: a different _schema id or version. range.unresolved: the base of a three-dot range had no merge base."
+            },
+            "detail": { "type": "string", "minLength": 1, "description": "What happened, in enough words to act on" }
+          }
+        },
+        "base": { "type": "string", "minLength": 1, "description": "The base ref passed to graft: the merge base for a three-dot range, the given base otherwise" },
+        "head": { "type": "string", "minLength": 1, "description": "The head ref passed to graft" },
+        "added": { "$ref": "#/$defs/symbols", "description": "Exported symbols present at head and absent at base" },
+        "removed": { "$ref": "#/$defs/symbols", "description": "Exported symbols present at base and absent at head" },
+        "signature_changed": { "$ref": "#/$defs/symbols", "description": "Exported symbols present at both ends whose signature differs; each carries previous_signature when graft reported one" },
+        "counts": {
+          "type": "object",
+          "description": "The length of each list, so a reader needs no arithmetic; computed from the lists and nothing else",
+          "required": ["added", "removed", "signature_changed"],
+          "additionalProperties": false,
+          "properties": {
+            "added": { "type": "integer", "minimum": 0 },
+            "removed": { "type": "integer", "minimum": 0 },
+            "signature_changed": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "semver_impact": {
+          "type": ["string", "null"],
+          "description": "graft's own semver judgement for the surface change, passed through verbatim; null when graft reported none. footprint does not derive it."
+        },
+        "contract": {
+          "type": "object",
+          "description": "The graft CLI contract that answered, so a reader knows which interface produced the list",
+          "required": ["id", "version"],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "const": "graft.cli.struct_exports" },
+            "version": { "const": "1.0.0" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "available": { "const": false } }, "required": ["available"] },
+          "then": { "required": ["available", "reason"] }
+        },
+        {
+          "if": { "properties": { "available": { "const": true } }, "required": ["available"] },
+          "then": { "required": ["available", "base", "head", "added", "removed", "signature_changed", "counts", "semver_impact", "contract"] }
+        }
+      ]
+    },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 over the canonical JSON of range and exports (spec §7.1)" },
+    "_schema": {
+      "type": "object",
+      "required": ["id", "version"],
+      "additionalProperties": false,
+      "properties": { "id": { "const": "footprint.blast_radius" }, "version": { "const": "1.0.0" } }
+    }
+  },
+  "$defs": {
+    "symbols": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "file"],
+        "additionalProperties": false,
+        "properties": {
+          "symbol": { "type": "string", "minLength": 1, "description": "The exported symbol's name, as graft reported it" },
+          "file": { "type": "string", "minLength": 1, "description": "The file the symbol is exported from, repository-relative" },
+          "kind": { "type": "string", "minLength": 1, "description": "graft's kind for the symbol (function, interface, field, export, ...); graft's vocabulary, not footprint's" },
+          "signature": { "type": "string", "description": "The signature at head, verbatim from graft, newlines and all" },
+          "previous_signature": { "type": "string", "description": "The signature at base, present only on a signature change graft reported one for" }
+        }
+      }
+    }
+  }
+}

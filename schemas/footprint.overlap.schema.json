@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://flyingrobots.dev/footprint/schemas/footprint.overlap/1.0.0",
   "title": "footprint.overlap 1.0.0",
-  "description": "The second result of a footprint run: which open pull requests touch a file this change touches, the conflict graph between the open pull requests, and a proposed merge order as waves. Every figure comes from gh pr list --json and gh pr diff --name-only; when gh cannot answer, available is false and the reason is stated rather than the section being omitted.",
+  "description": "The fourth result of a footprint run: which open pull requests touch a file this change touches, the conflict graph between the open pull requests, and a proposed merge order as waves. Every figure comes from gh pr list --json and gh pr diff --name-only; when gh cannot answer, available is false and the reason is stated rather than the section being omitted.",
   "type": "object",
   "required": ["event", "t", "seq", "run", "range", "overlap", "digest", "_schema"],
   "properties": {

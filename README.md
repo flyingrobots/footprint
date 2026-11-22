@@ -14,12 +14,24 @@ bun src/cli.ts --human | gh pr comment 42 --body-file -   # the Markdown comment
 bun src/cli.ts --help             # what it emits, as JSON Lines
 ```
 
-footprint speaks the [Parley output protocol](https://github.com/flyingrobots/parley): one
-`result` line on stdout with the composition, the gut check, the structural summary and a digest,
-a second with the cross-pull-request overlap;
-errors on stderr as structured lines; a receipt per run under `.parley/receipts/` with every
+footprint speaks the [Parley output protocol](https://github.com/flyingrobots/parley): four
+`result` lines on stdout — the composition with its gut check, structural summary and digest, then
+the landing plan, the blast radius and the cross-pull-request overlap; errors on stderr as
+structured lines; a receipt per run under `.parley/receipts/` with every
 decision and the file listing. `--human` is the opt-in for prose. See
 [`docs/topics/output/README.md`](docs/topics/output/README.md).
+
+## How it lands
+
+Merging is not landing, so footprint also reports what it takes to land a change: a **Before
+merge** section of what the changed-file list itself shows — migrations and their ordering
+constraint, generated files, a manifest whose lockfile is missing, and a loud warning when a source
+change carries no migration, flag or version entry to gate or record it — and an **After merge**
+section whose steps are *read out of the repository's own `RELEASE.md` and `AGENTS.md`*, each
+citing the file and heading it came from. Where neither document declares any, it says so instead
+of guessing; where a change touches no executable surface, it says there is nothing to do. The
+guard rule behind the warning is documented path patterns, never a judgement:
+[`docs/topics/landing/README.md`](docs/topics/landing/README.md).
 
 ## Why
 
@@ -44,9 +56,20 @@ Nothing here is estimated. Totals come from `git diff --numstat`, and the catego
 required by test to sum to the reported total. This is the bug that made the original hand-written
 version untrustworthy: a draft reported `+151` for a `+157` change, with hand-estimated shares.
 
+## Blast radius: which exports moved
+
+With graft available, a run also reports its **export surface**: the exported symbols the change
+added, removed or re-signed, each with its file and name, as the third result line
+(`footprint.blast_radius` 1.0.0) and a `## Blast radius` section in the Markdown comment. A renamed
+export shows up as a removal and an addition. The symbols come from graft's CLI contract
+`graft struct exports <base-ref> <head-ref> --json`, passed through verbatim; a three-dot range is
+compared from the merge base. When graft cannot answer — absent, failing, or speaking a contract
+version footprint does not read — the result says so with a reason instead of omitting the section.
+See [`docs/topics/blast-radius/README.md`](docs/topics/blast-radius/README.md).
+
 ## Cross-pull-request overlap
 
-A second result says which **open pull requests** change a file this change changes — by number and
+A fourth result says which **open pull requests** change a file this change changes — by number and
 title — and proposes an order the open pull requests could land in, as waves where no two pull
 requests in a wave share a file, with the shared files named for every edge that forces one. The
 open pull requests come from `gh pr list`, their files from `gh pr diff --name-only`, and nothing
@@ -71,8 +94,10 @@ than quietly omitting it. A degraded run should never read as a clean one.
 
 ## Status
 
-Composition and cross-pull-request overlap. Call-site blast radius, symbol-level overlap and
-post-merge landing plans are [tracked as issues](https://github.com/flyingrobots/footprint/issues).
+**v0.2.0** — composition, as JSON Lines through the Parley output protocol. On `main` and not yet
+released: the landing plan, the export-surface diff and the cross-pull-request overlap above. Call
+sites for those symbols, grouping by system, and symbol-level overlap are
+[tracked as issues](https://github.com/flyingrobots/footprint/issues).
 
 Documentation: [`docs/README.md`](docs/README.md). Working agreement: [`AGENTS.md`](AGENTS.md).
 
