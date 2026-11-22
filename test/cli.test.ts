@@ -105,8 +105,13 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(human.stdout).toContain("## Footprint");
   }, CLI_TIMEOUT);
 
+  /**
+   * 543477a is the commit where this repository's exported `render` gained an optional parameter:
+   * a range whose export surface is genuinely non-empty, so the live run exercises the scan rather
+   * than the zero-symbol short circuit. The call sites are of the working tree as checked out.
+   */
   test("the blast-radius result carries the call sites of every symbol it lists", async () => {
-    const r = await cli(["HEAD~1..HEAD"]);
+    const r = await cli(["543477a~1..543477a"]);
     expect(r.status).toBe(0);
     const out = validateAll(r.stdout, "stdout");
     const blast = out.filter((o) => o.event === "result")[2] as Line & { exports: Record<string, unknown> };
@@ -126,8 +131,11 @@ describe("the CLI speaks the Parley output protocol", () => {
     const scan = ex.call_site_scan!;
     expect(scan.method).toBe("identifier_scan");
     expect(scan.available).toBe(true);
-    expect(scan.files_scanned).toBeGreaterThan(10);
     const symbols = [...ex.added!, ...ex.removed!, ...ex.signature_changed!];
+    // No symbol moved means nothing to look up, and the scan says it read no file rather than
+    // claiming it scanned the tree for nobody.
+    expect(scan.files_scanned).toBeGreaterThan(symbols.length === 0 ? -1 : 10);
+    if (symbols.length === 0) expect(scan.files_scanned).toBe(0);
     let total = 0;
     for (const s of symbols) {
       const sites = s.call_sites as Array<{ file: string; line: number }> | undefined;

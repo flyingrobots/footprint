@@ -189,10 +189,12 @@ describe("call sites are checked against an independent grep oracle", () => {
   }, 120_000);
 
   test("a symbol nothing references is listed with an empty list, not dropped", async () => {
-    const scan = scanned(await scanCallSites(ROOT, ["render", "zzNoSuchSymbolInFootprint"]));
-    expect(sitesFor(scan, "zzNoSuchSymbolInFootprint")).toEqual([]);
+    // Built at runtime: spelled out, the name would occur in this very file and be found.
+    const absent = `zzAbsent${"Symbol"}InThisRepository`;
+    const scan = scanned(await scanCallSites(ROOT, ["render", absent]));
+    expect(sitesFor(scan, absent)).toEqual([]);
     expect((sitesFor(scan, "render") ?? []).length).toBeGreaterThan(0);
-    expect(grepOracle("zzNoSuchSymbolInFootprint").size).toBe(0);
+    expect(grepOracle(absent).size).toBe(0);
   }, 120_000);
 });
 
@@ -280,7 +282,7 @@ describe("the record carries the call sites", () => {
     expect((ex.call_site_scan as Record<string, unknown>).method).toBe(SCAN_METHOD);
     expect((ex.call_site_scan as Record<string, unknown>).available).toBe(true);
     expect((ex.call_site_scan as Record<string, unknown>).files_scanned).toBe(3);
-    expect((ex.counts as Record<string, number>).call_sites).toBe(6);
+    expect((ex.counts as Record<string, number>).call_sites).toBe(7);
     const changed = (ex.signature_changed as Array<Record<string, unknown>>)[0]!;
     expect(changed.call_sites).toEqual([{ file: "src/cli.ts", line: 7 }, { file: "test/cli.test.ts", line: 90 }]);
     const dev = (ex.added as Array<Record<string, unknown>>).find((s) => s.symbol === "devDependencies")!;
@@ -335,6 +337,11 @@ describe("the blast-radius section carries the call sites", () => {
     sites: new Map<string, readonly CallSite[]>([
       ["render", [{ file: "src/cli.ts", line: 7 }, { file: "src/cli.ts", line: 66 }]],
       ["devDependencies", []],
+      ["StructuralFile", [{ file: "src/report.ts", line: 9 }]],
+      ["StructuralReview", [{ file: "src/report.ts", line: 9 }]],
+      ["resolveGraft", [{ file: "src/cli.ts", line: 9 }]],
+      ["structuralReview", [{ file: "src/cli.ts", line: 9 }]],
+      ["structuralSummary", [{ file: "src/render.ts", line: 5 }]],
     ]),
   };
 

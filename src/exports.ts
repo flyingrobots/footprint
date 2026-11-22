@@ -13,11 +13,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { $ } from "bun";
 import { canonical, sha256 } from "@flyingrobots/parley-emit";
+import { SCAN_METHOD, notRunScan, scanCallSites, sitesFor, type CallSite, type CallSiteScan } from "./callsites.ts";
 
 export const BLAST_RADIUS_SCHEMA = JSON.parse(
   readFileSync(join(import.meta.dir, "../schemas/footprint.blast_radius.schema.json"), "utf8"),
 ) as Record<string, unknown>;
-export const BLAST_RADIUS_TYPE = { id: "footprint.blast_radius", version: "1.0.0" } as const;
+export const BLAST_RADIUS_TYPE = { id: "footprint.blast_radius", version: "1.1.0" } as const;
 
 /** The one graft contract this reads. A different version is stated as unavailable. */
 export const GRAFT_EXPORTS_CONTRACT = { id: "graft.cli.struct_exports", version: "1.0.0" } as const;
@@ -35,6 +36,12 @@ export interface ExportedSymbol {
   readonly kind?: string;
   readonly signature?: string;
   readonly previousSignature?: string;
+  /**
+   * Where the symbol's name occurs in the tracked files at head, with file and line. Present once
+   * a call-site scan has been attached (`withCallSites`); absent, never `[]`, when none has, so an
+   * unscanned symbol can never be read as one nothing references.
+   */
+  readonly callSites?: readonly CallSite[];
 }
 
 export interface ExportSurface {
@@ -45,6 +52,8 @@ export interface ExportSurface {
   readonly signatureChanged: readonly ExportedSymbol[];
   /** graft's own judgement, passed through verbatim; footprint derives no semver impact. */
   readonly semverImpact: string | null;
+  /** How the call sites on the symbols above were found, or that they were not looked for. */
+  readonly callSiteScan: CallSiteScan;
 }
 
 export type Exports =
@@ -123,6 +132,7 @@ export function parseExportSurface(value: unknown): Exports {
       removed: parsed.removed!,
       signatureChanged: parsed.signatureChanged!,
       semverImpact: str(o.semverImpact),
+      callSiteScan: notRunScan(),
     },
   };
 }
@@ -175,6 +185,49 @@ export function rangeEnds(range: string): { base: string; head: string; threeDot
   return { base, head: head === "" ? "HEAD" : head, threeDot };
 }
 
+/**
+ * Attach a call-site scan to every symbol of a surface (flyingrobots#10). Pure: the same surface
+ * and the same scan always give the same answer.
+ *
+ * A symbol the scan ran for always gets a list, empty included -- the issue's "listed with an
+ * empty list, not dropped". A scan that did not run attaches nothing at all, so the wire carries
+ * the stated reason rather than a column of zeroes. An unavailable surface has no symbol to look
+ * up and passes through untouched.
+ */
+export function withCallSites(exports: Exports, scan: CallSiteScan): Exports {
+  if (!exports.available) return exports;
+  const attach = (s: ExportedSymbol): ExportedSymbol => {
+    const sites = sitesFor(scan, s.symbol);
+    return sites === null ? s : { ...s, callSites: sites };
+  };
+  const s = exports.surface;
+  return {
+    available: true,
+    surface: {
+      ...s,
+      added: s.added.map(attach),
+      removed: s.removed.map(attach),
+      signatureChanged: s.signatureChanged.map(attach),
+      callSiteScan: scan,
+    },
+  };
+}
+
+/** Every symbol the surface names, in the order the result lists them. */
+export function surfaceSymbols(surface: ExportSurface): readonly ExportedSymbol[] {
+  return [...surface.added, ...surface.removed, ...surface.signatureChanged];
+}
+
+/**
+ * Run the scan for a surface's symbols and attach it. The one impure step: it reads the tracked
+ * files of the working tree. An unavailable surface is returned unchanged and no tree is read.
+ */
+export async function attachCallSites(exports: Exports, repo: string): Promise<Exports> {
+  if (!exports.available) return exports;
+  const scan = await scanCallSites(repo, surfaceSymbols(exports.surface).map((s) => s.symbol));
+  return withCallSites(exports, scan);
+}
+
 /** The result record. Semantic content only enters the digest, so two runs compare with one string. */
 export function exportsRecord(range: string, exports: Exports): Record<string, unknown> {
   const semantic = { range, exports: exportsPayload(exports) };
@@ -184,6 +237,8 @@ export function exportsRecord(range: string, exports: Exports): Record<string, u
 function exportsPayload(exports: Exports): Record<string, unknown> {
   if (!exports.available) return { available: false, reason: { ...exports.reason } };
   const s = exports.surface;
+  const scan = s.callSiteScan;
+  const sites = scan.available ? surfaceSymbols(s).reduce((n, x) => n + (x.callSites?.length ?? 0), 0) : null;
   return {
     available: true,
     base: s.base,
@@ -191,9 +246,27 @@ function exportsPayload(exports: Exports): Record<string, unknown> {
     added: s.added.map(wire),
     removed: s.removed.map(wire),
     signature_changed: s.signatureChanged.map(wire),
-    counts: { added: s.added.length, removed: s.removed.length, signature_changed: s.signatureChanged.length },
+    counts: {
+      added: s.added.length,
+      removed: s.removed.length,
+      signature_changed: s.signatureChanged.length,
+      // Present only when the scan ran: a count of call sites nobody looked for is not a figure.
+      ...(sites === null ? {} : { call_sites: sites }),
+    },
     semver_impact: s.semverImpact,
+    call_site_scan: scanPayload(scan),
     contract: { ...GRAFT_EXPORTS_CONTRACT },
+  };
+}
+
+/** How the call sites were found, or why they were not. Always stated, like every other section. */
+function scanPayload(scan: CallSiteScan): Record<string, unknown> {
+  if (!scan.available) return { available: false, method: SCAN_METHOD, reason: { ...scan.reason } };
+  return {
+    available: true,
+    method: SCAN_METHOD,
+    files_scanned: scan.filesScanned,
+    files_skipped: { ...scan.skipped },
   };
 }
 
@@ -204,6 +277,7 @@ function wire(s: ExportedSymbol): Record<string, unknown> {
     ...(s.kind === undefined ? {} : { kind: s.kind }),
     ...(s.signature === undefined ? {} : { signature: s.signature }),
     ...(s.previousSignature === undefined ? {} : { previous_signature: s.previousSignature }),
+    ...(s.callSites === undefined ? {} : { call_sites: s.callSites.map((c) => ({ file: c.file, line: c.line })) }),
   };
 }
 

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.blast_radius/1.0.0",
-  "title": "footprint.blast_radius 1.0.0",
-  "description": "The export-surface diff of a footprint run: the exported symbols added, removed and signature-changed between the compared refs. Every entry comes from graft's CLI contract `graft struct exports --json` (`graft.cli.struct_exports` 1.0.0); footprint derives nothing of its own beyond the counts and the ordering. When graft is unavailable the section is stated as unavailable with a reason, never omitted.",
+  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.blast_radius/1.1.0",
+  "title": "footprint.blast_radius 1.1.0",
+  "description": "The export-surface diff of a footprint run: the exported symbols added, removed and signature-changed between the compared refs, each with the call sites of its name. The symbols come from graft's CLI contract `graft struct exports --json` (`graft.cli.struct_exports` 1.0.0); footprint derives the counts, the ordering, and the call sites. The call sites are footprint's own conservative whole-word identifier scan of the tracked files of the working tree -- no graft contract answers with a call site's line -- so they include the declaration itself and a mention in a comment, a string or prose, and they cannot see a call through dynamic dispatch or a re-export under another name. When graft is unavailable the section is stated as unavailable with a reason, never omitted; the same holds for the scan.",
   "type": "object",
   "required": ["event", "t", "seq", "run", "range", "exports", "digest", "_schema"],
   "properties": {
@@ -41,12 +41,51 @@
           "properties": {
             "added": { "type": "integer", "minimum": 0 },
             "removed": { "type": "integer", "minimum": 0 },
-            "signature_changed": { "type": "integer", "minimum": 0 }
+            "signature_changed": { "type": "integer", "minimum": 0 },
+            "call_sites": { "type": "integer", "minimum": 0, "description": "Every symbol's call sites added up. Present only when the scan ran: a count of call sites nobody looked for is not a figure." }
           }
         },
         "semver_impact": {
           "type": ["string", "null"],
           "description": "graft's own semver judgement for the surface change, passed through verbatim; null when graft reported none. footprint does not derive it."
+        },
+        "call_site_scan": {
+          "description": "How the call sites on the symbols above were found, or why they were not. `method` is `identifier_scan`: every whole-word occurrence of the symbol's name in a tracked, non-binary file of the working tree, where a word character is `[A-Za-z0-9_]` on both sides -- `grep -w`'s own rule, which is what makes the independent grep oracle in footprint's test suite exact. When `available` is false no symbol carries `call_sites` at all, so a scan that did not run can never be read as one that found nothing.",
+          "type": "object",
+          "required": ["available", "method"],
+          "additionalProperties": false,
+          "properties": {
+            "available": { "type": "boolean" },
+            "method": { "const": "identifier_scan" },
+            "files_scanned": { "type": "integer", "minimum": 0, "description": "Tracked files read and matched" },
+            "files_skipped": {
+              "type": "object",
+              "description": "Tracked files the scan did not match, each for a stated reason",
+              "required": ["binary", "unreadable"],
+              "additionalProperties": false,
+              "properties": {
+                "binary": { "type": "integer", "minimum": 0, "description": "Files holding a NUL byte in their first 8192, skipped exactly as `grep -I` skips them" },
+                "unreadable": { "type": "integer", "minimum": 0, "description": "Tracked files that could not be read, a file deleted from the working tree among them" }
+              }
+            },
+            "reason": {
+              "type": "object",
+              "description": "Present when available is false: why there are no call sites to show",
+              "required": ["code", "detail"],
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": ["scan.not_run", "scan.ls_files_failed"],
+                  "description": "scan.not_run: no scan was attached to this surface, so no tree was read. scan.ls_files_failed: `git ls-files -z` exited non-zero, so there was no file list to scan."
+                },
+                "detail": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "allOf": [
+            { "if": { "properties": { "available": { "const": false } }, "required": ["available"] }, "then": { "required": ["available", "method", "reason"] } },
+            { "if": { "properties": { "available": { "const": true } }, "required": ["available"] }, "then": { "required": ["available", "method", "files_scanned", "files_skipped"] } }
+          ]
         },
         "contract": {
           "type": "object",
@@ -66,7 +105,22 @@
         },
         {
           "if": { "properties": { "available": { "const": true } }, "required": ["available"] },
-          "then": { "required": ["available", "base", "head", "added", "removed", "signature_changed", "counts", "semver_impact", "contract"] }
+          "then": { "required": ["available", "base", "head", "added", "removed", "signature_changed", "counts", "semver_impact", "call_site_scan", "contract"] }
+        },
+        {
+          "description": "A scan that ran lists every symbol's call sites, empty included: a symbol nothing references is never dropped, and the total is reported.",
+          "if": {
+            "required": ["call_site_scan"],
+            "properties": { "call_site_scan": { "required": ["available"], "properties": { "available": { "const": true } } } }
+          },
+          "then": {
+            "properties": {
+              "added": { "items": { "required": ["symbol", "file", "call_sites"] } },
+              "removed": { "items": { "required": ["symbol", "file", "call_sites"] } },
+              "signature_changed": { "items": { "required": ["symbol", "file", "call_sites"] } },
+              "counts": { "required": ["added", "removed", "signature_changed", "call_sites"] }
+            }
+          }
         }
       ]
     },
@@ -75,7 +129,7 @@
       "type": "object",
       "required": ["id", "version"],
       "additionalProperties": false,
-      "properties": { "id": { "const": "footprint.blast_radius" }, "version": { "const": "1.0.0" } }
+      "properties": { "id": { "const": "footprint.blast_radius" }, "version": { "const": "1.1.0" } }
     }
   },
   "$defs": {
@@ -90,7 +144,20 @@
           "file": { "type": "string", "minLength": 1, "description": "The file the symbol is exported from, repository-relative" },
           "kind": { "type": "string", "minLength": 1, "description": "graft's kind for the symbol (function, interface, field, export, ...); graft's vocabulary, not footprint's" },
           "signature": { "type": "string", "description": "The signature at head, verbatim from graft, newlines and all" },
-          "previous_signature": { "type": "string", "description": "The signature at base, present only on a signature change graft reported one for" }
+          "previous_signature": { "type": "string", "description": "The signature at base, present only on a signature change graft reported one for" },
+          "call_sites": {
+            "type": "array",
+            "description": "Where the symbol's name occurs as a whole word in the tracked, non-binary files of the working tree, ordered by file then line, one entry per line however many times it occurs on that line. Empty means the scan found none, which is reported rather than dropped; absent means no scan ran, which `call_site_scan.reason` states.",
+            "items": {
+              "type": "object",
+              "required": ["file", "line"],
+              "additionalProperties": false,
+              "properties": {
+                "file": { "type": "string", "minLength": 1, "description": "Repository-relative path, as `git ls-files` printed it" },
+                "line": { "type": "integer", "minimum": 1, "description": "1-based line number, as `grep -n` would print it" }
+              }
+            }
+          }
         }
       }
     }

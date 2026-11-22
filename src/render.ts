@@ -6,7 +6,7 @@ import { mermaidPie } from "./footprint.ts";
 import { classify } from "./classify.ts";
 import { structuralSummary, type StructuralReview } from "./graft.ts";
 import type { BeforeMergeKind, Landing } from "./landing.ts";
-import type { Exports } from "./exports.ts";
+import type { Exports, ExportedSymbol } from "./exports.ts";
 
 export interface GutCheck {
   readonly headline: string;
@@ -160,6 +160,7 @@ export function blastRadius(exports: Exports): string {
     ...s.removed.map((x) => ["removed", x] as const),
     ...s.signatureChanged.map((x) => ["signature-changed", x] as const),
   ];
+  const scan = s.callSiteScan;
   out.push(
     `**+${s.added.length} added / -${s.removed.length} removed / ~${s.signatureChanged.length} signature-changed exported symbols**` +
       ` · \`${s.base}\` → \`${s.head}\`` +
@@ -169,15 +170,51 @@ export function blastRadius(exports: Exports): string {
   if (rows.length === 0) {
     out.push("- No exported symbol was added, removed or re-signed.", "");
   } else {
-    const head = "| Change | Symbol | File | Kind | Signature |\n| --- | --- | --- | --- | --- |";
+    const head = scan.available
+      ? "| Change | Symbol | File | Kind | Call sites | Signature |\n| --- | --- | --- | --- | ---: | --- |"
+      : "| Change | Symbol | File | Kind | Signature |\n| --- | --- | --- | --- | --- |";
     const body = rows.map(([change, x]) =>
-      `| ${change} | \`${x.symbol}\` | \`${x.file}\` | ${x.kind ?? ""} | ${cell(x.previousSignature === undefined ? x.signature : `${x.previousSignature} → ${x.signature ?? ""}`)} |`,
+      `| ${change} | \`${x.symbol}\` | \`${x.file}\` | ${x.kind ?? ""} | ` +
+      (scan.available ? `${x.callSites === undefined ? "—" : x.callSites.length} | ` : "") +
+      `${cell(x.previousSignature === undefined ? x.signature : `${x.previousSignature} → ${x.signature ?? ""}`)} |`,
     );
     out.push(details(`Exported symbols (${rows.length})`, [head, ...body].join("\n")), "");
   }
+
+  // The call sites themselves. Collapsed, because this is the longest part of the comment, and
+  // stated when the scan could not run: an absent list would read as a symbol nothing calls.
+  if (!scan.available) {
+    out.push(`<sub>Call sites not listed (\`${scan.reason.code}\`): ${scan.reason.detail}.</sub>`, "");
+  } else if (rows.length > 0) {
+    const total = rows.reduce((n, [, x]) => n + (x.callSites?.length ?? 0), 0);
+    const body = rows.map(([, x]) => callSiteLines(x)).join("\n\n");
+    out.push(details(`Call sites (${total} across ${scan.filesScanned} scanned file${scan.filesScanned === 1 ? "" : "s"})`, body), "");
+  }
+
   out.push(FROM_GRAFT);
+  if (scan.available) out.push("", FROM_SCAN);
   return out.join("\n");
 }
+
+/**
+ * How many call sites are spelled out per symbol before the comment just says how many more there
+ * are. The result line carries every one of them; this is a pull-request comment, and a symbol
+ * with four hundred call sites would bury everything else in it.
+ */
+const CALL_SITES_SHOWN = 20;
+
+function callSiteLines(x: ExportedSymbol): string {
+  if (x.callSites === undefined) return `**\`${x.symbol}\`** — not scanned; the scan carries no entry for this symbol.`;
+  const sites = x.callSites;
+  if (sites.length === 0) return `**\`${x.symbol}\`** — no call site found in the tracked files.`;
+  const shown = sites.slice(0, CALL_SITES_SHOWN).map((c) => `- \`${c.file}:${c.line}\``);
+  const rest = sites.length - shown.length;
+  const head = `**\`${x.symbol}\`** — ${sites.length} call site${sites.length === 1 ? "" : "s"}`;
+  return [head, "", ...shown, ...(rest > 0 ? [`- …and ${rest} more; the result line carries every one.`] : [])].join("\n");
+}
+
+const FROM_SCAN =
+  "<sub>Call sites are footprint's own whole-word identifier scan, not graft's: every whole-word occurrence of the name in the tracked, non-binary files of the working tree (`grep -w`'s boundary, `[A-Za-z0-9_]`). It counts the declaration itself and a mention in a comment, a string or prose, and it cannot see a call through dynamic dispatch or a re-export under another name. Evidence to check, not a call graph.</sub>";
 
 const FROM_GRAFT =
   "<sub>Exported symbols from `graft struct exports --json` (`graft.cli.struct_exports` 1.0.0). Whatever graft parses counts as an export surface, including fields in config and lock files.</sub>";
