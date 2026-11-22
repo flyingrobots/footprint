@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.composition/1.0.0",
+  "title": "footprint.composition 1.0.0",
+  "description": "The result of a footprint run: what the change touches, by file kind, with the gut check and the structural summary. Every figure is computed from git diff --numstat.",
+  "type": "object",
+  "required": ["event", "t", "seq", "run", "range", "composition", "gut_check", "structural", "digest", "_schema"],
+  "properties": {
+    "event": { "const": "result" },
+    "t": { "type": "integer", "minimum": 0 },
+    "seq": { "type": "integer", "minimum": 1 },
+    "run": { "type": "string", "minLength": 1 },
+    "range": { "type": "string", "minLength": 1, "description": "The git range compared, as given to git diff" },
+    "composition": {
+      "type": "object",
+      "required": ["files", "added", "removed", "binaryFiles", "byCategory"],
+      "properties": {
+        "files": { "type": "integer", "minimum": 0 },
+        "added": { "type": "integer", "minimum": 0 },
+        "removed": { "type": "integer", "minimum": 0 },
+        "binaryFiles": { "type": "integer", "minimum": 0 },
+        "byCategory": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["category", "files", "added", "removed", "share"],
+            "properties": {
+              "category": { "enum": ["source", "test", "docs", "config", "ci", "generated", "assets"] },
+              "files": { "type": "integer", "minimum": 1 },
+              "added": { "type": "integer", "minimum": 0 },
+              "removed": { "type": "integer", "minimum": 0 },
+              "share": { "type": "number", "minimum": 0, "maximum": 100 }
+            }
+          }
+        }
+      }
+    },
+    "gut_check": {
+      "type": "object",
+      "required": ["headline", "flags"],
+      "properties": {
+        "headline": { "type": "string", "minLength": 1 },
+        "flags": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Observations, never verdicts" }
+      }
+    },
+    "structural": {
+      "type": "object",
+      "required": ["available"],
+      "properties": {
+        "available": { "type": "boolean", "description": "False when graft could not be resolved or failed; the section is stated, never omitted" },
+        "structural": { "type": "integer", "minimum": 0 },
+        "formatting": { "type": "integer", "minimum": 0 },
+        "symbolsAdded": { "type": "integer", "minimum": 0 },
+        "symbolsRemoved": { "type": "integer", "minimum": 0 },
+        "symbolsChanged": { "type": "integer", "minimum": 0 },
+        "breakingChanges": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 over the canonical JSON of range, composition, gut_check and structural (spec §7.1)" },
+    "_schema": {
+      "type": "object",
+      "required": ["id", "version"],
+      "additionalProperties": false,
+      "properties": { "id": { "const": "footprint.composition" }, "version": { "const": "1.0.0" } }
+    }
+  }
+}

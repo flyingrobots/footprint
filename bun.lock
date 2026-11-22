@@ -4,6 +4,10 @@
   "workspaces": {
     "": {
       "name": "@flyingrobots/footprint",
+      "devDependencies": {
+        "ajv": "^8.20.0",
+        "ajv-formats": "^3.0.1",
+      },
       "optionalDependencies": {
         "@flyingrobots/graft": "^0.14.0",
       },

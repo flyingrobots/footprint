@@ -20,5 +20,9 @@
     "type": "git",
     "url": "git+https://github.com/flyingrobots/footprint.git"
   },
-  "author": "James Ross"
+  "author": "James Ross",
+  "devDependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
+  }
 }
