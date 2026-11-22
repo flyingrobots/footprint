@@ -56,3 +56,7 @@ than quietly omitting it. A degraded run should never read as a clean one.
 post-merge landing plans are [tracked as issues](https://github.com/flyingrobots/footprint/issues).
 
 Documentation: [`docs/README.md`](docs/README.md). Working agreement: [`AGENTS.md`](AGENTS.md).
+
+## License
+
+[Apache-2.0](LICENSE). See [NOTICE](NOTICE).

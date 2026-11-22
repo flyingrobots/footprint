@@ -2,6 +2,7 @@
   "name": "@flyingrobots/footprint",
   "version": "0.1.0",
   "description": "What a change actually touches: composition, blast radius, and how to land it",
+  "license": "Apache-2.0",
   "type": "module",
   "bin": {
     "footprint": "./src/cli.ts"
@@ -14,5 +15,10 @@
   },
   "overrides": {
     "zod": "^4.6.6"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flyingrobots/footprint.git"
+  },
+  "author": "James Ross"
 }
