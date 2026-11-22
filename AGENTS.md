@@ -35,6 +35,14 @@ a dev dependency. No global install is needed: `resolveGraft()` finds the binary
 `import.meta.resolve("@flyingrobots/graft/package.json")`, falls back to `PATH`, and returns
 `null` rather than throwing.
 
+**Depend on the CLI's JSON contract, never on graft's internals.** `struct review --json`
+carries a `_schema` with an id and version; treat that as the interface. Do not import graft
+modules, and do not reach into `node_modules/@flyingrobots/graft/dist`.
+
+This is not fastidiousness. graft's substrate is slated to be rewritten from git-warp onto Echo,
+which changes how structural history is stored at a fundamental level. A consumer bound to the CLI
+contract does not notice that; a consumer bound to internals gets rewritten with it.
+
 **Only one-shot subcommands.** Never `graft serve` and never `graft daemon`. footprint must not
 hold a long-lived process, and the daemon has known memory growth.
 
