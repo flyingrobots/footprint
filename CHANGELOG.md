@@ -19,6 +19,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   flag, or a version or changelog entry. The guard rule is documented path patterns, never a
   judgement: [`docs/topics/landing/README.md`](docs/topics/landing/README.md).
   (flyingrobots/footprint#3)
+- **Blast radius: the export-surface diff.** A second result line per run,
+  `footprint.blast_radius` 1.0.0 (`schemas/footprint.blast_radius.schema.json`), emitted after the
+  composition result, listing the exported symbols the change added, removed and signature-changed,
+  each with its file and name. `--human` gains a `## Blast radius` section. The facts come from
+  graft's CLI contract `graft struct exports <base-ref> <head-ref> --json`, bound to `_schema`
+  `graft.cli.struct_exports` 1.0.0; a three-dot range is compared from the merge base. When graft
+  is absent, fails, or answers under another contract version, the result carries
+  `exports.available: false` with a `reason` — the section is stated, never omitted — and a
+  `graft.exports_failed` warning is emitted when graft resolved but could not be read.
+  (flyingrobots/footprint#9)
+- `docs/topics/blast-radius/README.md`: what the export-surface diff lists, which graft contract it
+  comes from, and the two failure modes it inherits (re-exports read as changes, dynamic dispatch
+  invisible).
 
 ### Decided
 
