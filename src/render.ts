@@ -7,6 +7,7 @@ import { classify } from "./classify.ts";
 import { structuralSummary, type StructuralReview } from "./graft.ts";
 import type { BeforeMergeKind, Landing } from "./landing.ts";
 import type { Exports } from "./exports.ts";
+import type { UnsupportedLanguage } from "./languages.ts";
 import type { Overlap } from "./overlap.ts";
 
 export interface GutCheck {
@@ -144,13 +145,15 @@ export function renderLanding(l: Landing): string {
  * symbols moved, a sentence when none did, and the stated reason when graft could not answer —
  * an absent section would read like a clean one.
  */
-export function blastRadius(exports: Exports): string {
+export function blastRadius(exports: Exports, unanalysed: readonly UnsupportedLanguage[] = []): string {
   const out: string[] = ["## Blast radius", ""];
   if (!exports.available) {
     out.push(
       `<sub>Export-surface diff unavailable (\`${exports.reason.code}\`): ${exports.reason.detail}.</sub>`,
       "",
       FROM_GRAFT,
+      "",
+      unanalysedSection(unanalysed),
     );
     return out.join("\n");
   }
@@ -176,8 +179,22 @@ export function blastRadius(exports: Exports): string {
     );
     out.push(details(`Exported symbols (${rows.length})`, [head, ...body].join("\n")), "");
   }
-  out.push(FROM_GRAFT);
+  out.push(FROM_GRAFT, "", unanalysedSection(unanalysed));
   return out.join("\n");
+}
+
+/**
+ * The languages this change could not have been symbol-analysed in, independent of whether graft
+ * itself ran: present whether the exports section above succeeded, failed, or was unavailable
+ * (flyingrobots/footprint#12).
+ */
+function unanalysedSection(unanalysed: readonly UnsupportedLanguage[]): string {
+  if (unanalysed.length === 0) {
+    return "<sub>Every changed source file was in a language footprint recognises graft's grammars can parse.</sub>";
+  }
+  const total = unanalysed.reduce((n, u) => n + u.count, 0);
+  const byExtension = unanalysed.map((u) => `${u.count} \`${u.extension}\``).join(", ");
+  return `**${total} changed file${total === 1 ? "" : "s"} in unanalysed language${unanalysed.length === 1 ? "" : "s"}:** ${byExtension}.`;
 }
 
 const FROM_GRAFT =

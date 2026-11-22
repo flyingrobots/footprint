@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.blast_radius/1.0.0",
-  "title": "footprint.blast_radius 1.0.0",
-  "description": "The export-surface diff of a footprint run: the exported symbols added, removed and signature-changed between the compared refs. Every entry comes from graft's CLI contract `graft struct exports --json` (`graft.cli.struct_exports` 1.0.0); footprint derives nothing of its own beyond the counts and the ordering. When graft is unavailable the section is stated as unavailable with a reason, never omitted.",
+  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.blast_radius/1.1.0",
+  "title": "footprint.blast_radius 1.1.0",
+  "description": "The export-surface diff of a footprint run: the exported symbols added, removed and signature-changed between the compared refs, and the changed files in languages that could not be analysed at all. Every exports entry comes from graft's CLI contract `graft struct exports --json` (`graft.cli.struct_exports` 1.0.0); footprint derives nothing of its own beyond the counts and the ordering. When graft is unavailable the exports section is stated as unavailable with a reason, never omitted. unanalysed_languages is independent of graft: it is present and empty when every changed file was in a supported language.",
   "type": "object",
-  "required": ["event", "t", "seq", "run", "range", "exports", "digest", "_schema"],
+  "required": ["event", "t", "seq", "run", "range", "exports", "unanalysed_languages", "digest", "_schema"],
   "properties": {
     "event": { "const": "result" },
     "t": { "type": "integer", "minimum": 0 },
@@ -70,12 +70,25 @@
         }
       ]
     },
-    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 over the canonical JSON of range and exports (spec §7.1)" },
+    "unanalysed_languages": {
+      "type": "array",
+      "description": "Changed source files in languages footprint does not recognise as one graft's grammars can parse, grouped by extension with a count (flyingrobots/footprint#12). Present and empty when every changed file was in a supported language -- never omitted. Independent of exports.available: a parse failure in a supported language is never counted here, because this is extension-only and does not depend on whether graft ran or what it returned.",
+      "items": {
+        "type": "object",
+        "required": ["extension", "count"],
+        "additionalProperties": false,
+        "properties": {
+          "extension": { "type": "string", "minLength": 1, "description": "The file extension, lowercase, dot included (e.g. \".hs\"); \"(none)\" when the changed file's basename carries none" },
+          "count": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 over the canonical JSON of range, exports and unanalysed_languages (spec §7.1)" },
     "_schema": {
       "type": "object",
       "required": ["id", "version"],
       "additionalProperties": false,
-      "properties": { "id": { "const": "footprint.blast_radius" }, "version": { "const": "1.0.0" } }
+      "properties": { "id": { "const": "footprint.blast_radius" }, "version": { "const": "1.1.0" } }
     }
   },
   "$defs": {

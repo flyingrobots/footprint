@@ -24,7 +24,7 @@ const byPair = new Map<string, ReturnType<typeof ajv.compile>>();
 for (const s of SCHEMAS) byPair.set(`${s.id}@${s.version}`, ajv.compile(s.schema));
 byPair.set("footprint.composition@1.0.0", ajv.compile(COMPOSITION));
 byPair.set("footprint.landing@1.0.0", ajv.compile(LANDING));
-byPair.set("footprint.blast_radius@1.0.0", ajv.compile(BLAST_RADIUS));
+byPair.set("footprint.blast_radius@1.1.0", ajv.compile(BLAST_RADIUS));
 byPair.set("footprint.overlap@1.0.0", ajv.compile(OVERLAP));
 
 // No test here depends on the network or on this repository having open pull requests: every run
@@ -92,8 +92,8 @@ describe("the CLI speaks the Parley output protocol", () => {
     validateAll(r.stderr, "stderr");
     const results = out.filter((o) => o.event === "result");
     expect(results.map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius", "footprint.overlap"]);
-    const blast = results[2] as Line & { range: string; digest: string; exports: Record<string, unknown> };
-    expect(blast._schema).toEqual({ id: "footprint.blast_radius", version: "1.0.0" });
+    const blast = results[2] as Line & { range: string; digest: string; exports: Record<string, unknown>; unanalysed_languages: Array<{ extension: string; count: number }> };
+    expect(blast._schema).toEqual({ id: "footprint.blast_radius", version: "1.1.0" });
     expect(blast.range).toBe("HEAD~1..HEAD");
     expect(blast.digest).toMatch(/^[0-9a-f]{64}$/);
     const ex = blast.exports as { available: boolean; reason?: { code: string; detail: string }; added?: unknown[]; removed?: unknown[]; signature_changed?: unknown[]; counts?: Record<string, number>; contract?: unknown };
@@ -105,6 +105,8 @@ describe("the CLI speaks the Parley output protocol", () => {
       expect(typeof ex.reason!.code).toBe("string");
       expect(ex.reason!.detail.length).toBeGreaterThan(0);
     }
+    // footprint's own changed files, over this range, are TypeScript: a supported language.
+    expect(blast.unanalysed_languages).toEqual([]);
     const receipt = receiptOf(out);
     expect(receipt.filter((o) => o.event === "result").map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius", "footprint.overlap"]);
     const human = await cli(["HEAD~1..HEAD", "--human"]);
@@ -160,7 +162,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(r.status).toBe(0);
     const out = validateAll(r.stdout, "stdout");
     const results = out.filter((o) => o.event === "result");
-    expect(results.map((o) => `${o._schema.id}@${o._schema.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.0.0", "footprint.overlap@1.0.0"]);
+    expect(results.map((o) => `${o._schema.id}@${o._schema.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.1.0", "footprint.overlap@1.0.0"]);
     const landing = results[1] as Line & {
       before_merge: { unguarded: boolean; guards: unknown[]; unguarded_because: string; items: unknown[] };
       after_merge: { read: { file: string; present: boolean }[]; steps: unknown[]; declared: boolean; nothing_to_do: boolean; statement: string };
@@ -191,7 +193,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     const h = validateAll(help.stdout, "stdout");
     expect(h[0]!.event).toBe("run"); expect(h.at(-1)!.event).toBe("end");
     expect(h.filter((o) => o.event === "command").map((o) => o.name)).toEqual(["footprint"]);
-    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.0.0", "footprint.overlap@1.0.0", "parley.error@2.0.0"]);
+    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.1.0", "footprint.overlap@1.0.0", "parley.error@2.0.0"]);
     const schema = await cli(["--schema"]);
     const s = validateAll(schema.stdout, "stdout");
     expect(s.filter((o) => o.event === "schema").length).toBeGreaterThan(2);
