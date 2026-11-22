@@ -42,8 +42,29 @@ When graft is missing or fails, the report says so as a stated limitation. It mu
 silently omit the structural section — an absent signal that looks like a clean signal is worse
 than no tool at all.
 
-Install note: `bun add` works because Bun blocks untrusted postinstalls by default. `npm install -g`
-fails on graft's native `cbor-extract` build, which these code paths do not need.
+### Why it is an optionalDependency
+
+graft is declared in `optionalDependencies`, not `dependencies` or `devDependencies`. That is
+deliberate, and the reason is not graft's fault.
+
+The chain is `@flyingrobots/graft` -> `@git-stunts/git-warp@16.0.1` -> `roaring@^2.7.0`, a hard
+dependency. roaring publishes no prebuild for `darwin-arm64` at Node 26's module version (147), so
+`node-pre-gyp` falls back to compiling and `make` exits 2. Because roaring is required rather than
+optional, a plain `npm install` of graft aborts.
+
+The upstream fix exists — current git-warp drops roaring — but its API changed enough that
+adopting it is close to a rewrite of graft, so graft stays pinned to 16.0.1.
+
+`optionalDependencies` makes that someone else's problem rather than ours: npm tolerates the
+failure, skips graft, and the install succeeds. Verified both ways:
+
+| Manager | Result |
+| --- | --- |
+| `bun install` | graft installed; Bun blocks the untrusted postinstall, which these paths never need |
+| `npm install` | **exit 0**, graft skipped, footprint degrades and says so |
+
+Never move graft out of `optionalDependencies` to get the structural section working. The
+degradation is the feature.
 
 ## Hard don'ts
 

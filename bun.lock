@@ -4,7 +4,7 @@
   "workspaces": {
     "": {
       "name": "@flyingrobots/footprint",
-      "devDependencies": {
+      "optionalDependencies": {
         "@flyingrobots/graft": "^0.14.0",
       },
     },

@@ -36,6 +36,17 @@ Nothing here is estimated. Totals come from `git diff --numstat`, and the catego
 required by test to sum to the reported total. This is the bug that made the original hand-written
 version untrustworthy: a draft reported `+151` for a `+157` change, with hand-estimated shares.
 
+## Structural analysis is optional
+
+With [graft](https://github.com/flyingrobots/graft) available, the report adds what paths cannot
+tell you — whether a source file's **symbols** actually moved, or whether the diff was only
+formatting.
+
+It is an `optionalDependency` on purpose. `bun install` gets it; `npm install` may skip it on
+newer Node, because a transitive native dependency has no prebuild there. Either way the install
+succeeds, and without graft the report says the structural section is unavailable rather than
+quietly omitting it.
+
 ## Status
 
 **v0.1** — composition only. Call-site blast radius, cross-pull-request merge ordering, and
