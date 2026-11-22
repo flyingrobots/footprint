@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+
+- A second result in the same run, `footprint.landing` 1.0.0
+  (`schemas/footprint.landing.schema.json`), and two `--human` sections, **Before merge** and
+  **After merge**. The after-merge steps are read out of the repository's own `RELEASE.md` and
+  `AGENTS.md` — list items under a heading that names the landing process — and each cites the
+  file and heading it came from; where neither document declares any, the result states that
+  fallback rather than inventing steps, and where the change touches no executable surface it says
+  "nothing to do after merge" plainly. Before merge reports what the changed-file list shows:
+  migrations with their ordering constraint, generated files, a manifest changed with no lockfile
+  beside it, and a loud warning when the diff changes source and no changed file is a migration, a
+  flag, or a version or changelog entry. The guard rule is documented path patterns, never a
+  judgement: [`docs/topics/landing/README.md`](docs/topics/landing/README.md).
+  (flyingrobots/footprint#3)
+
 ### Decided
 
 - footprint#2's call-site/structural analysis depends on graft's **CLI JSON contract**, not a

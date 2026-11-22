@@ -5,10 +5,13 @@ import { join } from "node:path";
 import { canonical, sha256 } from "@flyingrobots/parley-emit";
 import type { Composition } from "./footprint.ts";
 import { structuralSummary, type StructuralReview } from "./graft.ts";
+import type { Landing } from "./landing.ts";
 import type { GutCheck } from "./render.ts";
 
 export const COMPOSITION_SCHEMA = JSON.parse(readFileSync(join(import.meta.dir, "../schemas/footprint.composition.schema.json"), "utf8")) as Record<string, unknown>;
 export const COMPOSITION_TYPE = { id: "footprint.composition", version: "1.0.0" } as const;
+export const LANDING_SCHEMA = JSON.parse(readFileSync(join(import.meta.dir, "../schemas/footprint.landing.schema.json"), "utf8")) as Record<string, unknown>;
+export const LANDING_TYPE = { id: "footprint.landing", version: "1.0.0" } as const;
 
 export interface Structural {
   readonly available: boolean;
@@ -27,5 +30,11 @@ export function structuralOf(review: StructuralReview | null): Structural {
 
 export function compositionRecord(range: string, composition: Composition, gut: GutCheck, review: StructuralReview | null) {
   const semantic = { range, composition, gut_check: gut, structural: structuralOf(review) };
+  return { event: "result", ...semantic, digest: sha256(canonical(semantic)) };
+}
+
+/** The landing plan's own result, emitted in the same run after the composition (spec §7.1). */
+export function landingRecord(range: string, landing: Landing) {
+  const semantic = { range, before_merge: landing.before_merge, after_merge: landing.after_merge };
   return { event: "result", ...semantic, digest: sha256(canonical(semantic)) };
 }

@@ -20,6 +20,18 @@ errors on stderr as structured lines; a receipt per run under `.parley/receipts/
 decision and the file listing. `--human` is the opt-in for prose. See
 [`docs/topics/output/README.md`](docs/topics/output/README.md).
 
+## How it lands
+
+Merging is not landing, so footprint also reports what it takes to land a change: a **Before
+merge** section of what the changed-file list itself shows — migrations and their ordering
+constraint, generated files, a manifest whose lockfile is missing, and a loud warning when a source
+change carries no migration, flag or version entry to gate or record it — and an **After merge**
+section whose steps are *read out of the repository's own `RELEASE.md` and `AGENTS.md`*, each
+citing the file and heading it came from. Where neither document declares any, it says so instead
+of guessing; where a change touches no executable surface, it says there is nothing to do. The
+guard rule behind the warning is documented path patterns, never a judgement:
+[`docs/topics/landing/README.md`](docs/topics/landing/README.md).
+
 ## Why
 
 Two reasons, both from real failures.
@@ -59,8 +71,9 @@ than quietly omitting it. A degraded run should never read as a clean one.
 
 ## Status
 
-**v0.1** — composition only. Call-site blast radius, cross-pull-request merge ordering, and
-post-merge landing plans are [tracked as issues](https://github.com/flyingrobots/footprint/issues).
+**v0.2** — composition. The landing plan above is on the default branch and not yet released.
+Call-site blast radius and cross-pull-request merge ordering are
+[tracked as issues](https://github.com/flyingrobots/footprint/issues).
 
 Documentation: [`docs/README.md`](docs/README.md). Working agreement: [`AGENTS.md`](AGENTS.md).
 

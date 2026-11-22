@@ -55,7 +55,7 @@ describe("after merge: steps read from the repository's own documents", () => {
     expect(l.after_merge.declared).toBe(false);
     expect(l.after_merge.steps).toEqual([]);
     expect(l.after_merge.nothing_to_do).toBe(false);
-    expect(l.after_merge.statement).toMatch(/RELEASE\.md is absent/);
+    expect(l.after_merge.statement).toMatch(/`RELEASE\.md` is absent/);
     expect(l.after_merge.statement).toMatch(/AGENTS\.md/);
     expect(l.after_merge.statement).toMatch(/states none rather than inventing/);
   });
@@ -116,7 +116,7 @@ describe("before merge: the guard rule is path patterns, computed", () => {
   });
 
   test("a migration in the diff is named with its ordering constraint", () => {
-    const l = fixture("migration");
+    const l = fixture("with-migration");
     const item = l.before_merge.items.find((i) => i.kind === "migration");
     expect(item?.paths).toEqual(["db/migrations/0003_add_index.sql"]);
     expect(item?.says).toContain("db/migrations/0003_add_index.sql");

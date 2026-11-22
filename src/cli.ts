@@ -7,9 +7,12 @@ import pkg from "../package.json" with { type: "json" };
 import { compose, parseNumstat } from "./footprint.ts";
 import { gutCheck, render } from "./render.ts";
 import { resolveGraft, structuralReview } from "./graft.ts";
-import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord } from "./report.ts";
+import { landingPlan, readLandingDocs, LANDING_DOCUMENTS } from "./landing.ts";
+import { renderLanding } from "./render.ts";
+import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord } from "./report.ts";
 
 let markdown = "";
+let landingMarkdown = "";
 
 const tool = defineTool({
   name: "footprint",
@@ -19,11 +22,11 @@ const tool = defineTool({
       intent: "Report what a change touches: its composition by file kind, the gut-check flags, and whether anything's shape moved",
       effects: { reads: ["<cwd>/.git"], writes: [], network: false, idempotent: true },
       secrets: [],
-      emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }],
+      emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }, { ...LANDING_TYPE, schema: LANDING_SCHEMA }],
     },
   },
   retention: { count: 50 },
-  human: (line) => (line.event === "result" ? markdown : null),
+  human: (line) => (line.event !== "result" ? null : (line._schema as { id?: string } | undefined)?.id === LANDING_TYPE.id ? landingMarkdown : markdown),
 });
 
 async function defaultBase(): Promise<string | null> {
@@ -63,6 +66,18 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   const gut = gutCheck(composition);
   markdown = changes.length === 0 ? `No changes in \`${range}\`.` : render(composition, changes, range, review);
   run.result(compositionRecord(range, composition, gut, review), COMPOSITION_TYPE, { files: changes, markdown });
+
+  // The landing plan is a second result in the same run: what the diff puts in front of a reviewer
+  // before the merge, and the steps to take after, read from the repository rather than invented.
+  const landing = landingPlan(changes.map((c) => c.path), readLandingDocs(run.cwd));
+  run.step(
+    `landing plan: ${landing.after_merge.statement}`,
+    `after-merge steps are read from ${LANDING_DOCUMENTS.join(" and ")} under the working directory, never invented; ` +
+      `the before-merge guard rule is path patterns over the changed files, and found ${landing.before_merge.guards.length}`,
+    { read: landing.after_merge.read, guards: landing.before_merge.guards },
+  );
+  landingMarkdown = renderLanding(landing);
+  run.result(landingRecord(range, landing), LANDING_TYPE, { markdown: landingMarkdown });
 }
 
 /**

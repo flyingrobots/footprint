@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.landing/1.0.0",
+  "title": "footprint.landing 1.0.0",
+  "description": "How a change lands: what the diff itself says must be looked at before merging, and the steps to take after, read from the repository's own RELEASE.md and AGENTS.md rather than invented. Every figure and every step is computed or quoted; nothing here is estimated or inferred.",
+  "type": "object",
+  "required": ["event", "t", "seq", "run", "range", "before_merge", "after_merge", "digest", "_schema"],
+  "properties": {
+    "event": { "const": "result" },
+    "t": { "type": "integer", "minimum": 0 },
+    "seq": { "type": "integer", "minimum": 1 },
+    "run": { "type": "string", "minLength": 1 },
+    "range": { "type": "string", "minLength": 1, "description": "The git range compared, as given to git diff" },
+    "before_merge": {
+      "type": "object",
+      "description": "Observations about the changed files themselves. Never a verdict and never a gate.",
+      "required": ["items", "guards", "unguarded", "unguarded_because"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "description": "One entry per before-merge rule that matched the changed-file list, in rule order",
+          "items": {
+            "type": "object",
+            "required": ["kind", "paths", "says"],
+            "properties": {
+              "kind": {
+                "enum": ["migration", "generated", "regenerate"],
+                "description": "migration: a changed file matches a migration path pattern. generated: a changed file classifies as generated. regenerate: a dependency manifest changed with no lockfile beside it in the same change."
+              },
+              "paths": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "The changed files that matched, in diff order" },
+              "says": { "type": "string", "minLength": 1, "description": "What matched and what it means for the merge, naming the paths" }
+            }
+          }
+        },
+        "guards": {
+          "type": "array",
+          "description": "The changed files that match the guard rule, in diff order; one entry per file, with the first matching kind",
+          "items": {
+            "type": "object",
+            "required": ["path", "kind"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "kind": { "enum": ["migration", "flag", "version"] }
+            }
+          }
+        },
+        "unguarded": {
+          "type": "boolean",
+          "description": "True when at least one changed file classifies as source and no changed file matches the guard rule. The rule is path patterns only, documented in docs/topics/landing/README.md; it is never a judgement about the change."
+        },
+        "unguarded_because": { "type": "string", "minLength": 1, "description": "Why the change is, or is not, unguarded; always stated, naming the guards found or the rule that found none" }
+      }
+    },
+    "after_merge": {
+      "type": "object",
+      "description": "Steps read from the repository, never invented.",
+      "required": ["read", "steps", "declared", "nothing_to_do", "statement"],
+      "properties": {
+        "read": {
+          "type": "array",
+          "description": "Every document footprint looked in, in the order it read them, whether or not it was there",
+          "items": {
+            "type": "object",
+            "required": ["file", "present", "headings"],
+            "properties": {
+              "file": { "type": "string", "minLength": 1 },
+              "present": { "type": "boolean" },
+              "headings": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "The headings inside the document's landing sections, including the heading that opened each one" }
+            }
+          }
+        },
+        "steps": {
+          "type": "array",
+          "description": "The steps that apply to this change, in document order, each quoting the document verbatim",
+          "items": {
+            "type": "object",
+            "required": ["step", "file", "heading"],
+            "properties": {
+              "step": { "type": "string", "minLength": 1, "description": "The list item as the document wrote it" },
+              "file": { "type": "string", "minLength": 1, "description": "The document it was read from" },
+              "heading": { "type": "string", "minLength": 1, "description": "The nearest heading above it" }
+            }
+          }
+        },
+        "declared": { "type": "boolean", "description": "True when any document read declared at least one step. False means the fallback was stated, not that there is nothing to do." },
+        "nothing_to_do": { "type": "boolean", "description": "True when the change touches no executable surface, so no declared step applies; `statement` then says so plainly" },
+        "statement": { "type": "string", "minLength": 1, "description": "The one plain sentence: the steps and where they came from, the stated fallback, or that there is nothing to do after merge" }
+      }
+    },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 over the canonical JSON of range, before_merge and after_merge (spec §7.1)" },
+    "_schema": {
+      "type": "object",
+      "required": ["id", "version"],
+      "additionalProperties": false,
+      "properties": { "id": { "const": "footprint.landing" }, "version": { "const": "1.0.0" } }
+    }
+  }
+}

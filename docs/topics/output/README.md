@@ -8,7 +8,7 @@ through `@flyingrobots/parley-emit`. This page is the reference for what a calle
 
 | Stream | Carries |
 | --- | --- |
-| stdout | The bootstrap line, one `result` line, the `end` line. JSON Lines, always; nothing depends on a TTY. |
+| stdout | The bootstrap line, the `result` lines, the `end` line. JSON Lines, always; nothing depends on a TTY. |
 | stderr | Structured `error` and `warning` lines, and nothing else. |
 | receipt | `.parley/receipts/<run>.jsonl` under the working directory: the head with `argv` and the resolved interpretation (range, both commit ids, the graft setting), one `receipt.step` per decision, the file listing and the Markdown beside the result, and `end`. |
 
@@ -19,9 +19,13 @@ this still works:
 footprint --human | gh pr comment 42 --body-file -
 ```
 
-## The result
+## The results
 
-One line, schema `footprint.composition` 1.0.0 (`schemas/footprint.composition.schema.json`):
+Two result lines, in this order and in the same run: the composition, then the landing plan.
+
+### `footprint.composition` 1.0.0
+
+What the change touches, schema `schemas/footprint.composition.schema.json`:
 
 | Field | Meaning |
 | --- | --- |
@@ -33,6 +37,28 @@ One line, schema `footprint.composition` 1.0.0 (`schemas/footprint.composition.s
 
 The receipt copy of the same line also carries `files` (the listing from `git diff --numstat`) and
 `markdown` (what `--human` prints).
+
+### `footprint.landing` 1.0.0
+
+How the change lands, schema `schemas/footprint.landing.schema.json`. The reference for what is
+read and how the guard rule is computed is [landing](../landing/README.md).
+
+| Field | Meaning |
+| --- | --- |
+| `range` | The git range compared, as given to `git diff` |
+| `before_merge.items` | One entry per before-merge rule that matched the changed-file list: `migration` (with its ordering constraint), `generated`, `regenerate`. Each carries the `paths` that matched and what it `says`. |
+| `before_merge.guards` | The changed files matching the guard rule, each with its `kind`: `migration`, `flag` or `version` |
+| `before_merge.unguarded` | True when a changed file classifies as `source` and no changed file matches the guard rule. Path patterns only; an observation, never a verdict. |
+| `before_merge.unguarded_because` | Always stated: the guards found, that no source file changed, or the rule that found none |
+| `after_merge.read` | Every document footprint looked in — `RELEASE.md` then `AGENTS.md` — with `present` and the `headings` of its landing sections, whether or not it was there |
+| `after_merge.steps` | The steps that apply, in document order; each quotes the document verbatim and cites the `file` and `heading` it was read from |
+| `after_merge.declared` | True when any document declared a step. False means the fallback was stated, not that there is nothing to do. |
+| `after_merge.nothing_to_do` | True when the change touches no executable surface; the statement then says "nothing to do after merge" plainly |
+| `after_merge.statement` | The one plain sentence: the steps and where they came from, the stated fallback, or that there is nothing to do |
+| `digest` | SHA-256 over the canonical JSON of `range`, `before_merge` and `after_merge` |
+
+The receipt copy also carries `markdown`, the two `--human` sections. Under `--human` the landing
+plan prints as **Before merge** and **After merge**, after the composition comment.
 
 ## Identity
 
@@ -62,8 +88,8 @@ still succeeds with `structural.available: false`.
 
 `footprint --help` and `footprint --schema` are runs too: they bootstrap, write a receipt, emit
 one `command` line and the schemas footprint can emit, and close with `end`. `--help` carries
-`footprint.composition` and `parley.error`; `--schema` adds every protocol schema the writer
-itself emits.
+`footprint.composition`, `footprint.landing` and `parley.error`; `--schema` adds every protocol
+schema the writer itself emits.
 
 ## Exit status
 

@@ -8,6 +8,11 @@ import addFormats from "ajv-formats";
 import { SCHEMAS } from "@flyingrobots/parley-emit";
 
 const ROOT = resolve(import.meta.dir, "..");
+/**
+ * Every test here spawns the CLI, and one run costs seconds: Bun's default five-second timeout is
+ * shorter than three of them on a loaded machine. This raises the clock, never an assertion.
+ */
+const CLI_TIMEOUT = 60_000;
 const COMPOSITION = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.composition.schema.json"), "utf8")) as Record<string, unknown>;
 const LANDING = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.landing.schema.json"), "utf8")) as Record<string, unknown>;
 
@@ -65,7 +70,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(receipt.at(-1)).toMatchObject({ event: "end", status: 0 });
     expect(receipt.some((o) => o.event === "receipt.step" && /compare/.test(String(o.decision)))).toBe(true);
     expect(receipt.some((o) => o.event === "result" && Array.isArray(o.files))).toBe(true);
-  });
+  }, CLI_TIMEOUT);
 
   test("the head carries the resolved range with both commit ids, and inv moves with them", async () => {
     const a = await cli(["HEAD~1..HEAD"]);
@@ -80,7 +85,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(ha.inv).not.toBe(hb.inv);
     const again = headOf(await cli(["HEAD~1..HEAD"]));
     expect(again.inv).toBe(ha.inv);
-  });
+  }, CLI_TIMEOUT);
 
   test("a range with no changes is a result with zero files, not prose", async () => {
     const r = await cli(["HEAD..HEAD"]);
@@ -89,7 +94,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     const result = out.find((o) => o.event === "result") as Line & { composition: { files: number }; gut_check: { flags: string[] } };
     expect(result.composition.files).toBe(0);
     expect(result.gut_check.flags).toEqual([]);
-  });
+  }, CLI_TIMEOUT);
 
   test("a base that does not exist is a structured error and exit 2", async () => {
     const r = await cli(["no-such-ref-9f8e7d..HEAD"]);
@@ -99,14 +104,14 @@ describe("the CLI speaks the Parley output protocol", () => {
     const out = validateAll(r.stdout, "stdout");
     expect(out.at(-1)).toMatchObject({ event: "end", status: 2 });
     expect(out.some((o) => o.event === "result")).toBe(false);
-  });
+  }, CLI_TIMEOUT);
 
   test("--human prints the Markdown comment", async () => {
     const r = await cli(["HEAD~1..HEAD", "--human"]);
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("## Footprint");
     expect(r.stdout).toContain("Figures computed from `git diff --numstat`");
-  });
+  }, CLI_TIMEOUT);
 
 
   test("the landing result follows the composition result in the same run", async () => {
@@ -127,7 +132,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(landing.digest).toMatch(/^[0-9a-f]{64}$/);
     const receipt = receiptOf(out);
     expect(receipt.filter((o) => o.event === "result").length).toBe(2);
-  });
+  }, CLI_TIMEOUT);
 
   test("--human prints Before merge and After merge after the composition comment", async () => {
     const r = await cli(["HEAD~1..HEAD", "--human"]);
@@ -137,7 +142,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(r.stdout).toContain("## After merge");
     expect(r.stdout.indexOf("## Footprint")).toBeLessThan(r.stdout.indexOf("## Before merge"));
     expect(r.stdout.indexOf("## Before merge")).toBeLessThan(r.stdout.indexOf("## After merge"));
-  });
+  }, CLI_TIMEOUT);
 
   test("--help and --schema are runs that describe the tool", async () => {
     const help = await cli(["--help"]);
@@ -150,5 +155,5 @@ describe("the CLI speaks the Parley output protocol", () => {
     const s = validateAll(schema.stdout, "stdout");
     expect(s.filter((o) => o.event === "schema").length).toBeGreaterThan(2);
     receiptOf(s);
-  });
+  }, CLI_TIMEOUT);
 });
