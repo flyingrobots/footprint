@@ -10,6 +10,11 @@ so the suite needs neither git nor the network. `test/exports.test.ts` holds the
 cases, which are a pure function over graft's JSON and run without graft: its fixtures under
 `test/fixtures/` were captured from real `graft struct exports --json` runs on this repository.
 
+`test/callsites.test.ts` holds the call-site cases. The matching is a pure function over one file's
+text, so most of them need neither git nor graft; the golden case is live against this repository
+and compares footprint's answer with an independent `grep` oracle, and the edges build a throwaway
+git repository under `$TMPDIR` so a deleted file and a binary file are real rather than mocked.
+
 | ID | Requirement |
 | --- | --- |
 | OUT-1 | Every line on stdout and stderr is a JSON object that validates against its declared schema; the run opens with the bootstrap line and closes with `end` |
@@ -21,6 +26,7 @@ cases, which are a pure function over graft's JSON and run without graft: its fi
 | OUT-7 | The head carries the resolved range with both commit ids; `inv` is stable for one comparison and differs between comparisons |
 | OUT-9 | A run emits a `footprint.landing` 1.0.0 result after the composition result: separate Before merge and After merge sections, after-merge steps that cite the file and heading they were read from, a stated fallback when no document declares steps, "nothing to do after merge" when the change touches no executable surface, and a loud warning when the diff changes source and no changed file is a migration, a flag, or a version/changelog entry |
 | OUT-10 | A run emits a second result line, `footprint.blast_radius` 1.0.0, after the composition result; it validates against its schema, reaches the receipt, and `--help` declares it |
+| OUT-12 | Every exported symbol on the blast radius carries its call sites with file and line, found by footprint's own conservative whole-word identifier scan of the tracked files at head; a symbol nothing references carries an empty list rather than being dropped, and a scan that could not run is stated rather than read as an empty one. `footprint.blast_radius` moves to 1.1.0 for the additive fields |
 | OUT-11 | The export surface is parsed from graft's `graft.cli.struct_exports` 1.0.0 JSON by a pure function: a renamed export is reported removed and added, and a failed, unreadable or differently versioned answer is `available: false` with a stated reason, never a throw |
 
 | ID | Case | Oracle | Evidence | Status |
@@ -64,11 +70,28 @@ cases, which are a pure function over graft's JSON and run without graft: its fi
 | OUT-11i | The same surface twice, and a different surface | equal digests for the repeat, different for the other | `... > the digest is the same for the same surface and moves when the surface does` | implemented |
 | OUT-11j | The Markdown section for the rename fixture, the unchanged fixture, a multi-line signature and an unavailable surface | the symbols, their files and the graft subcommand appear; every table row closes with a pipe; an empty surface says no exported symbol moved; an unavailable one states the reason | `the blast-radius section of the Markdown comment > lists added, removed and signature-changed symbols with file and name`, `... > says no exported symbol moved rather than printing an empty table`, `... > states the limitation when graft is unavailable` | implemented |
 
+| OUT-12a | `graft.struct_exports.signature_change.json`, captured from the real command on 543477a of this repository, where the exported `render` in `src/render.ts` gained `review?: StructuralReview \| null`; the call sites scanned live against this working tree | for every one of the seven symbols in that surface, the `(file, line)` pairs footprint lists are exactly the pairs an independent `grep -I -n -w <symbol>` finds over `git ls-files`, and the signature change carries both signatures | planned: `call sites are checked against an independent grep oracle > every call site grep finds on a real signature change in this repository is listed` | planned |
+| OUT-12b | A symbol no file mentions, in a surface beside symbols that are referenced | it is listed with `call_sites: []`; it is not dropped, and the symbols beside it keep their sites | planned: `... > a symbol nothing references is listed with an empty list, not dropped` | planned |
+| OUT-12c | A throwaway repository where a tracked file was deleted from the working tree, and a removed symbol declared in it | the deleted file is counted under `files_skipped.unreadable` and yields no call site; the symbol is still listed; no throw | planned: `... > a tracked file that is no longer on disk is skipped and counted, not a crash` | planned |
+| OUT-12d | A throwaway repository holding a binary file whose bytes contain the symbol name | the file is counted under `files_skipped.binary`, yields no call site, and `grep -I` agrees it is not a text match | planned: `... > a binary file is skipped and counted, exactly as grep -I skips it` | planned |
+| OUT-12e | One file's text holding the identifier whole, inside a longer identifier, after an underscore, with a leading `$`, twice on one line, and in a comment and a string | the word boundary is `[A-Za-z0-9_]` on both sides, so only whole-word occurrences match; one entry per line however many times it occurs; a mention in a comment or a string is a match, because the scan cannot tell them apart; real `grep -nw` over the same text agrees line for line | planned: `the call-site scan is a pure function over one file's text > a whole-word occurrence is a call site and a substring is not`, `... > one line that mentions the symbol twice is one call site`, `... > the boundary is grep's own: a real grep agrees line for line` | planned |
+| OUT-12f | A directory that is not a git repository | `call_site_scan.available: false` with code `scan.ls_files_failed` and a detail naming the command; symbols carry no `call_sites` key at all, so an unavailable scan cannot be read as an empty one; no throw | planned: `... > a scan that could not list the tracked files is stated, not an empty list` | planned |
+| OUT-12g | A surface parsed with no scan attached | `call_site_scan.available: false` with code `scan.not_run`; symbols carry no `call_sites` | planned: `... > a surface parsed without a scan says so rather than listing empty call sites` | planned |
+| OUT-12h | The record for a scanned surface, an unavailable scan, and an unavailable surface | every line validates against `schemas/footprint.blast_radius.schema.json` at 1.1.0; `call_site_scan.method` is `identifier_scan`; `counts.call_sites` equals the total of the per-symbol lists | planned: `the record carries the call sites > the record validates against schemas/footprint.blast_radius.schema.json at 1.1.0` | planned |
+| OUT-12i | The same surface twice with the same call sites, and once with one site moved | equal digests for the repeat, different when a call site moves | planned: `... > the digest moves when a call site moves` | planned |
+| OUT-12j | The Markdown section for the signature-change fixture with sites attached, and with the scan unavailable | each symbol's row carries its call-site count and each site renders as `` `file:line` ``; a symbol with none says so; the footer states that the scan is footprint's own whole-word identifier scan, counts declarations, comments and strings, and misses dynamic dispatch; an unavailable scan states its reason instead of showing zero | planned: `the blast-radius section of the Markdown comment > call sites are listed with file and line under each symbol`, `... > an unavailable call-site scan states its reason rather than reading as no call sites` | planned |
+| OUT-12k | `HEAD~1..HEAD` against this repository, and `--help` | the blast-radius line is `footprint.blast_radius` 1.1.0 and validates; when the surface is available every listed symbol carries a `call_sites` array and `call_site_scan.available` is true with a non-zero `files_scanned`; a step says how the call sites were found; `--human` prints the call sites; `--help` declares `footprint.blast_radius@1.1.0` | planned: `the CLI speaks the Parley output protocol > the blast-radius result carries the call sites of every symbol it lists` | planned |
+
 ## Known gaps
 
 - The structural branch is exercised with whatever graft the test machine has; no test pins
   `structural.available: true`, because graft is optional and the test must pass without it. The
   same holds for the blast radius: OUT-8a accepts either branch from the live CLI, and the
   export-surface behavior is pinned by OUT-9's fixtures instead.
+- The call-site scan is whole-word identifier matching, so the golden case pins footprint's answer
+  against `grep` and nothing else. No test distinguishes a call from a mention in a comment, a
+  string or the declaration itself, because the scan cannot: that is the stated limitation, not a
+  gap in the evidence. Dynamic dispatch and a re-export under another name are invisible to it and
+  no test claims otherwise.
 - No test asserts that graft's live output still matches the fixtures. A graft release that changed
   the shape under the same `_schema` version would be caught only by OUT-8a's `counts` invariant.
