@@ -20,7 +20,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   judgement: [`docs/topics/landing/README.md`](docs/topics/landing/README.md).
   (flyingrobots/footprint#3)
 - **Blast radius: the export-surface diff.** A second result line per run,
-  `footprint.blast_radius` 1.0.0 (`schemas/footprint.blast_radius.schema.json`), emitted after the
+  `footprint.blast_radius` (`schemas/footprint.blast_radius.schema.json`), emitted after the
   composition result, listing the exported symbols the change added, removed and signature-changed,
   each with its file and name. `--human` gains a `## Blast radius` section. The facts come from
   graft's CLI contract `graft struct exports <base-ref> <head-ref> --json`, bound to `_schema`
@@ -29,6 +29,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   `exports.available: false` with a `reason` — the section is stated, never omitted — and a
   `graft.exports_failed` warning is emitted when graft resolved but could not be read.
   (flyingrobots/footprint#9)
+  - **1.1.0** (still unreleased, so recorded in this same entry rather than a new one): a required
+    `unanalysed_languages` field names the changed source files, by extension with a count, in
+    languages footprint does not recognise as one graft's grammars can parse — present and empty
+    when every changed file was in a supported language, never omitted. Independent of `exports`:
+    a parse failure in a *supported* language is never counted, because detection is extension-only
+    and never looks at whether graft ran or what it returned. `--human`'s `## Blast radius` section
+    states it alongside the symbol list. (flyingrobots/footprint#12)
 - `docs/topics/blast-radius/README.md`: what the export-surface diff lists, which graft contract it
   comes from, and the two failure modes it inherits (re-exports read as changes, dynamic dispatch
   invisible).

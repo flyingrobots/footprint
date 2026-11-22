@@ -80,19 +80,45 @@ A different contract version is a stated limitation, never a crash and never a g
 resolved but could not be read, the run also emits a `graft.exports_failed` warning on stderr and
 still exits 0.
 
+## Languages that were not analysed
+
+tree-sitter has grammars for some languages; a changed file in another language is invisible to
+symbol analysis. Silently skipping it would read as "nothing moved", so `unanalysed_languages`
+names the gap: the changed source files whose extension footprint does not recognise as one
+graft's grammars can parse, grouped by extension with a count. `[]`, present rather than absent,
+when every changed file was in a supported language.
+
+This is independent of `exports` and of whether graft ran at all: it is a static fact about the
+extension, checked against a list footprint keeps of its own, mirroring graft's tree-sitter
+language support. graft does not publish that list through its package exports map or any CLI
+contract, so footprint's copy is kept by hand and can drift if graft's grammar coverage changes
+before this list is updated — a decision the owner may want to make differently, for example by
+asking graft to expose its supported-language set through a versioned CLI contract instead.
+
+Because detection never looks at `exports`, a changed file in a *supported* language is never
+counted here, even when graft failed to parse it, failed to resolve, or the diff for that file had
+no symbol to report. Those are different, already-reported outcomes (`exports.available: false`,
+or simply nothing in `added`/`removed`/`signature_changed`) — not a missing grammar.
+
+Only files `classify()` calls `source` are checked: docs, config, tests, CI and generated files
+were never going to be symbol-analysed regardless of extension, so flagging them would be noise,
+not signal. flyingrobots/footprint#12's Definition of Done: a fixture with a Haskell (`.hs`) file
+reports it.
+
 ## Reading it
 
 ```bash
 footprint origin/main --human | gh pr comment 42 --body-file -   # the Markdown section
 footprint origin/main | jq -c 'select(._schema.id == "footprint.blast_radius") | .exports.counts'
+footprint origin/main | jq -c 'select(._schema.id == "footprint.blast_radius") | .unanalysed_languages'
 ```
 
 The field-by-field reference is in [Output](../output/README.md); the contract is
-`schemas/footprint.blast_radius.schema.json`, and the cases that hold it are OUT-8 and OUT-9 in the
-[output test plan](../output/test-plan.md).
+`schemas/footprint.blast_radius.schema.json`, and the cases that hold it are OUT-10, OUT-11 and
+OUT-12 in the [output test plan](../output/test-plan.md).
 
 ## What this is not
 
-Not the call sites of those symbols, not a grouping by system, and not a list of the languages
-graft could not parse. Those are flyingrobots/footprint#10, #11 and #12, and they will land as
-fields on this result with a schema version bump.
+Not the call sites of those symbols, and not a grouping by system. Those are
+flyingrobots/footprint#10 and #11, and they will land as fields on this result with a schema
+version bump.

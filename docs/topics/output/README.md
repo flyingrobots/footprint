@@ -61,7 +61,7 @@ read and how the guard rule is computed is [landing](../landing/README.md).
 The receipt copy also carries `markdown`, the two `--human` sections. Under `--human` the landing
 plan prints as **Before merge** and **After merge**, after the composition comment.
 
-### `footprint.blast_radius` 1.0.0
+### `footprint.blast_radius` 1.1.0
 
 The export-surface diff, emitted after the composition result in the same run
 (`schemas/footprint.blast_radius.schema.json`). What it lists, and the graft contract it comes
@@ -77,7 +77,8 @@ from, is [Blast radius](../blast-radius/README.md); these are its fields:
 | `exports.counts` | `added`, `removed`, `signature_changed` — the lengths of those three lists, and footprint's only arithmetic here |
 | `exports.semver_impact` | graft's own judgement, verbatim; `null` when it reported none. footprint derives no semver impact. |
 | `exports.contract` | The graft CLI contract that answered: `graft.cli.struct_exports` 1.0.0 |
-| `digest` | SHA-256 over the canonical JSON of `range` and `exports` |
+| `unanalysed_languages` | Changed source files in languages footprint does not recognise as one graft's grammars can parse, grouped by extension with a count. Present and empty when every changed file was in a supported language — never omitted. Independent of `exports`: a parse failure in a *supported* language is never counted here, because this is extension-only and does not depend on whether graft ran or what it returned. |
+| `digest` | SHA-256 over the canonical JSON of `range`, `exports` and `unanalysed_languages` |
 
 Everything under `added`, `removed` and `signature_changed` is graft's, passed through unchanged.
 The receipt copy carries the `markdown` of this section.
