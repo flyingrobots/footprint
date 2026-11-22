@@ -5,8 +5,8 @@ and validates every line of every stream against the schema for its exact `(id, 
 the protocol schemas shipped by `@flyingrobots/parley-emit`,
 `schemas/footprint.composition.schema.json` and `schemas/footprint.overlap.schema.json`. The
 computation behind the second result lives in `test/overlap.test.ts`, over
-`{number, title, isDraft, files}` records, so no test needs the network or an open pull request on
-this repository.
+`{number, title, isDraft, files}` records and over the text `gh` writes when it fails, so no test
+needs the network or an open pull request on this repository.
 
 | ID | Requirement |
 | --- | --- |
@@ -43,6 +43,8 @@ this repository.
 | OUT-8m | An unavailable overlap | `available: false` with the code, the reason and a summary that states the limitation | `the stated limitation > an unavailable overlap carries a code and a reason, and is still a result` | implemented |
 | OUT-8n | `HEAD~1..HEAD` with a PATH that has no `gh` | two results in order, composition then overlap; `available: false`, code `gh.not_found`; exit 0; the receipt carries the second result and an overlap step | `the CLI speaks the Parley output protocol > overlap is a second result after the composition, and states its limitation when gh is unavailable` | implemented |
 | OUT-8o | The same run with `--human` | the Markdown carries the `### Open pull requests` section and the stated limitation | `the CLI speaks the Parley output protocol > --human carries the overlap section, including the stated limitation` | implemented |
+| OUT-8p | Each thing `gh` says when it will not list: `gh auth login`, not logged in, HTTP 401, rate limit exceeded, no known GitHub host, anything else | the codes `gh.unauthenticated` (three cases), `gh.rate_limited`, `gh.no_remote`, `gh.list_failed`, and `gh`'s own message kept verbatim as the reason | `why gh could not answer > "<message>" is <code>`, six parameterised cases | implemented |
+| OUT-8q | A failure `gh` wrote nothing for, and one it wrote several lines for | the reason names the exit code; the lines are kept, joined with `; ` | `why gh could not answer > a silent failure still carries a reason, with the exit code`, `why gh could not answer > a multi-line message is kept whole` | implemented |
 
 ## Known gaps
 

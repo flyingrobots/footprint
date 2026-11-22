@@ -3,6 +3,7 @@
 // requests.
 import { describe, expect, test } from "bun:test";
 import { computeOverlap, mergeWaves, sharedFiles, unavailableOverlap, type PullRequest } from "../src/overlap.ts";
+import { classifyFailure } from "../src/pulls.ts";
 
 function pr(number: number, files: readonly string[] | null, extra: Partial<PullRequest> = {}): PullRequest {
   return { number, title: `pull request ${number}`, isDraft: false, files, ...extra };
@@ -116,5 +117,33 @@ describe("the stated limitation", () => {
       reason: "gh is not installed or not on PATH",
       summary: "Cross-pull-request overlap unavailable: gh is not installed or not on PATH.",
     });
+  });
+});
+
+// classifyFailure is pure over the text gh wrote: no gh is run here either.
+describe("why gh could not answer", () => {
+  const cases: Array<[string, string]> = [
+    ["gh auth login", "gh.unauthenticated"],
+    ["You are not logged in to any GitHub hosts", "gh.unauthenticated"],
+    ["HTTP 401: Bad credentials", "gh.unauthenticated"],
+    ["API rate limit exceeded for user ID 1", "gh.rate_limited"],
+    ["none of the git remotes configured for this repository point to a known GitHub host", "gh.no_remote"],
+    ["something else entirely", "gh.list_failed"],
+  ];
+  for (const [said, code] of cases) {
+    test(`${JSON.stringify(said)} is ${code}`, () => {
+      const f = classifyFailure(said, 1);
+      expect(f.code).toBe(code);
+      expect(f.reason).toBe(said);
+      expect(unavailableOverlap(f.code, f.reason).summary).toBe(`Cross-pull-request overlap unavailable: ${said}.`);
+    });
+  }
+
+  test("a silent failure still carries a reason, with the exit code", () => {
+    expect(classifyFailure("   \n", 4).reason).toBe("(no message, exit 4)");
+  });
+
+  test("a multi-line message is kept whole", () => {
+    expect(classifyFailure("first line\nsecond line\n", 1).reason).toBe("first line; second line");
   });
 });
