@@ -65,6 +65,21 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(receipt.some((o) => o.event === "result" && Array.isArray(o.files))).toBe(true);
   });
 
+  test("the head carries the resolved range with both commit ids, and inv moves with them", async () => {
+    const a = await cli(["HEAD~1..HEAD"]);
+    const b = await cli(["HEAD~2..HEAD~1"]);
+    const headOf = (r: { stdout: string }) => receiptOf(validateAll(r.stdout, "stdout"))[0] as Line & { resolved: Record<string, unknown>; inv?: string };
+    const ha = headOf(a), hb = headOf(b);
+    expect(ha.resolved.range).toBe("HEAD~1..HEAD");
+    expect(ha.resolved.base_commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(ha.resolved.head_commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(ha.resolved.base_commit).not.toBe(ha.resolved.head_commit);
+    expect(ha.inv).toMatch(/^[0-9a-f]{64}$/);
+    expect(ha.inv).not.toBe(hb.inv);
+    const again = headOf(await cli(["HEAD~1..HEAD"]));
+    expect(again.inv).toBe(ha.inv);
+  });
+
   test("a range with no changes is a result with zero files, not prose", async () => {
     const r = await cli(["HEAD..HEAD"]);
     expect(r.status).toBe(0);

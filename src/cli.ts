@@ -65,5 +65,20 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   run.result(compositionRecord(range, composition, gut, review), COMPOSITION_TYPE, { files: changes, markdown });
 }
 
-const status = await main(tool, ["footprint", ...process.argv.slice(2)], footprint);
+/**
+ * The resolved interpretation (spec §5), which is also the inv preimage: the range after the
+ * default base is applied, both ends as commit ids, and the graft setting. The commit ids are the
+ * content addresses of the subject matter, so inv moves when the compared trees move; without
+ * them a footprint run would declare no inputs and its inv would cover the arguments alone.
+ */
+async function resolved(args: string[]): Promise<Record<string, unknown>> {
+  const given = args.find((a) => !a.startsWith("-")) ?? null;
+  const spec = given ?? (await defaultBase());
+  const range = spec === null ? null : spec.includes("..") ? spec : `${spec}...HEAD`;
+  const ends = range === null ? [null, null] : range.split(/\.{2,3}/);
+  const rev = async (ref: string | null) => (ref === null ? null : (await $`git rev-parse --verify --quiet ${ref}`.quiet().nothrow()).text().trim() || null);
+  return { command: "footprint", base: given, default_base: given === null ? spec : null, range, base_commit: await rev(ends[0] ?? null), head_commit: await rev(ends[1] || "HEAD"), graft: process.env.FOOTPRINT_GRAFT ?? null };
+}
+
+const status = await main(tool, ["footprint", ...process.argv.slice(2)], footprint, { resolved });
 process.exit(status);

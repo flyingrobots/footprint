@@ -10,7 +10,7 @@ through `@flyingrobots/parley-emit`. This page is the reference for what a calle
 | --- | --- |
 | stdout | The bootstrap line, one `result` line, the `end` line. JSON Lines, always; nothing depends on a TTY. |
 | stderr | Structured `error` and `warning` lines, and nothing else. |
-| receipt | `.parley/receipts/<run>.jsonl` under the working directory: the head with `argv` and the resolved interpretation, one `receipt.step` per decision, the file listing and the Markdown beside the result, and `end`. |
+| receipt | `.parley/receipts/<run>.jsonl` under the working directory: the head with `argv` and the resolved interpretation (range, both commit ids, the graft setting), one `receipt.step` per decision, the file listing and the Markdown beside the result, and `end`. |
 
 `--human` (alias `--humanize`) prints the Markdown comment instead, and only it on success, so
 this still works:
@@ -33,6 +33,18 @@ One line, schema `footprint.composition` 1.0.0 (`schemas/footprint.composition.s
 
 The receipt copy of the same line also carries `files` (the listing from `git diff --numstat`) and
 `markdown` (what `--human` prints).
+
+## Identity
+
+Every line carries the run id. The bootstrap line and the receipt head also carry `inv`, the
+identity of the question: SHA-256 over the tool name and version, the command, and the resolved
+interpretation, which is the range after the default base is applied, **both ends as commit ids**,
+and the `FOOTPRINT_GRAFT` setting. footprint declares no file inputs, because the subject matter
+is the two commits rather than files on disk; the commit ids are its content addresses, so the
+same `inv` means the same comparison of the same trees, and a new commit on either end changes it.
+What `inv` does not cover: which graft version answered, so a structural section can differ under
+one `inv` when graft is upgraded. The derivation is the writer's, documented in
+`@flyingrobots/parley-emit`'s README.
 
 ## Errors
 

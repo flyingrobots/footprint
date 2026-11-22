@@ -12,6 +12,7 @@ the protocol schemas shipped by `@flyingrobots/parley-emit` and `schemas/footpri
 | OUT-4 | A git failure is a structured error with a stable code and exit 2 |
 | OUT-5 | `--human` prints the Markdown comment |
 | OUT-6 | `--help` and `--schema` are runs that describe the tool |
+| OUT-7 | The head carries the resolved range with both commit ids; `inv` is stable for one comparison and differs between comparisons |
 
 | ID | Case | Oracle | Evidence | Status |
 | --- | --- | --- | --- | --- |
@@ -20,6 +21,7 @@ the protocol schemas shipped by `@flyingrobots/parley-emit` and `schemas/footpri
 | OUT-3a | `HEAD..HEAD` | `composition.files` is 0 and `gut_check.flags` is empty; exit 0 | `... > a range with no changes is a result with zero files, not prose` | implemented |
 | OUT-4a | `no-such-ref-9f8e7d..HEAD` | `error` with code `git.diff_failed` on stderr; `end` status 2; no result; exit 2 | `... > a base that does not exist is a structured error and exit 2` | implemented |
 | OUT-5a | `HEAD~1..HEAD --human` | stdout contains the `## Footprint` comment and its computed-figures footer | `... > --human prints the Markdown comment` | implemented |
+| OUT-7a | `HEAD~1..HEAD` twice and `HEAD~2..HEAD~1` once | `resolved.range`, 40-hex `base_commit` and `head_commit`; equal `inv` for the repeat, different for the other range | `... > the head carries the resolved range with both commit ids, and inv moves with them` | implemented |
 | OUT-6a | `--help`, `--schema` | runs with one `command` line; `--help` carries exactly the result and error schemas; `--schema` more; receipts exist | `... > --help and --schema are runs that describe the tool` | implemented |
 
 ## Known gaps

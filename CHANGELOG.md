@@ -21,6 +21,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 - `schemas/footprint.composition.schema.json`, validated against real output in `test/cli.test.ts`.
 - `--help` and `--schema` as runs that describe the tool.
+- The receipt head's resolved interpretation carries the range after the default base, both
+  commit ids and the graft setting, so `inv` identifies the comparison of two trees rather than
+  the arguments alone.
 
 ## [0.1.0] — 2026-11-22
 
