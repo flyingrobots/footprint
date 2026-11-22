@@ -43,7 +43,8 @@ and the `FOOTPRINT_GRAFT` setting. footprint declares no file inputs, because th
 is the two commits rather than files on disk; the commit ids are its content addresses, so the
 same `inv` means the same comparison of the same trees, and a new commit on either end changes it.
 What `inv` does not cover: which graft version answered, so a structural section can differ under
-one `inv` when graft is upgraded. The derivation is the writer's, documented in
+one `inv` when graft is upgraded. Resolving the range costs two `git rev-parse` calls before the
+bootstrap line is written; that is the only work done before it. The derivation is the writer's, documented in
 `@flyingrobots/parley-emit`'s README.
 
 ## Errors
