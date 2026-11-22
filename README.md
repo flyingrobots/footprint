@@ -42,10 +42,13 @@ With [graft](https://github.com/flyingrobots/graft) available, the report adds w
 tell you — whether a source file's **symbols** actually moved, or whether the diff was only
 formatting.
 
-It is an `optionalDependency` on purpose. `bun install` gets it; `npm install` may skip it on
-newer Node, because a transitive native dependency has no prebuild there. Either way the install
-succeeds, and without graft the report says the structural section is unavailable rather than
-quietly omitting it.
+Both `bun install` and `npm install` get it. A transitive native dependency of graft has no
+prebuild on newer Node, so this repo's `.npmrc` skips dependency install scripts — nothing on the
+structural path needs that native module. graft is also declared optional, so even an install that
+cannot read that `.npmrc` succeeds rather than failing.
+
+If graft is genuinely unavailable, the report says the structural section is unavailable rather
+than quietly omitting it. A degraded run should never read as a clean one.
 
 ## Status
 
