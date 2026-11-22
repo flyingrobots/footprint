@@ -103,6 +103,12 @@ The codes are listed in [the output reference](../output/README.md#errors).
   the limit, `truncated` is true, a `gh.list_truncated` warning is emitted, and the comment says
   there may be more.
 
+## The contract ledger
+
+The requirements and evidence for this result live with the rest of the output contract, in
+[`docs/topics/output/test-plan.md`](../output/test-plan.md) as OUT-8 and its rows: one result type
+per message, one ledger for the messages.
+
 ## Reading it
 
 The JSON Lines result is `footprint.overlap` 1.0.0 — fields in
