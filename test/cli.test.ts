@@ -9,12 +9,14 @@ import { SCHEMAS } from "@flyingrobots/parley-emit";
 
 const ROOT = resolve(import.meta.dir, "..");
 const COMPOSITION = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.composition.schema.json"), "utf8")) as Record<string, unknown>;
+const LANDING = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.landing.schema.json"), "utf8")) as Record<string, unknown>;
 
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 addFormats(ajv);
 const byPair = new Map<string, ReturnType<typeof ajv.compile>>();
 for (const s of SCHEMAS) byPair.set(`${s.id}@${s.version}`, ajv.compile(s.schema));
 byPair.set("footprint.composition@1.0.0", ajv.compile(COMPOSITION));
+byPair.set("footprint.landing@1.0.0", ajv.compile(LANDING));
 
 type Line = Record<string, unknown> & { _schema: { id: string; version: string } };
 
@@ -106,13 +108,44 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(r.stdout).toContain("Figures computed from `git diff --numstat`");
   });
 
+
+  test("the landing result follows the composition result in the same run", async () => {
+    const r = await cli(["HEAD~1..HEAD"]);
+    expect(r.status).toBe(0);
+    const out = validateAll(r.stdout, "stdout");
+    const results = out.filter((o) => o.event === "result");
+    expect(results.map((o) => `${o._schema.id}@${o._schema.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0"]);
+    const landing = results[1] as Line & {
+      before_merge: { unguarded: boolean; guards: unknown[]; unguarded_because: string; items: unknown[] };
+      after_merge: { read: { file: string; present: boolean }[]; steps: unknown[]; declared: boolean; nothing_to_do: boolean; statement: string };
+      digest: string;
+    };
+    expect(typeof landing.before_merge.unguarded).toBe("boolean");
+    expect(landing.before_merge.unguarded_because.length).toBeGreaterThan(0);
+    expect(landing.after_merge.read.map((d) => d.file)).toEqual(["RELEASE.md", "AGENTS.md"]);
+    expect(landing.after_merge.statement.length).toBeGreaterThan(0);
+    expect(landing.digest).toMatch(/^[0-9a-f]{64}$/);
+    const receipt = receiptOf(out);
+    expect(receipt.filter((o) => o.event === "result").length).toBe(2);
+  });
+
+  test("--human prints Before merge and After merge after the composition comment", async () => {
+    const r = await cli(["HEAD~1..HEAD", "--human"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("## Footprint");
+    expect(r.stdout).toContain("## Before merge");
+    expect(r.stdout).toContain("## After merge");
+    expect(r.stdout.indexOf("## Footprint")).toBeLessThan(r.stdout.indexOf("## Before merge"));
+    expect(r.stdout.indexOf("## Before merge")).toBeLessThan(r.stdout.indexOf("## After merge"));
+  });
+
   test("--help and --schema are runs that describe the tool", async () => {
     const help = await cli(["--help"]);
     expect(help.status).toBe(0);
     const h = validateAll(help.stdout, "stdout");
     expect(h[0]!.event).toBe("run"); expect(h.at(-1)!.event).toBe("end");
     expect(h.filter((o) => o.event === "command").map((o) => o.name)).toEqual(["footprint"]);
-    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "parley.error@2.0.0"]);
+    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "parley.error@2.0.0"]);
     const schema = await cli(["--schema"]);
     const s = validateAll(schema.stdout, "stdout");
     expect(s.filter((o) => o.event === "schema").length).toBeGreaterThan(2);
