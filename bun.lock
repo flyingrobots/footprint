@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "@flyingrobots/footprint",
+      "dependencies": {
+        "@flyingrobots/parley-emit": "^0.1.0",
+      },
       "devDependencies": {
         "ajv": "^8.20.0",
         "ajv-formats": "^3.0.1",
@@ -40,6 +43,8 @@
     "@flyingrobots/bijou-tui": ["@flyingrobots/bijou-tui@4.4.1", "", { "dependencies": { "@flyingrobots/bijou-i18n": "4.4.1" }, "peerDependencies": { "@flyingrobots/bijou": "4.4.1" } }, "sha512-hTSERl6pwUVlwaT5WPaQSfdZl+N0VAcIP47lUvZfKaFCMx1KMRUHapDlyco1CWzW+iRxV8RYTAk3z3cBLXe0nw=="],
 
     "@flyingrobots/graft": ["@flyingrobots/graft@0.14.0", "", { "dependencies": { "@flyingrobots/bijou": "^4.4.1", "@flyingrobots/bijou-node": "^4.4.1", "@git-stunts/git-warp": "^16.0.0", "@git-stunts/plumbing": "^2.8.0", "@modelcontextprotocol/sdk": "^1.29.0", "picomatch": "^4.0.4", "tree-sitter-graphql-grammar-wasm": "1.0.1", "tree-sitter-wasms": "0.1.13", "web-tree-sitter": "^0.20.8", "zod": "4.3.6" }, "bin": { "graft": "bin/graft.js", "git-graft": "bin/graft.js" } }, "sha512-qrCCsyn+ySnCyaU3jxV0YIAc2z1jIp6MiHXhEwkC//gsDaL34MGyLNIt9n7COmPpDZGR45lvFS2uRZpGgAqK9w=="],
+
+    "@flyingrobots/parley-emit": ["@flyingrobots/parley-emit@0.1.0", "", {}, "sha512-aEGRgTRbHg1RNjzIHxNerM4Dw+9SmTPaPFCDM7HVVRgQaetBvSPF/xEjnD+BEWM7O8R3bu4tXeYwJOqrYvksJQ=="],
 
     "@git-stunts/alfred": ["@git-stunts/alfred@0.4.0", "", {}, "sha512-80/W7x4pZYRyJB/AQs89aDbi+BcA7/N8G67zdJbKU7lbdrbbtglnY15/iSU66xvLD7/nFTTk9nGNhpw30h6QEQ=="],
 
