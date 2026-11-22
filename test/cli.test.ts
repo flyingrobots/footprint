@@ -23,7 +23,7 @@ const byPair = new Map<string, ReturnType<typeof ajv.compile>>();
 for (const s of SCHEMAS) byPair.set(`${s.id}@${s.version}`, ajv.compile(s.schema));
 byPair.set("footprint.composition@1.0.0", ajv.compile(COMPOSITION));
 byPair.set("footprint.landing@1.0.0", ajv.compile(LANDING));
-byPair.set("footprint.blast_radius@1.0.0", ajv.compile(BLAST_RADIUS));
+byPair.set("footprint.blast_radius@1.1.0", ajv.compile(BLAST_RADIUS));
 
 type Line = Record<string, unknown> & { _schema: { id: string; version: string } };
 
@@ -85,13 +85,13 @@ describe("the CLI speaks the Parley output protocol", () => {
     const results = out.filter((o) => o.event === "result");
     expect(results.map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius"]);
     const blast = results[2] as Line & { range: string; digest: string; exports: Record<string, unknown> };
-    expect(blast._schema).toEqual({ id: "footprint.blast_radius", version: "1.0.0" });
+    expect(blast._schema).toEqual({ id: "footprint.blast_radius", version: "1.1.0" });
     expect(blast.range).toBe("HEAD~1..HEAD");
     expect(blast.digest).toMatch(/^[0-9a-f]{64}$/);
     const ex = blast.exports as { available: boolean; reason?: { code: string; detail: string }; added?: unknown[]; removed?: unknown[]; signature_changed?: unknown[]; counts?: Record<string, number>; contract?: unknown };
     if (ex.available) {
       expect(ex.contract).toEqual({ id: "graft.cli.struct_exports", version: "1.0.0" });
-      expect(ex.counts).toEqual({ added: ex.added!.length, removed: ex.removed!.length, signature_changed: ex.signature_changed!.length });
+      expect(ex.counts).toMatchObject({ added: ex.added!.length, removed: ex.removed!.length, signature_changed: ex.signature_changed!.length });
     } else {
       // graft is optional: an unavailable section is stated, never omitted.
       expect(typeof ex.reason!.code).toBe("string");
@@ -103,6 +103,44 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(human.status).toBe(0);
     expect(human.stdout).toContain("## Blast radius");
     expect(human.stdout).toContain("## Footprint");
+  }, CLI_TIMEOUT);
+
+  test("the blast-radius result carries the call sites of every symbol it lists", async () => {
+    const r = await cli(["HEAD~1..HEAD"]);
+    expect(r.status).toBe(0);
+    const out = validateAll(r.stdout, "stdout");
+    const blast = out.filter((o) => o.event === "result")[2] as Line & { exports: Record<string, unknown> };
+    const ex = blast.exports as {
+      available: boolean;
+      added?: Array<Record<string, unknown>>;
+      removed?: Array<Record<string, unknown>>;
+      signature_changed?: Array<Record<string, unknown>>;
+      counts?: Record<string, number>;
+      call_site_scan?: { available: boolean; method: string; files_scanned?: number; files_skipped?: Record<string, number>; reason?: { code: string; detail: string } };
+    };
+    if (!ex.available) {
+      // graft is optional; with no surface there is nothing to look up and no scan is claimed.
+      expect(ex.call_site_scan).toBeUndefined();
+      return;
+    }
+    const scan = ex.call_site_scan!;
+    expect(scan.method).toBe("identifier_scan");
+    expect(scan.available).toBe(true);
+    expect(scan.files_scanned).toBeGreaterThan(10);
+    const symbols = [...ex.added!, ...ex.removed!, ...ex.signature_changed!];
+    let total = 0;
+    for (const s of symbols) {
+      const sites = s.call_sites as Array<{ file: string; line: number }> | undefined;
+      expect(Array.isArray(sites)).toBe(true);
+      for (const site of sites!) {
+        expect(typeof site.file).toBe("string");
+        expect(Number.isInteger(site.line) && site.line > 0).toBe(true);
+      }
+      total += sites!.length;
+    }
+    expect(ex.counts!.call_sites).toBe(total);
+    const receipt = receiptOf(out);
+    expect(receipt.some((o) => o.event === "receipt.step" && /call site/i.test(String(o.decision)))).toBe(true);
   }, CLI_TIMEOUT);
 
   test("the head carries the resolved range with both commit ids, and inv moves with them", async () => {
@@ -152,7 +190,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(r.status).toBe(0);
     const out = validateAll(r.stdout, "stdout");
     const results = out.filter((o) => o.event === "result");
-    expect(results.map((o) => `${o._schema.id}@${o._schema.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.0.0"]);
+    expect(results.map((o) => `${o._schema.id}@${o._schema.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.1.0"]);
     const landing = results[1] as Line & {
       before_merge: { unguarded: boolean; guards: unknown[]; unguarded_because: string; items: unknown[] };
       after_merge: { read: { file: string; present: boolean }[]; steps: unknown[]; declared: boolean; nothing_to_do: boolean; statement: string };
@@ -183,7 +221,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     const h = validateAll(help.stdout, "stdout");
     expect(h[0]!.event).toBe("run"); expect(h.at(-1)!.event).toBe("end");
     expect(h.filter((o) => o.event === "command").map((o) => o.name)).toEqual(["footprint"]);
-    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.0.0", "parley.error@2.0.0"]);
+    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.1.0", "parley.error@2.0.0"]);
     const schema = await cli(["--schema"]);
     const s = validateAll(schema.stdout, "stdout");
     expect(s.filter((o) => o.event === "schema").length).toBeGreaterThan(2);
