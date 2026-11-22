@@ -5,6 +5,7 @@ import type { Composition, FileChange } from "./footprint.ts";
 import { mermaidPie } from "./footprint.ts";
 import { classify } from "./classify.ts";
 import { structuralSummary, type StructuralReview } from "./graft.ts";
+import type { BeforeMergeKind, Landing } from "./landing.ts";
 
 export interface GutCheck {
   readonly headline: string;
@@ -101,5 +102,35 @@ export function render(
   if (listing !== "") out.push(details(`Files (${c.files})`, listing), "");
 
   out.push("<sub>Figures computed from `git diff --numstat`. Composition is a sanity check, not a verdict.</sub>");
+  return out.join("\n");
+}
+
+const BEFORE_MERGE_LABEL: Record<BeforeMergeKind, string> = {
+  migration: "Migration.",
+  generated: "Generated files.",
+  regenerate: "May need regenerating.",
+};
+
+/**
+ * The two landing sections of the comment. Separate from `render` and from the composition result:
+ * one says what the change is, this says what it takes to land it. The unguarded warning is a
+ * GitHub alert because it is the one line here a reader must not scroll past — it is still an
+ * observation about paths, not a verdict, and the sentence says which rule found it.
+ */
+export function renderLanding(l: Landing): string {
+  // Opens with a blank line: this follows the composition comment on the same stream, and two
+  // Markdown blocks run together without one.
+  const out: string[] = ["", "## Before merge", ""];
+  if (l.before_merge.unguarded) {
+    out.push("> [!WARNING]", `> **Nothing in this change guards it.** ${l.before_merge.unguarded_because}`, "");
+  }
+  for (const item of l.before_merge.items) out.push(`- **${BEFORE_MERGE_LABEL[item.kind]}** ${item.says}`);
+  if (l.before_merge.items.length > 0) out.push("");
+  if (!l.before_merge.unguarded && l.before_merge.items.length === 0) out.push(`- ${l.before_merge.unguarded_because}`, "");
+
+  out.push("## After merge", "", l.after_merge.statement, "");
+  for (const s of l.after_merge.steps) out.push(`- [ ] ${s.step} <sub>— \`${s.file}\` › ${s.heading}</sub>`);
+  if (l.after_merge.steps.length > 0) out.push("");
+  out.push("<sub>After-merge steps are read from this repository's own `RELEASE.md` and `AGENTS.md`, never invented. The guard rule is path patterns, documented in footprint's `docs/topics/landing/README.md`.</sub>");
   return out.join("\n");
 }

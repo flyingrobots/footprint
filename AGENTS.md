@@ -27,6 +27,10 @@ repository and validates every stream line by line. Do not write to stdout or st
 go through the run (`run.result`, `run.step`, `run.warning`, `run.error`). Prose is `--human`
 only. A new field on the result is a schema version bump.
 
+One result type per message: a second answer in the same run is its own type with its own schema
+and its own version, declared in the command's `emits`, not a field bolted onto an existing one.
+`footprint.landing` is the first of those; `schemas/` holds one file per type.
+
 The package is versioned on its own and the schemas shipped inside it are the parley drafts at a
 pinned commit; `bun install` needs the package on npm, or a `bun link` to a local checkout of
 `flyingrobots/parley` while it is not.
