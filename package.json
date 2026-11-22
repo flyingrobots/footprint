@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "description": "What a change actually touches: composition, blast radius, and how to land it",
   "type": "module",
-  "bin": { "footprint": "./src/cli.ts" },
-  "scripts": { "test": "bun test" }
+  "bin": {
+    "footprint": "./src/cli.ts"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@flyingrobots/graft": "^0.14.0"
+  }
 }

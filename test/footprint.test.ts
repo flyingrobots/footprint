@@ -1,6 +1,8 @@
 import { expect, test, describe } from "bun:test";
 import { classify } from "../src/classify.ts";
 import { compose, parseNumstat, mermaidPie } from "../src/footprint.ts";
+import { render } from "../src/render.ts";
+import { structuralSummary } from "../src/graft.ts";
 
 describe("classify", () => {
   test("orders rules so a test fixture is a test, not a source file", () => {
@@ -96,5 +98,53 @@ describe("mermaidPie", () => {
 
   test("an empty composition renders nothing rather than an empty chart", () => {
     expect(mermaidPie(compose([]))).toBe("");
+  });
+});
+
+describe("structuralSummary", () => {
+  test("counts files by shape and sums symbol deltas", () => {
+    const summary = structuralSummary({
+      files: [
+        { path: "a.ts", category: "structural", added: 2, removed: 1, changed: 3 },
+        { path: "b.ts", category: "formatting" },
+        { path: "c.md", category: "docs" },
+      ],
+      breakingChanges: [],
+    });
+    expect(summary).toEqual({
+      structural: 1, formatting: 1, symbolsAdded: 2, symbolsRemoved: 1, symbolsChanged: 3,
+    });
+  });
+
+  test("a review with no structural files reports zeroes, not NaN", () => {
+    expect(structuralSummary({ files: [], breakingChanges: [] })).toEqual({
+      structural: 0, formatting: 0, symbolsAdded: 0, symbolsRemoved: 0, symbolsChanged: 0,
+    });
+  });
+});
+
+describe("render with and without graft", () => {
+  const changes = parseNumstat("10\t2\tsrc/a.ts");
+  test("states the limitation when graft is unavailable rather than hiding it", () => {
+    const out = render(compose(changes), changes, "a...b", null);
+    expect(out).toContain("Structural analysis unavailable");
+  });
+
+  test("reports structural counts when graft is available", () => {
+    const out = render(compose(changes), changes, "a...b", {
+      files: [{ path: "src/a.ts", category: "structural", added: 2, removed: 0, changed: 0 }],
+      breakingChanges: [],
+    });
+    expect(out).toContain("1 file changed shape");
+    expect(out).toContain("+2/-0/~0 symbols");
+    expect(out).not.toContain("unavailable");
+  });
+
+  test("surfaces breaking changes in the gut check", () => {
+    const out = render(compose(changes), changes, "a...b", {
+      files: [{ path: "src/a.ts", category: "structural", added: 0, removed: 1, changed: 0 }],
+      breakingChanges: ["removed export foo"],
+    });
+    expect(out).toContain("1 breaking change(s)");
   });
 });

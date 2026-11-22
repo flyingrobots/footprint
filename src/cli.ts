@@ -2,6 +2,7 @@
 import { $ } from "bun";
 import { compose, parseNumstat } from "./footprint.ts";
 import { render } from "./render.ts";
+import { resolveGraft, structuralReview } from "./graft.ts";
 
 const arg = process.argv[2];
 if (arg === "--help" || arg === "-h") {
@@ -32,4 +33,7 @@ if (changes.length === 0) {
   console.log(`No changes in \`${range}\`.`);
   process.exit(0);
 }
-console.log(render(compose(changes), changes, range));
+const [base, head = "HEAD"] = range.split("...");
+const graft = await resolveGraft(process.env.FOOTPRINT_GRAFT);
+const review = graft === null ? null : await structuralReview(graft, process.cwd(), base!, head);
+console.log(render(compose(changes), changes, range, review));

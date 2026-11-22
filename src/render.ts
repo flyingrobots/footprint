@@ -4,6 +4,7 @@
 import type { Composition, FileChange } from "./footprint.ts";
 import { mermaidPie } from "./footprint.ts";
 import { classify } from "./classify.ts";
+import { structuralSummary, type StructuralReview } from "./graft.ts";
 
 export interface GutCheck {
   readonly headline: string;
@@ -56,11 +57,35 @@ function details(summary: string, body: string): string {
   return `<details>\n<summary>${summary}</summary>\n\n${body}\n\n</details>`;
 }
 
-export function render(c: Composition, changes: readonly FileChange[], range: string): string {
+export function render(
+  c: Composition,
+  changes: readonly FileChange[],
+  range: string,
+  review?: StructuralReview | null,
+): string {
   const gut = gutCheck(c);
   const out: string[] = ["## Footprint", "", `**${gut.headline}** · \`${range}\``, ""];
 
   if (gut.flags.length > 0) out.push(...gut.flags.map((f) => `- ${f}`), "");
+
+  if (review != null) {
+    const s = structuralSummary(review);
+    const symbols = s.symbolsAdded + s.symbolsRemoved + s.symbolsChanged;
+    out.push(
+      `**Structural:** ${s.structural} file${s.structural === 1 ? "" : "s"} changed shape` +
+        ` (+${s.symbolsAdded}/-${s.symbolsRemoved}/~${s.symbolsChanged} symbols), ` +
+        `${s.formatting} formatting-only.`,
+      "",
+    );
+    if (review.breakingChanges.length > 0) {
+      out.push(`- **${review.breakingChanges.length} breaking change(s).**`, "");
+    }
+    if (symbols === 0 && s.structural === 0) {
+      out.push("- No symbol was added, removed or changed. Nothing's public shape moved.", "");
+    }
+  } else {
+    out.push("<sub>Structural analysis unavailable: graft could not be resolved.</sub>", "");
+  }
 
   const pie = mermaidPie(c);
   if (pie !== "") out.push(details("Composition", `${pie}\n\n${table(c)}`), "");

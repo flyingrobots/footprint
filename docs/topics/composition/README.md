@@ -38,9 +38,26 @@ files.
 The range uses three dots (`base...HEAD`), so the comparison is against the merge base and
 unrelated commits on the default branch are excluded.
 
+## Structural signal
+
+When graft resolves, the report adds a line path-based classification cannot produce:
+
+```text
+**Structural:** 1 file changed shape (+2/-0/~0 symbols), 1 formatting-only.
+```
+
+Graft classifies a changed file by what happened to its **symbols**, so a source file whose diff
+adds, removes and changes nothing is reported as *formatting*, not as a behavior change. Breaking
+changes are surfaced in the gut check.
+
+The two views are complementary and both are shown: composition answers "what kind of files", the
+structural signal answers "did anything's shape actually move".
+
+When graft is unavailable the report says so explicitly. It never omits the section silently.
+
 ## Known gaps
 
-- **No symbol-level analysis.** Composition counts files and lines; it does not know what a change
-  means. Call-site blast radius is a later version.
+- **No call-site analysis yet.** Graft has the primitives — `struct exports`, `symbol blame`,
+  `symbol difficulty` — but footprint does not use them yet.
 - **Thresholds are fixed.** The 40-file and 50% figures are not configurable.
 - **No rename detection.** A renamed file is counted at its new path with its real line delta.
