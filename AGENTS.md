@@ -21,9 +21,10 @@ shape diffs to satisfy it.
 
 ## Output
 
-footprint emits through `@flyingrobots/parley-emit`. The result's contract is
-`schemas/footprint.composition.schema.json`; `test/cli.test.ts` runs the CLI against this
-repository and validates every stream line by line. Do not write to stdout or stderr directly;
+footprint emits through `@flyingrobots/parley-emit`. The results' contracts are
+`schemas/footprint.composition.schema.json` and `schemas/footprint.overlap.schema.json`, one
+result type per message and each versioned on its own; `test/cli.test.ts` runs the CLI against
+this repository and validates every stream line by line. Do not write to stdout or stderr directly;
 go through the run (`run.result`, `run.step`, `run.warning`, `run.error`). Prose is `--human`
 only. A new field on the result is a schema version bump.
 

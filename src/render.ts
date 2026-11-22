@@ -7,6 +7,7 @@ import { classify } from "./classify.ts";
 import { structuralSummary, type StructuralReview } from "./graft.ts";
 import type { BeforeMergeKind, Landing } from "./landing.ts";
 import type { Exports } from "./exports.ts";
+import type { Overlap } from "./overlap.ts";
 
 export interface GutCheck {
   readonly headline: string;
@@ -186,4 +187,43 @@ const FROM_GRAFT =
 function cell(signature: string | undefined): string {
   if (signature === undefined) return "";
   return `\`${signature.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim()}\``;
+}
+
+/**
+ * The cross-pull-request section of the comment, rendered from the same record the
+ * `footprint.overlap` result carries. It is its own section with its own provenance note, so the
+ * composition section above stays exactly what it was.
+ */
+export function renderOverlap(o: Overlap): string {
+  // The leading blank line keeps the heading off the end of the composition section above it.
+  const out: string[] = ["", "### Open pull requests", ""];
+
+  if (!o.available) {
+    out.push(`<sub>${o.summary}</sub>`);
+    return out.join("\n");
+  }
+
+  out.push(`**${o.summary}**`, "");
+
+  for (const p of o.overlapping) {
+    out.push(`- **#${p.number}** ${p.title}${p.isDraft ? " _(draft)_" : ""} — ${p.sharedFiles.map((f) => `\`${f}\``).join(", ")}`);
+  }
+  if (o.overlapping.length > 0) out.push("");
+
+  for (const u of o.undetermined) out.push(`- **#${u.number}** ${u.title} — files unknown: ${u.reason}`);
+  if (o.undetermined.length > 0) out.push("");
+
+  if (o.waves.length > 0) {
+    const waves = o.waves
+      .map((w) => `**Wave ${w.wave}** — ${w.pullRequests.map((n) => `#${n}`).join(", ")}${w.wave === 1 ? "" : `, after wave ${w.wave - 1}`}`)
+      .join("\n\n");
+    const edges = o.conflicts.length === 0
+      ? "No two open pull requests change the same file, so they can land in any order."
+      : o.conflicts.map((c) => `- ${c.reason}`).join("\n");
+    out.push(details(`Proposed merge order (${o.waves.length} wave${o.waves.length === 1 ? "" : "s"})`, `${waves}\n\n${edges}`), "");
+  }
+
+  if (o.truncated) out.push(`<sub>The pull-request list came back at the ${o.limit}-request limit; there may be more.</sub>`, "");
+  out.push("<sub>Pull requests from `gh pr list`; their files from `gh pr diff --name-only`. Merge waves are greedy first-fit over the conflict graph: a proposal, not a minimum, and not a gate.</sub>");
+  return out.join("\n");
 }

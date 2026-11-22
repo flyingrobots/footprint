@@ -1,6 +1,6 @@
 // The CLI against this repository itself: every stream of a real run validates line by line.
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
@@ -16,6 +16,7 @@ const CLI_TIMEOUT = 60_000;
 const COMPOSITION = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.composition.schema.json"), "utf8")) as Record<string, unknown>;
 const LANDING = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.landing.schema.json"), "utf8")) as Record<string, unknown>;
 const BLAST_RADIUS = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.blast_radius.schema.json"), "utf8")) as Record<string, unknown>;
+const OVERLAP = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.overlap.schema.json"), "utf8")) as Record<string, unknown>;
 
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 addFormats(ajv);
@@ -24,6 +25,13 @@ for (const s of SCHEMAS) byPair.set(`${s.id}@${s.version}`, ajv.compile(s.schema
 byPair.set("footprint.composition@1.0.0", ajv.compile(COMPOSITION));
 byPair.set("footprint.landing@1.0.0", ajv.compile(LANDING));
 byPair.set("footprint.blast_radius@1.0.0", ajv.compile(BLAST_RADIUS));
+byPair.set("footprint.overlap@1.0.0", ajv.compile(OVERLAP));
+
+// No test here depends on the network or on this repository having open pull requests: every run
+// below gets a PATH holding nothing but the `git` the CLI needs, so `gh` is absent and the overlap
+// result states its limitation. The computation itself is covered in `test/overlap.test.ts`.
+const BIN = mkdtempSync(join(tmpdir(), "footprint-bin-"));
+symlinkSync(Bun.which("git") ?? "/usr/bin/git", join(BIN, "git"));
 
 type Line = Record<string, unknown> & { _schema: { id: string; version: string } };
 
@@ -44,8 +52,8 @@ function validateAll(text: string, stream: string): Line[] {
 }
 
 async function cli(args: string[]) {
-  const env = { ...process.env, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-state-")) };
-  const proc = Bun.spawn(["bun", join(ROOT, "src/cli.ts"), ...args], { cwd: ROOT, env, stdout: "pipe", stderr: "pipe" });
+  const env = { ...process.env, PATH: BIN, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-state-")) };
+  const proc = Bun.spawn([process.execPath, join(ROOT, "src/cli.ts"), ...args], { cwd: ROOT, env, stdout: "pipe", stderr: "pipe" });
   const [stdout, stderr, status] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   return { stdout, stderr, status };
 }
@@ -83,7 +91,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     const out = validateAll(r.stdout, "stdout");
     validateAll(r.stderr, "stderr");
     const results = out.filter((o) => o.event === "result");
-    expect(results.map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius"]);
+    expect(results.map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius", "footprint.overlap"]);
     const blast = results[2] as Line & { range: string; digest: string; exports: Record<string, unknown> };
     expect(blast._schema).toEqual({ id: "footprint.blast_radius", version: "1.0.0" });
     expect(blast.range).toBe("HEAD~1..HEAD");
@@ -98,7 +106,7 @@ describe("the CLI speaks the Parley output protocol", () => {
       expect(ex.reason!.detail.length).toBeGreaterThan(0);
     }
     const receipt = receiptOf(out);
-    expect(receipt.filter((o) => o.event === "result").map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius"]);
+    expect(receipt.filter((o) => o.event === "result").map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius", "footprint.overlap"]);
     const human = await cli(["HEAD~1..HEAD", "--human"]);
     expect(human.status).toBe(0);
     expect(human.stdout).toContain("## Blast radius");
@@ -152,7 +160,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(r.status).toBe(0);
     const out = validateAll(r.stdout, "stdout");
     const results = out.filter((o) => o.event === "result");
-    expect(results.map((o) => `${o._schema.id}@${o._schema.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.0.0"]);
+    expect(results.map((o) => `${o._schema.id}@${o._schema.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.0.0", "footprint.overlap@1.0.0"]);
     const landing = results[1] as Line & {
       before_merge: { unguarded: boolean; guards: unknown[]; unguarded_because: string; items: unknown[] };
       after_merge: { read: { file: string; present: boolean }[]; steps: unknown[]; declared: boolean; nothing_to_do: boolean; statement: string };
@@ -164,7 +172,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(landing.after_merge.statement.length).toBeGreaterThan(0);
     expect(landing.digest).toMatch(/^[0-9a-f]{64}$/);
     const receipt = receiptOf(out);
-    expect(receipt.filter((o) => o.event === "result").length).toBe(3);
+    expect(receipt.filter((o) => o.event === "result").length).toBe(4);
   }, CLI_TIMEOUT);
 
   test("--human prints Before merge and After merge after the composition comment", async () => {
@@ -183,10 +191,34 @@ describe("the CLI speaks the Parley output protocol", () => {
     const h = validateAll(help.stdout, "stdout");
     expect(h[0]!.event).toBe("run"); expect(h.at(-1)!.event).toBe("end");
     expect(h.filter((o) => o.event === "command").map((o) => o.name)).toEqual(["footprint"]);
-    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.0.0", "parley.error@2.0.0"]);
+    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.0.0", "footprint.overlap@1.0.0", "parley.error@2.0.0"]);
     const schema = await cli(["--schema"]);
     const s = validateAll(schema.stdout, "stdout");
     expect(s.filter((o) => o.event === "schema").length).toBeGreaterThan(2);
     receiptOf(s);
+  }, CLI_TIMEOUT);
+
+  test("overlap is the fourth result, after the blast radius, and states its limitation when gh is unavailable", async () => {
+    const r = await cli(["HEAD~1..HEAD"]);
+    expect(r.status).toBe(0);
+    const out = validateAll(r.stdout, "stdout");
+    expect(out.filter((o) => o.event === "result").map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius", "footprint.overlap"]);
+    const overlap = out.filter((o) => o.event === "result")[3] as Line & { overlap: { available: boolean; code: string; reason: string; summary: string }; digest: string };
+    expect(overlap._schema).toEqual({ id: "footprint.overlap", version: "1.0.0" });
+    expect(overlap.overlap.available).toBe(false);
+    expect(overlap.overlap.code).toBe("gh.not_found");
+    expect(overlap.overlap.reason).toContain("gh");
+    expect(overlap.overlap.summary).toContain("unavailable");
+    expect(overlap.digest).toMatch(/^[0-9a-f]{64}$/);
+    const receipt = receiptOf(out);
+    expect(receipt.some((o) => o.event === "result" && o._schema.id === "footprint.overlap")).toBe(true);
+    expect(receipt.some((o) => o.event === "receipt.step" && /overlap/.test(String(o.decision)))).toBe(true);
+  }, CLI_TIMEOUT);
+
+  test("--human carries the overlap section, including the stated limitation", async () => {
+    const r = await cli(["HEAD~1..HEAD", "--human"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("### Open pull requests");
+    expect(r.stdout).toContain("Cross-pull-request overlap unavailable");
   }, CLI_TIMEOUT);
 });
