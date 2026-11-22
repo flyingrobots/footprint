@@ -10,7 +10,7 @@ through `@flyingrobots/parley-emit`. This page is the reference for what a calle
 | --- | --- |
 | stdout | The bootstrap line, four `result` lines — the composition, the landing plan, the blast radius, then the cross-pull-request overlap — and the `end` line. JSON Lines, always; nothing depends on a TTY. |
 | stderr | Structured `error` and `warning` lines, and nothing else. |
-| receipt | `.parley/receipts/<run>.jsonl` under the working directory: the head with `argv` and the resolved interpretation (range, both commit ids, the graft setting), one `receipt.step` per decision, the file listing and the Markdown beside the result, and `end`. |
+| receipt | `.parley/receipts/<run>.jsonl` under the working directory: the head with `argv` and the resolved interpretation (range, both commit ids, the graft setting), one `receipt.step` per decision, the file listing and the Markdown beside the result, and `end`. A record over 64 KiB is written beside it as `.parley/receipts/<run>/<seq>.json`, with a `parley.sidecar` line in the receipt naming it and carrying its SHA-256; the blast radius crosses that whenever the range moves many symbols, because its call-site lists are complete. Read the bundle, not only the `.jsonl`. |
 
 `--human` (alias `--humanize`) prints the Markdown comment instead, and only it on success — the
 composition section, **Before merge** and **After merge**, `## Blast radius`, then the

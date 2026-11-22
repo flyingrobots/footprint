@@ -2,7 +2,8 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { dirname, join, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { SCHEMAS } from "@flyingrobots/parley-emit";
@@ -66,12 +67,40 @@ async function cli(args: string[]) {
   return { stdout, stderr, status };
 }
 
-function receiptOf(stdoutLines: Line[]): Line[] {
+function receiptPathOf(stdoutLines: Line[]): string {
   const boot = stdoutLines[0] as { paths?: { receipt?: string } };
   const path = boot.paths?.receipt;
   expect(path).toMatch(/^\//);
   expect(existsSync(path!)).toBe(true);
-  return validateAll(readFileSync(path!, "utf8"), "receipt");
+  return path!;
+}
+
+function receiptOf(stdoutLines: Line[]): Line[] {
+  return validateAll(readFileSync(receiptPathOf(stdoutLines), "utf8"), "receipt");
+}
+
+/**
+ * The results the receipt *bundle* carries, inline or in a sidecar. parley-emit writes a receipt
+ * record over 64 KiB beside the receipt as its own file, leaving a `parley.sidecar` line naming it
+ * with its sha256 — and the blast radius crosses that whenever the compared range moves many
+ * symbols, because the call-site lists are complete by design (the Markdown is what abridges).
+ * Resolving them here keeps "every result reaches the receipt" an assertion about the bundle
+ * rather than about one file, and checks the sidecar's own digest on the way past.
+ */
+function resultsInBundle(receipt: Line[], receiptPath: string): Line[] {
+  const dir = dirname(receiptPath);
+  const out: Line[] = [];
+  for (const line of receipt) {
+    if (line.event === "result") { out.push(line); continue; }
+    if (line.event !== "sidecar") continue;
+    const sidecar = join(dir, String((line as unknown as { path: string }).path));
+    expect(existsSync(sidecar)).toBe(true);
+    const text = readFileSync(sidecar, "utf8");
+    expect(createHash("sha256").update(text).digest("hex")).toBe((line as unknown as { sha256: string }).sha256);
+    const [record] = validateAll(text.endsWith("\n") ? text : `${text}\n`, "sidecar");
+    if (record!.event === "result") out.push(record!);
+  }
+  return out;
 }
 
 describe("the CLI speaks the Parley output protocol", () => {
@@ -116,7 +145,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     // footprint's own changed files, over this range, are TypeScript: a supported language.
     expect(blast.unanalysed_languages).toEqual([]);
     const receipt = receiptOf(out);
-    expect(receipt.filter((o) => o.event === "result").map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius", "footprint.overlap"]);
+    expect(resultsInBundle(receipt, receiptPathOf(out)).map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius", "footprint.overlap"]);
     const human = await cli(["HEAD~1..HEAD", "--human"]);
     expect(human.status).toBe(0);
     expect(human.stdout).toContain("## Blast radius");
@@ -228,7 +257,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(landing.after_merge.statement.length).toBeGreaterThan(0);
     expect(landing.digest).toMatch(/^[0-9a-f]{64}$/);
     const receipt = receiptOf(out);
-    expect(receipt.filter((o) => o.event === "result").length).toBe(4);
+    expect(resultsInBundle(receipt, receiptPathOf(out)).length).toBe(4);
   }, CLI_TIMEOUT);
 
   test("--human prints Before merge and After merge after the composition comment", async () => {

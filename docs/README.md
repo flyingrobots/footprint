@@ -10,6 +10,10 @@
 | [Output](topics/output/README.md) | What a caller receives: JSON Lines, the receipt, `--human`, errors, discovery, exit status |
 | [Output test plan](topics/output/test-plan.md) | Requirements and evidence for the output contract, including the overlap result |
 
+| Workflow | Job |
+| --- | --- |
+| [CI](workflows/ci/README.md) | What runs on push and pull request, where to see it, and the local command that reproduces it |
+
 | Elsewhere | Job |
 | --- | --- |
 | [`README.md`](../README.md) | Front door |

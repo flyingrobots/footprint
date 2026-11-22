@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Added
 
+- CI: a GitHub Actions workflow (`.github/workflows/ci.yml`) runs `bun install --frozen-lockfile`
+  and `bun test` on every push to `main` and on every pull request. See
+  [`docs/workflows/ci/README.md`](docs/workflows/ci/README.md). (flyingrobots/footprint#22)
 - A second result in the same run, `footprint.landing` 1.0.0
   (`schemas/footprint.landing.schema.json`), and two `--human` sections, **Before merge** and
   **After merge**. The after-merge steps are read out of the repository's own `RELEASE.md` and
@@ -56,6 +59,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   not fatal; a scan that could not run is `call_site_scan.available: false` with a reason and a
   `callsites.scan_failed` warning, and then no symbol carries `call_sites` at all.
   (flyingrobots/footprint#10)
+- `test/languages-drift.test.ts`: checks `src/languages.ts`'s hand-mirrored extension list against
+  the extensions the *installed* `@flyingrobots/graft` actually recognises, by reading its
+  `dist/parser/lang.js` from disk and running footprint's extensions through its own `detectLang`.
+  Fails loudly, naming the path, if that module moves or no longer exports what the test depends
+  on, rather than skipping. (flyingrobots/footprint#21)
 - **Cross-pull-request overlap.** A fourth result in the same run, `footprint.overlap` 1.0.0
   (`schemas/footprint.overlap.schema.json`), emitted after the blast radius: the open pull requests
   that change a file this change changes, named by number and title; the conflict graph between the
