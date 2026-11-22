@@ -4,6 +4,8 @@
 | --- | --- |
 | [Composition](topics/composition/README.md) | What the composition report measures and how to read it |
 | [Composition test plan](topics/composition/test-plan.md) | Requirements and evidence |
+| [Output](topics/output/README.md) | What a caller receives: JSON Lines, the receipt, `--human`, errors, discovery, exit status |
+| [Output test plan](topics/output/test-plan.md) | Requirements and evidence for the output contract |
 
 | Elsewhere | Job |
 | --- | --- |
