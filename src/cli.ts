@@ -11,6 +11,7 @@ import { landingPlan, readLandingDocs, LANDING_DOCUMENTS } from "./landing.ts";
 import { renderLanding } from "./render.ts";
 import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord } from "./report.ts";
 import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, exportSurface, exportsRecord } from "./exports.ts";
+import { unsupportedLanguages } from "./languages.ts";
 
 let markdown = "";
 let landingMarkdown = "";
@@ -92,8 +93,11 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   if (!surface.available && surface.reason.code !== "graft.not_resolved") {
     run.warning({ code: "graft.exports_failed", problem: `the export-surface diff is unavailable (${surface.reason.code}): ${surface.reason.detail}`, remedy: "run graft struct exports <base> <head> --json by hand to see why", remedy_target: graft ?? range });
   }
-  blastMarkdown = blastRadius(surface);
-  run.result(exportsRecord(range, surface), BLAST_RADIUS_TYPE, { markdown: blastMarkdown });
+  // Changed files in languages graft's grammars cannot parse at all -- independent of whether
+  // graft ran or what it returned (flyingrobots/footprint#12).
+  const unanalysed = unsupportedLanguages(changes.map((c) => c.path));
+  blastMarkdown = blastRadius(surface, unanalysed);
+  run.result(exportsRecord(range, surface, unanalysed), BLAST_RADIUS_TYPE, { markdown: blastMarkdown });
 }
 
 /**

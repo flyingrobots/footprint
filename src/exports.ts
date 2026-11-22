@@ -13,11 +13,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { $ } from "bun";
 import { canonical, sha256 } from "@flyingrobots/parley-emit";
+import type { UnsupportedLanguage } from "./languages.ts";
 
 export const BLAST_RADIUS_SCHEMA = JSON.parse(
   readFileSync(join(import.meta.dir, "../schemas/footprint.blast_radius.schema.json"), "utf8"),
 ) as Record<string, unknown>;
-export const BLAST_RADIUS_TYPE = { id: "footprint.blast_radius", version: "1.0.0" } as const;
+export const BLAST_RADIUS_TYPE = { id: "footprint.blast_radius", version: "1.1.0" } as const;
 
 /** The one graft contract this reads. A different version is stated as unavailable. */
 export const GRAFT_EXPORTS_CONTRACT = { id: "graft.cli.struct_exports", version: "1.0.0" } as const;
@@ -175,9 +176,14 @@ export function rangeEnds(range: string): { base: string; head: string; threeDot
   return { base, head: head === "" ? "HEAD" : head, threeDot };
 }
 
-/** The result record. Semantic content only enters the digest, so two runs compare with one string. */
-export function exportsRecord(range: string, exports: Exports): Record<string, unknown> {
-  const semantic = { range, exports: exportsPayload(exports) };
+/**
+ * The result record. Semantic content only enters the digest, so two runs compare with one
+ * string. `unanalysed` is independent of `exports`: it names changed files in languages graft's
+ * grammars cannot parse at all, regardless of whether graft ran or what it returned
+ * (flyingrobots/footprint#12).
+ */
+export function exportsRecord(range: string, exports: Exports, unanalysed: readonly UnsupportedLanguage[]): Record<string, unknown> {
+  const semantic = { range, exports: exportsPayload(exports), unanalysed_languages: unanalysed.map((u) => ({ ...u })) };
   return { event: "result", ...semantic, digest: sha256(canonical(semantic)) };
 }
 
