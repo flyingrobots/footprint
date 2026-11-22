@@ -19,7 +19,7 @@ const tool = defineTool({
   version: pkg.version,
   commands: {
     footprint: {
-      intent: "Report what a change touches: its composition by file kind, the gut-check flags, and whether anything's shape moved",
+      intent: "Report what a change touches: its composition by file kind, the gut-check flags, whether anything's shape moved, and how it lands -- what the diff puts before a reviewer, and the after-merge steps read from the repository's own RELEASE.md and AGENTS.md",
       effects: { reads: ["<cwd>/.git"], writes: [], network: false, idempotent: true },
       secrets: [],
       emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }, { ...LANDING_TYPE, schema: LANDING_SCHEMA }],
