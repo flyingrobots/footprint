@@ -98,7 +98,7 @@ describe("the CLI speaks the Parley output protocol", () => {
       expect(ex.reason!.detail.length).toBeGreaterThan(0);
     }
     const receipt = receiptOf(out);
-    expect(receipt.filter((o) => o.event === "result").map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.blast_radius"]);
+    expect(receipt.filter((o) => o.event === "result").map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius"]);
     const human = await cli(["HEAD~1..HEAD", "--human"]);
     expect(human.status).toBe(0);
     expect(human.stdout).toContain("## Blast radius");
