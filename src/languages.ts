@@ -27,7 +27,6 @@ const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
   ".ts", ".mts", ".cts",
   ".tsx", ".jsx",
   ".js", ".mjs", ".cjs",
-  ".rs",
   ".graphql", ".gql", ".graphqls",
   ".py", ".pyi",
   ".go",
