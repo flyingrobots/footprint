@@ -15,7 +15,8 @@ bun src/cli.ts --help             # what it emits, as JSON Lines
 ```
 
 footprint speaks the [Parley output protocol](https://github.com/flyingrobots/parley): one
-`result` line on stdout with the composition, the gut check, the structural summary and a digest;
+`result` line on stdout with the composition, the gut check, the structural summary and a digest,
+a second with the cross-pull-request overlap;
 errors on stderr as structured lines; a receipt per run under `.parley/receipts/` with every
 decision and the file listing. `--human` is the opt-in for prose. See
 [`docs/topics/output/README.md`](docs/topics/output/README.md).
@@ -43,6 +44,17 @@ Nothing here is estimated. Totals come from `git diff --numstat`, and the catego
 required by test to sum to the reported total. This is the bug that made the original hand-written
 version untrustworthy: a draft reported `+151` for a `+157` change, with hand-estimated shares.
 
+## Cross-pull-request overlap
+
+A second result says which **open pull requests** change a file this change changes — by number and
+title — and proposes an order the open pull requests could land in, as waves where no two pull
+requests in a wave share a file, with the shared files named for every edge that forces one. The
+open pull requests come from `gh pr list`, their files from `gh pr diff --name-only`, and nothing
+is merged or rebased: the order is a proposal, not a gate. When `gh` is absent or cannot answer,
+the result says so with a code and `gh`'s own message and the run still succeeds, because an
+omitted section would read as "nothing overlaps". See
+[`docs/topics/overlap/README.md`](docs/topics/overlap/README.md).
+
 ## Structural analysis is optional
 
 With [graft](https://github.com/flyingrobots/graft) available, the report adds what paths cannot
@@ -59,7 +71,7 @@ than quietly omitting it. A degraded run should never read as a clean one.
 
 ## Status
 
-**v0.1** — composition only. Call-site blast radius, cross-pull-request merge ordering, and
+Composition and cross-pull-request overlap. Call-site blast radius, symbol-level overlap and
 post-merge landing plans are [tracked as issues](https://github.com/flyingrobots/footprint/issues).
 
 Documentation: [`docs/README.md`](docs/README.md). Working agreement: [`AGENTS.md`](AGENTS.md).
