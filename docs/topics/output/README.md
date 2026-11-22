@@ -115,10 +115,8 @@ warning — it is the `graft.not_resolved` reason on the result and a step sayin
 
 `footprint --help` and `footprint --schema` are runs too: they bootstrap, write a receipt, emit
 one `command` line and the schemas footprint can emit, and close with `end`. `--help` carries
-`footprint.composition`, `footprint.landing` and `parley.error`; `--schema` adds every protocol
-schema the writer itself emits.
-`footprint.composition`, `footprint.blast_radius` and `parley.error`; `--schema` adds every
-protocol schema the writer itself emits.
+`footprint.composition`, `footprint.landing`, `footprint.blast_radius` and `parley.error`, in that
+order; `--schema` adds every protocol schema the writer itself emits.
 
 ## Exit status
 
