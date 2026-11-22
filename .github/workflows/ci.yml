@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # test/cli.test.ts runs the CLI against HEAD~1..HEAD and against origin/main as a
+          # three-dot range; a shallow (depth-1) checkout has neither, so the suite needs full
+          # history.
+          fetch-depth: 0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run the gate
+        run: bun test

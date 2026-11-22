@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Added
 
+- CI: a GitHub Actions workflow (`.github/workflows/ci.yml`) runs `bun install --frozen-lockfile`
+  and `bun test` on every push to `main` and on every pull request. See
+  [`docs/workflows/ci/README.md`](docs/workflows/ci/README.md). (flyingrobots/footprint#22)
 - A second result in the same run, `footprint.landing` 1.0.0
   (`schemas/footprint.landing.schema.json`), and two `--human` sections, **Before merge** and
   **After merge**. The after-merge steps are read out of the repository's own `RELEASE.md` and
