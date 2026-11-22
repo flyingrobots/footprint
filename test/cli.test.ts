@@ -15,6 +15,7 @@ const ROOT = resolve(import.meta.dir, "..");
 const CLI_TIMEOUT = 60_000;
 const COMPOSITION = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.composition.schema.json"), "utf8")) as Record<string, unknown>;
 const LANDING = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.landing.schema.json"), "utf8")) as Record<string, unknown>;
+const BLAST_RADIUS = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.blast_radius.schema.json"), "utf8")) as Record<string, unknown>;
 
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 addFormats(ajv);
@@ -22,6 +23,7 @@ const byPair = new Map<string, ReturnType<typeof ajv.compile>>();
 for (const s of SCHEMAS) byPair.set(`${s.id}@${s.version}`, ajv.compile(s.schema));
 byPair.set("footprint.composition@1.0.0", ajv.compile(COMPOSITION));
 byPair.set("footprint.landing@1.0.0", ajv.compile(LANDING));
+byPair.set("footprint.blast_radius@1.0.0", ajv.compile(BLAST_RADIUS));
 
 type Line = Record<string, unknown> & { _schema: { id: string; version: string } };
 
@@ -71,6 +73,34 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(receipt.some((o) => o.event === "receipt.step" && /compare/.test(String(o.decision)))).toBe(true);
     expect(receipt.some((o) => o.event === "result" && Array.isArray(o.files))).toBe(true);
   }, CLI_TIMEOUT);
+
+  test("the blast-radius result follows the composition result in the same run", async () => {
+    const r = await cli(["HEAD~1..HEAD"]);
+    expect(r.status).toBe(0);
+    const out = validateAll(r.stdout, "stdout");
+    validateAll(r.stderr, "stderr");
+    const results = out.filter((o) => o.event === "result");
+    expect(results.map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.blast_radius"]);
+    const blast = results[1] as Line & { range: string; digest: string; exports: Record<string, unknown> };
+    expect(blast._schema).toEqual({ id: "footprint.blast_radius", version: "1.0.0" });
+    expect(blast.range).toBe("HEAD~1..HEAD");
+    expect(blast.digest).toMatch(/^[0-9a-f]{64}$/);
+    const ex = blast.exports as { available: boolean; reason?: { code: string; detail: string }; added?: unknown[]; removed?: unknown[]; signature_changed?: unknown[]; counts?: Record<string, number>; contract?: unknown };
+    if (ex.available) {
+      expect(ex.contract).toEqual({ id: "graft.cli.struct_exports", version: "1.0.0" });
+      expect(ex.counts).toEqual({ added: ex.added!.length, removed: ex.removed!.length, signature_changed: ex.signature_changed!.length });
+    } else {
+      // graft is optional: an unavailable section is stated, never omitted.
+      expect(typeof ex.reason!.code).toBe("string");
+      expect(ex.reason!.detail.length).toBeGreaterThan(0);
+    }
+    const receipt = receiptOf(out);
+    expect(receipt.filter((o) => o.event === "result").map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.blast_radius"]);
+    const human = await cli(["HEAD~1..HEAD", "--human"]);
+    expect(human.status).toBe(0);
+    expect(human.stdout).toContain("## Blast radius");
+    expect(human.stdout).toContain("## Footprint");
+  });
 
   test("the head carries the resolved range with both commit ids, and inv moves with them", async () => {
     const a = await cli(["HEAD~1..HEAD"]);
@@ -150,7 +180,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     const h = validateAll(help.stdout, "stdout");
     expect(h[0]!.event).toBe("run"); expect(h.at(-1)!.event).toBe("end");
     expect(h.filter((o) => o.event === "command").map((o) => o.name)).toEqual(["footprint"]);
-    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "parley.error@2.0.0"]);
+    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.0.0", "parley.error@2.0.0"]);
     const schema = await cli(["--schema"]);
     const s = validateAll(schema.stdout, "stdout");
     expect(s.filter((o) => o.event === "schema").length).toBeGreaterThan(2);

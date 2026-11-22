@@ -1,0 +1,61 @@
+{
+  "_receipt": {
+    "burden": {
+      "kind": "search",
+      "nonRead": true
+    },
+    "compressionRatio": null,
+    "cumulative": {
+      "burdenByKind": {
+        "diagnostic": {
+          "bytesReturned": 0,
+          "calls": 0
+        },
+        "read": {
+          "bytesReturned": 0,
+          "calls": 0
+        },
+        "search": {
+          "bytesReturned": 862,
+          "calls": 1
+        },
+        "shell": {
+          "bytesReturned": 0,
+          "calls": 0
+        },
+        "state": {
+          "bytesReturned": 0,
+          "calls": 0
+        }
+      },
+      "bytesAvoided": 0,
+      "bytesReturned": 862,
+      "cacheHits": 0,
+      "nonReadBytesReturned": 862,
+      "outlines": 0,
+      "reads": 0,
+      "refusals": 0
+    },
+    "fileBytes": null,
+    "latencyMs": 137,
+    "projection": "none",
+    "reason": "none",
+    "returnedBytes": 862,
+    "seq": 1,
+    "sessionId": "8318c667-04c8-4fc8-a9ed-85052d7e06ca",
+    "tool": "graft_exports",
+    "traceId": "c4e6b79d-6018-4c8e-9f85-7341b8f896f4",
+    "ts": "2026-11-22T22:28:20.004Z"
+  },
+  "_schema": {
+    "id": "graft.cli.struct_exports",
+    "version": "1.0.0"
+  },
+  "added": [],
+  "base": "HEAD~1",
+  "changed": [],
+  "head": "HEAD",
+  "removed": [],
+  "semverImpact": "none",
+  "summary": "No exported API changes."
+}
