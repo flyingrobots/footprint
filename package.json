@@ -11,5 +11,8 @@
   },
   "optionalDependencies": {
     "@flyingrobots/graft": "^0.14.0"
+  },
+  "overrides": {
+    "zod": "^4.6.6"
   }
 }

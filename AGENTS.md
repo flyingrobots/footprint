@@ -43,6 +43,11 @@ This is not fastidiousness. graft's substrate is slated to be rewritten from git
 which changes how structural history is stored at a fundamental level. A consumer bound to the CLI
 contract does not notice that; a consumer bound to internals gets rewritten with it.
 
+**`overrides` forces a patched `zod`.** graft pins `zod` at exactly `4.3.6`, which is below the
+`4.6.6` that fixes a high-severity memory-exhaustion advisory (oversized constrained collections).
+footprint overrides it to `^4.6.6`; verified graft still produces identical `struct review --json`
+output under `4.6.7`. Remove the override once graft bumps its own pin.
+
 **Only one-shot subcommands.** Never `graft serve` and never `graft daemon`. footprint must not
 hold a long-lived process, and the daemon has known memory growth.
 
