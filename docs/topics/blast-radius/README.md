@@ -93,7 +93,10 @@ extension, checked against a list footprint keeps of its own, mirroring graft's 
 language support. graft does not publish that list through its package exports map or any CLI
 contract, so footprint's copy is kept by hand and can drift if graft's grammar coverage changes
 before this list is updated — a decision the owner may want to make differently, for example by
-asking graft to expose its supported-language set through a versioned CLI contract instead.
+asking graft to expose its supported-language set through a versioned CLI contract instead. That
+hand-kept list is checked against the *installed* graft by `test/languages-drift.test.ts`
+(flyingrobots/footprint#21), so a grammar graft adds or drops turns the gate red instead of
+drifting silently.
 
 Because detection never looks at `exports`, a changed file in a *supported* language is never
 counted here, even when graft failed to parse it, failed to resolve, or the diff for that file had
