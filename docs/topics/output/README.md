@@ -10,7 +10,7 @@ through `@flyingrobots/parley-emit`. This page is the reference for what a calle
 | --- | --- |
 | stdout | The bootstrap line, four `result` lines — the composition, the landing plan, the blast radius, then the cross-pull-request overlap — and the `end` line. JSON Lines, always; nothing depends on a TTY. |
 | stderr | Structured `error` and `warning` lines, and nothing else. |
-| receipt | `.parley/receipts/<run>.jsonl` under the working directory: the head with `argv` and the resolved interpretation (range, both commit ids, the graft setting), one `receipt.step` per decision, the file listing and the Markdown beside the result, and `end`. |
+| receipt | `.parley/receipts/<run>.jsonl` under the working directory: the head with `argv` and the resolved interpretation (range, both commit ids, the graft setting), one `receipt.step` per decision, the file listing and the Markdown beside the result, and `end`. A record over 64 KiB is written beside it as `.parley/receipts/<run>/<seq>.json`, with a `parley.sidecar` line in the receipt naming it and carrying its SHA-256; the blast radius crosses that whenever the range moves many symbols, because its call-site lists are complete. Read the bundle, not only the `.jsonl`. |
 
 `--human` (alias `--humanize`) prints the Markdown comment instead, and only it on success — the
 composition section, **Before merge** and **After merge**, `## Blast radius`, then the
@@ -65,9 +65,10 @@ plan prints as **Before merge** and **After merge**, after the composition comme
 
 ### `footprint.blast_radius` 1.1.0
 
-The export-surface diff, the third result line of the run, after the landing plan
-(`schemas/footprint.blast_radius.schema.json`). What it lists, and the graft contract it comes
-from, is [Blast radius](../blast-radius/README.md); these are its fields:
+The export-surface diff and the call sites of every symbol in it, the third result line of the run,
+after the landing plan (`schemas/footprint.blast_radius.schema.json`). What it lists, the graft
+contract the symbols come from, and why the call sites are footprint's own scan rather than
+graft's, is [Blast radius](../blast-radius/README.md); these are its fields:
 
 | Field | Meaning |
 | --- | --- |
@@ -76,14 +77,24 @@ from, is [Blast radius](../blast-radius/README.md); these are its fields:
 | `exports.reason` | Present when `available` is `false`: `code` — one of `graft.not_resolved`, `graft.exports_failed`, `graft.output_unreadable`, `graft.schema_mismatch`, `range.unresolved` — and a `detail` to act on. The section is stated, never omitted. |
 | `exports.base`, `exports.head` | The refs passed to graft: the merge base for a three-dot range, the given base otherwise |
 | `exports.added`, `exports.removed`, `exports.signature_changed` | The symbols, each with `symbol` and `file`, plus `kind` and `signature` when graft reported them, and `previous_signature` on a signature change. Sorted by file then symbol, so the digest follows the surface rather than graft's ordering. |
-| `exports.counts` | `added`, `removed`, `signature_changed` — the lengths of those three lists, and footprint's only arithmetic here |
+| `<symbol>.call_sites` | Where that symbol's name occurs as a whole word in the tracked, non-binary files of the working tree: one `{ file, line }` per line, ordered by file then line. Empty means the scan found none — a symbol nothing references is listed, never dropped. Absent means no scan ran, which `call_site_scan.reason` states. |
+| `exports.call_site_scan` | How the call sites were found: `method` is always `identifier_scan`, with `files_scanned` and `files_skipped` (`binary`, `unreadable`). `available: false` carries a `reason` — `scan.not_run` or `scan.ls_files_failed` — and then no symbol carries `call_sites` at all. |
+| `exports.counts` | `added`, `removed`, `signature_changed` — the lengths of those three lists — and `call_sites`, their call sites added up, present only when the scan ran |
 | `exports.semver_impact` | graft's own judgement, verbatim; `null` when it reported none. footprint derives no semver impact. |
 | `exports.contract` | The graft CLI contract that answered: `graft.cli.struct_exports` 1.0.0 |
 | `unanalysed_languages` | Changed source files in languages footprint does not recognise as one graft's grammars can parse, grouped by extension with a count. Present and empty when every changed file was in a supported language — never omitted. Independent of `exports`: a parse failure in a *supported* language is never counted here, because this is extension-only and does not depend on whether graft ran or what it returned. |
 | `digest` | SHA-256 over the canonical JSON of `range`, `exports` and `unanalysed_languages` |
 
-Everything under `added`, `removed` and `signature_changed` is graft's, passed through unchanged.
-The receipt copy carries the `markdown` of this section.
+Every `symbol`, `kind` and `signature` is graft's, passed through unchanged. The `call_sites` are
+footprint's own conservative whole-word identifier scan — `grep -w`'s boundary, a letter, digit or
+underscore in any script, over `git ls-files` — so they count the declaration itself and a mention in a comment, a string or
+prose, and they miss dynamic dispatch and a re-export under another name. Both limits are printed
+under the list in the `--human` section. The receipt copy carries the `markdown` of this section.
+
+The blast-radius section of `--human` carries a `Call sites` column and a collapsed list of
+`file:line` per symbol; it spells out up to twenty per symbol and counts the rest, because the
+result line carries every one of them and a pull-request comment should not be buried by a symbol
+with four hundred.
 
 ### `footprint.overlap` 1.0.0
 
@@ -125,8 +136,10 @@ and the `FOOTPRINT_GRAFT` setting. footprint declares no file inputs, because th
 is the two commits rather than files on disk; the commit ids are its content addresses, so the
 same `inv` means the same comparison of the same trees, and a new commit on either end changes it.
 What `inv` does not cover: which graft version answered, so a structural section can differ under
-one `inv` when graft is upgraded, and which pull requests were open, so the overlap result can
-differ under one `inv` as pull requests open and land. Resolving the range costs two `git rev-parse` calls before the
+one `inv` when graft is upgraded; which pull requests were open, so the overlap result can differ
+under one `inv` as pull requests open and land; and the state of the **working tree**, which the
+call-site scan reads, so two runs under one `inv` can carry different `footprint.blast_radius`
+digests if the checkout moved between them while the two commits did not. Resolving the range costs two `git rev-parse` calls before the
 bootstrap line is written; that is the only work done before it. The derivation is the writer's, documented in
 `@flyingrobots/parley-emit`'s README.
 
@@ -143,8 +156,10 @@ bootstrap line is written; that is the only work done before it. The derivation 
 A limitation is not an error: the run succeeds and the result says what it could not establish.
 `structural.available` is false when graft could not be resolved or its review could not be read,
 and `exports.available` is false with a stated `reason` when graft could not answer the
-export-surface question. `overlap.available` is false for one of these, and `overlap.code` says
-which:
+export-surface question. `exports.call_site_scan.available` is false, with its own reason, when the
+call sites could not be looked for — and then no symbol carries `call_sites` at all, so a scan that
+did not run is never read as one that found nothing. `overlap.available` is false for one of these,
+and `overlap.code` says which:
 
 | `overlap.code` | When |
 | --- | --- |
@@ -164,13 +179,15 @@ which:
 | `gh.unauthenticated`, `gh.rate_limited`, `gh.no_remote`, `gh.list_failed`, `gh.list_unreadable` | `gh` resolved but could not list the open pull requests; `overlap.available` is false. No warning when `gh` is simply absent — that is not a failure of anything footprint ran | 0 |
 | `gh.diff_failed` | `gh pr diff --name-only` would not report some pull request's files; they are in `overlap.undetermined` | 0 |
 | `gh.list_truncated` | The pull-request list came back at the limit, so there may be more than were considered | 0 |
+| `callsites.scan_failed` | The call-site scan could not list the tracked files; `exports.call_site_scan.available` is false with its reason and no symbol carries `call_sites` | 0 |
 
 ## Discovery
 
 `footprint --help` and `footprint --schema` are runs too: they bootstrap, write a receipt, emit
 one `command` line and the schemas footprint can emit, and close with `end`. `--help` carries
-`footprint.composition`, `footprint.landing`, `footprint.blast_radius`, `footprint.overlap` and
-`parley.error`, in that order; `--schema` adds every protocol schema the writer itself emits.
+`footprint.composition` 1.0.0, `footprint.landing` 1.0.0, `footprint.blast_radius` 1.1.0,
+`footprint.overlap` 1.0.0 and `parley.error` 2.0.0, in that order; `--schema` adds every protocol
+schema the writer itself emits.
 
 ## Exit status
 

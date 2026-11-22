@@ -1,0 +1,111 @@
+{
+  "_receipt": {
+    "burden": {
+      "kind": "search",
+      "nonRead": true
+    },
+    "compressionRatio": null,
+    "cumulative": {
+      "burdenByKind": {
+        "diagnostic": {
+          "bytesReturned": 0,
+          "calls": 0
+        },
+        "read": {
+          "bytesReturned": 0,
+          "calls": 0
+        },
+        "search": {
+          "bytesReturned": 2254,
+          "calls": 1
+        },
+        "shell": {
+          "bytesReturned": 0,
+          "calls": 0
+        },
+        "state": {
+          "bytesReturned": 0,
+          "calls": 0
+        }
+      },
+      "bytesAvoided": 0,
+      "bytesReturned": 2254,
+      "cacheHits": 0,
+      "nonReadBytesReturned": 2254,
+      "outlines": 0,
+      "reads": 0,
+      "refusals": 0
+    },
+    "fileBytes": null,
+    "latencyMs": 469,
+    "projection": "none",
+    "reason": "none",
+    "returnedBytes": 2254,
+    "seq": 1,
+    "sessionId": "fde5797e-4dda-433e-a5a6-d1e8b78bf711",
+    "tool": "graft_exports",
+    "traceId": "97bd222e-8f70-4905-96c5-54d317ecc276",
+    "ts": "2026-11-22T23:02:45.083Z"
+  },
+  "_schema": {
+    "id": "graft.cli.struct_exports",
+    "version": "1.0.0"
+  },
+  "added": [
+    {
+      "changeType": "added",
+      "filePath": "package.json",
+      "kind": "field",
+      "signature": "devDependencies: object (1 keys)",
+      "symbol": "devDependencies"
+    },
+    {
+      "changeType": "added",
+      "filePath": "src/graft.ts",
+      "kind": "interface",
+      "symbol": "StructuralFile"
+    },
+    {
+      "changeType": "added",
+      "filePath": "src/graft.ts",
+      "kind": "interface",
+      "symbol": "StructuralReview"
+    },
+    {
+      "changeType": "added",
+      "filePath": "src/graft.ts",
+      "kind": "function",
+      "signature": "resolveGraft(explicit?: string): Promise<string | null>",
+      "symbol": "resolveGraft"
+    },
+    {
+      "changeType": "added",
+      "filePath": "src/graft.ts",
+      "kind": "function",
+      "signature": "structuralReview(\n  graft: string,\n  repo: string,\n  base: string,\n  head: string,\n): Promise<StructuralReview | null>",
+      "symbol": "structuralReview"
+    },
+    {
+      "changeType": "added",
+      "filePath": "src/graft.ts",
+      "kind": "function",
+      "signature": "structuralSummary(review: StructuralReview): {\n  structural: number;\n  formatting: number;\n  symbolsAdded: number;\n  symbolsRemoved: number;\n  symbolsChanged: number;\n}",
+      "symbol": "structuralSummary"
+    }
+  ],
+  "base": "543477a~1",
+  "changed": [
+    {
+      "changeType": "signature_changed",
+      "filePath": "src/render.ts",
+      "kind": "function",
+      "previousSignature": "render(c: Composition, changes: readonly FileChange[], range: string): string",
+      "signature": "render(\n  c: Composition,\n  changes: readonly FileChange[],\n  range: string,\n  review?: StructuralReview | null,\n): string",
+      "symbol": "render"
+    }
+  ],
+  "head": "543477a",
+  "removed": [],
+  "semverImpact": "minor",
+  "summary": "+6 added, ~1 changed exported symbols. Semver impact: minor."
+}

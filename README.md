@@ -59,12 +59,20 @@ version untrustworthy: a draft reported `+151` for a `+157` change, with hand-es
 ## Blast radius: which exports moved
 
 With graft available, a run also reports its **export surface**: the exported symbols the change
-added, removed or re-signed, each with its file and name, as the third result line
-(`footprint.blast_radius` 1.0.0) and a `## Blast radius` section in the Markdown comment. A renamed
-export shows up as a removal and an addition. The symbols come from graft's CLI contract
-`graft struct exports <base-ref> <head-ref> --json`, passed through verbatim; a three-dot range is
-compared from the merge base. When graft cannot answer — absent, failing, or speaking a contract
-version footprint does not read — the result says so with a reason instead of omitting the section.
+added, removed or re-signed, each with its file and name **and where it is called from**, as the
+third result line (`footprint.blast_radius` 1.1.0) and a `## Blast radius` section in the Markdown
+comment. A renamed export shows up as a removal and an addition. The symbols come from graft's CLI
+contract `graft struct exports <base-ref> <head-ref> --json`, passed through verbatim; a three-dot
+range is compared from the merge base. When graft cannot answer — absent, failing, or speaking a
+contract version footprint does not read — the result says so with a reason instead of omitting the
+section.
+
+The **call sites** are footprint's own, because no graft contract answers with a call site's line:
+every whole-word occurrence of the symbol's name in the tracked, non-binary files of the working
+tree, which is `grep -w`'s rule and nothing cleverer. A symbol nothing references is listed with an
+empty list rather than dropped. It counts the declaration, comments and prose, and it cannot see
+dynamic dispatch or a re-export under another name — it is evidence a reviewer can check with one
+`grep`, not a call graph, and the test suite checks it against exactly that.
 See [`docs/topics/blast-radius/README.md`](docs/topics/blast-radius/README.md).
 
 ## Cross-pull-request overlap
@@ -95,8 +103,8 @@ than quietly omitting it. A degraded run should never read as a clean one.
 ## Status
 
 **v0.2.0** — composition, as JSON Lines through the Parley output protocol. On `main` and not yet
-released: the landing plan, the export-surface diff and the cross-pull-request overlap above. Call
-sites for those symbols, grouping by system, and symbol-level overlap are
+released: the landing plan, the export-surface diff with the call sites of each changed symbol,
+and the cross-pull-request overlap above. Grouping by system and symbol-level overlap are
 [tracked as issues](https://github.com/flyingrobots/footprint/issues).
 
 Documentation: [`docs/README.md`](docs/README.md). Working agreement: [`AGENTS.md`](AGENTS.md).

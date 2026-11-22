@@ -2,7 +2,8 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { dirname, join, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { SCHEMAS } from "@flyingrobots/parley-emit";
@@ -30,8 +31,16 @@ byPair.set("footprint.overlap@1.0.0", ajv.compile(OVERLAP));
 // No test here depends on the network or on this repository having open pull requests: every run
 // below gets a PATH holding nothing but the `git` the CLI needs, so `gh` is absent and the overlap
 // result states its limitation. The computation itself is covered in `test/overlap.test.ts`.
+//
+// `node` is on that PATH as well as `git`, and deliberately: graft's own bin is a
+// `#!/usr/bin/env node` script, so without it every graft subcommand fails to execute and the
+// blast-radius assertions quietly take their "graft unavailable" branch -- a suite that passes
+// while testing nothing. `gh` is the only thing kept out.
 const BIN = mkdtempSync(join(tmpdir(), "footprint-bin-"));
-symlinkSync(Bun.which("git") ?? "/usr/bin/git", join(BIN, "git"));
+for (const exe of ["git", "node"]) {
+  const found = Bun.which(exe);
+  if (found !== null) symlinkSync(found, join(BIN, exe));
+}
 
 type Line = Record<string, unknown> & { _schema: { id: string; version: string } };
 
@@ -58,12 +67,40 @@ async function cli(args: string[]) {
   return { stdout, stderr, status };
 }
 
-function receiptOf(stdoutLines: Line[]): Line[] {
+function receiptPathOf(stdoutLines: Line[]): string {
   const boot = stdoutLines[0] as { paths?: { receipt?: string } };
   const path = boot.paths?.receipt;
   expect(path).toMatch(/^\//);
   expect(existsSync(path!)).toBe(true);
-  return validateAll(readFileSync(path!, "utf8"), "receipt");
+  return path!;
+}
+
+function receiptOf(stdoutLines: Line[]): Line[] {
+  return validateAll(readFileSync(receiptPathOf(stdoutLines), "utf8"), "receipt");
+}
+
+/**
+ * The results the receipt *bundle* carries, inline or in a sidecar. parley-emit writes a receipt
+ * record over 64 KiB beside the receipt as its own file, leaving a `parley.sidecar` line naming it
+ * with its sha256 — and the blast radius crosses that whenever the compared range moves many
+ * symbols, because the call-site lists are complete by design (the Markdown is what abridges).
+ * Resolving them here keeps "every result reaches the receipt" an assertion about the bundle
+ * rather than about one file, and checks the sidecar's own digest on the way past.
+ */
+function resultsInBundle(receipt: Line[], receiptPath: string): Line[] {
+  const dir = dirname(receiptPath);
+  const out: Line[] = [];
+  for (const line of receipt) {
+    if (line.event === "result") { out.push(line); continue; }
+    if (line.event !== "sidecar") continue;
+    const sidecar = join(dir, String((line as unknown as { path: string }).path));
+    expect(existsSync(sidecar)).toBe(true);
+    const text = readFileSync(sidecar, "utf8");
+    expect(createHash("sha256").update(text).digest("hex")).toBe((line as unknown as { sha256: string }).sha256);
+    const [record] = validateAll(text.endsWith("\n") ? text : `${text}\n`, "sidecar");
+    if (record!.event === "result") out.push(record!);
+  }
+  return out;
 }
 
 describe("the CLI speaks the Parley output protocol", () => {
@@ -99,7 +136,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     const ex = blast.exports as { available: boolean; reason?: { code: string; detail: string }; added?: unknown[]; removed?: unknown[]; signature_changed?: unknown[]; counts?: Record<string, number>; contract?: unknown };
     if (ex.available) {
       expect(ex.contract).toEqual({ id: "graft.cli.struct_exports", version: "1.0.0" });
-      expect(ex.counts).toEqual({ added: ex.added!.length, removed: ex.removed!.length, signature_changed: ex.signature_changed!.length });
+      expect(ex.counts).toMatchObject({ added: ex.added!.length, removed: ex.removed!.length, signature_changed: ex.signature_changed!.length });
     } else {
       // graft is optional: an unavailable section is stated, never omitted.
       expect(typeof ex.reason!.code).toBe("string");
@@ -108,11 +145,57 @@ describe("the CLI speaks the Parley output protocol", () => {
     // footprint's own changed files, over this range, are TypeScript: a supported language.
     expect(blast.unanalysed_languages).toEqual([]);
     const receipt = receiptOf(out);
-    expect(receipt.filter((o) => o.event === "result").map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius", "footprint.overlap"]);
+    expect(resultsInBundle(receipt, receiptPathOf(out)).map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius", "footprint.overlap"]);
     const human = await cli(["HEAD~1..HEAD", "--human"]);
     expect(human.status).toBe(0);
     expect(human.stdout).toContain("## Blast radius");
     expect(human.stdout).toContain("## Footprint");
+  }, CLI_TIMEOUT);
+
+  /**
+   * 543477a is the commit where this repository's exported `render` gained an optional parameter:
+   * a range whose export surface is genuinely non-empty, so the live run exercises the scan rather
+   * than the zero-symbol short circuit. The call sites are of the working tree as checked out.
+   */
+  test("the blast-radius result carries the call sites of every symbol it lists", async () => {
+    const r = await cli(["543477a~1..543477a"]);
+    expect(r.status).toBe(0);
+    const out = validateAll(r.stdout, "stdout");
+    const blast = out.filter((o) => o.event === "result")[2] as Line & { exports: Record<string, unknown> };
+    const ex = blast.exports as {
+      available: boolean;
+      added?: Array<Record<string, unknown>>;
+      removed?: Array<Record<string, unknown>>;
+      signature_changed?: Array<Record<string, unknown>>;
+      counts?: Record<string, number>;
+      call_site_scan?: { available: boolean; method: string; files_scanned?: number; files_skipped?: Record<string, number>; reason?: { code: string; detail: string } };
+    };
+    if (!ex.available) {
+      // graft is optional; with no surface there is nothing to look up and no scan is claimed.
+      expect(ex.call_site_scan).toBeUndefined();
+      return;
+    }
+    const scan = ex.call_site_scan!;
+    expect(scan.method).toBe("identifier_scan");
+    expect(scan.available).toBe(true);
+    const symbols = [...ex.added!, ...ex.removed!, ...ex.signature_changed!];
+    // No symbol moved means nothing to look up, and the scan says it read no file rather than
+    // claiming it scanned the tree for nobody.
+    expect(scan.files_scanned).toBeGreaterThan(symbols.length === 0 ? -1 : 10);
+    if (symbols.length === 0) expect(scan.files_scanned).toBe(0);
+    let total = 0;
+    for (const s of symbols) {
+      const sites = s.call_sites as Array<{ file: string; line: number }> | undefined;
+      expect(Array.isArray(sites)).toBe(true);
+      for (const site of sites!) {
+        expect(typeof site.file).toBe("string");
+        expect(Number.isInteger(site.line) && site.line > 0).toBe(true);
+      }
+      total += sites!.length;
+    }
+    expect(ex.counts!.call_sites).toBe(total);
+    const receipt = receiptOf(out);
+    expect(receipt.some((o) => o.event === "receipt.step" && /call site/i.test(String(o.decision)))).toBe(true);
   }, CLI_TIMEOUT);
 
   test("the head carries the resolved range with both commit ids, and inv moves with them", async () => {
@@ -174,7 +257,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(landing.after_merge.statement.length).toBeGreaterThan(0);
     expect(landing.digest).toMatch(/^[0-9a-f]{64}$/);
     const receipt = receiptOf(out);
-    expect(receipt.filter((o) => o.event === "result").length).toBe(4);
+    expect(resultsInBundle(receipt, receiptPathOf(out)).length).toBe(4);
   }, CLI_TIMEOUT);
 
   test("--human prints Before merge and After merge after the composition comment", async () => {

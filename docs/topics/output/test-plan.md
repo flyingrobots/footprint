@@ -3,7 +3,7 @@
 Evidence lives in `test/cli.test.ts`, which runs the CLI as a subprocess against this repository
 and validates every line of every stream against the schema for its exact `(id, version)` pair:
 the protocol schemas shipped by `@flyingrobots/parley-emit`, `schemas/footprint.composition.schema.json`,
-`schemas/footprint.landing.schema.json`, `schemas/footprint.blast_radius.schema.json` and
+`schemas/footprint.landing.schema.json`, `schemas/footprint.blast_radius.schema.json` (1.1.0) and
 `schemas/footprint.overlap.schema.json`. The landing plan's derivation is pure, so its evidence
 is in `test/landing.test.ts`, over the fixture repositories under `test/fixtures/landing/` — each a
 directory holding the documents footprint reads and a `changed-files.txt` standing in for the diff,
@@ -20,6 +20,11 @@ graft (flyingrobots/footprint#21): it reads `src/languages.ts`'s extension list 
 the installed `@flyingrobots/graft`'s own `dist/parser/lang.js` from disk, so it needs graft
 installed and fails loudly, naming the path, rather than skipping, if either is missing.
 
+`test/callsites.test.ts` holds the call-site cases. The matching is a pure function over one file's
+text, so most of them need neither git nor graft; the golden case is live against this repository
+and compares footprint's answer with an independent `grep` oracle, and the edges build a throwaway
+git repository under `$TMPDIR` so a deleted file and a binary file are real rather than mocked.
+
 | ID | Requirement |
 | --- | --- |
 | OUT-1 | Every line on stdout and stderr is a JSON object that validates against its declared schema; the run opens with the bootstrap line and closes with `end` |
@@ -35,6 +40,7 @@ installed and fails loudly, naming the path, rather than skipping, if either is 
 | OUT-11 | The export surface is parsed from graft's `graft.cli.struct_exports` 1.0.0 JSON by a pure function: a renamed export is reported removed and added, and a failed, unreadable or differently versioned answer is `available: false` with a stated reason, never a throw |
 | OUT-12 | The blast-radius result (`footprint.blast_radius` 1.1.0) names the changed files, by file extension with a count, in languages footprint does not recognise as one graft's grammars can parse; the list is present and empty when every changed file was in a supported language; a parse failure in a *supported* language is never counted here, because detection is extension-only and never looks at whether graft ran or what it answered |
 | OUT-12g | The extension list behind OUT-12 is checked against the *installed* graft, not just against fixtures: a grammar graft adds or drops cannot change footprint's `unanalysed_languages` output without a test turning red (flyingrobots/footprint#21) |
+| OUT-13 | Every exported symbol on the blast radius carries its call sites with file and line, found by footprint's own conservative whole-word identifier scan of the tracked files of the working tree; a symbol nothing references carries an empty list rather than being dropped, and a scan that could not run is stated rather than read as an empty one. The additive fields ride the same unreleased `footprint.blast_radius` 1.1.0 draft as OUT-12's |
 
 | ID | Case | Oracle | Evidence | Status |
 | --- | --- | --- | --- | --- |
@@ -78,10 +84,10 @@ installed and fails loudly, naming the path, rather than skipping, if either is 
 | OUT-9n | `renderLanding` over the unguarded fixture | `## Before merge` precedes `## After merge`; the warning renders as a GitHub `[!WARNING]` alert with the bold sentence | `the two --human sections > Before merge and After merge are separate sections, and the warning is loud` | implemented |
 | OUT-9o | `renderLanding` over the with-release fixture | every step renders with `` `RELEASE.md` › <heading>``; no warning | `... > every after-merge step is rendered with the file and heading it was read from` | implemented |
 | OUT-9p | `renderLanding` over the docs-only fixture | the plain sentence, and no step list | `... > a docs-only change renders the plain sentence and no step list` | implemented |
-| OUT-9q | `HEAD~1..HEAD` against this repository | four results in order, the landing plan second after `footprint.composition`; the landing line validates; `after_merge.read` names `RELEASE.md` then `AGENTS.md`; every result is in the receipt | `the CLI speaks the Parley output protocol > the landing result follows the composition result in the same run` | implemented |
+| OUT-9q | `HEAD~1..HEAD` against this repository | four results in order, the landing plan second after `footprint.composition`; the landing line validates; `after_merge.read` names `RELEASE.md` then `AGENTS.md`; every result is in the receipt bundle, a sidecar over 64 KiB resolved by its path and checked against its own SHA-256 | `the CLI speaks the Parley output protocol > the landing result follows the composition result in the same run` | implemented |
 | OUT-9r | `HEAD~1..HEAD --human` | the composition comment, then `## Before merge`, then `## After merge` | `... > --human prints Before merge and After merge after the composition comment` | implemented |
 | OUT-9s | `--help` | the declared schemas are `footprint.composition`, `footprint.landing`, `footprint.blast_radius`, `footprint.overlap` and `parley.error`, in that order | `... > --help and --schema are runs that describe the tool` | implemented |
-| OUT-10a | `HEAD~1..HEAD` against this repository | four result lines in order, the blast radius third; the blast-radius line validates, carries the range and a 64-hex digest, `counts` equal to the list lengths when available and a stated `reason` when not; every result reaches the receipt; `--human` prints the `## Blast radius` section | `the CLI speaks the Parley output protocol > the blast-radius result follows the composition result in the same run` | implemented |
+| OUT-10a | `HEAD~1..HEAD` against this repository | four result lines in order, the blast radius third; the blast-radius line validates, carries the range and a 64-hex digest, `counts` equal to the list lengths when available and a stated `reason` when not; every result reaches the receipt bundle, the blast radius through a `parley.sidecar` line whose file matches its stated SHA-256 once the call sites push it over 64 KiB; `--human` prints the `## Blast radius` section | `the CLI speaks the Parley output protocol > the blast-radius result follows the composition result in the same run` | implemented |
 | OUT-10b | `--help` | the declared schemas are `footprint.composition@1.0.0`, `footprint.landing@1.0.0`, `footprint.blast_radius@1.1.0`, `footprint.overlap@1.0.0`, `parley.error@2.0.0`, in that order | `... > --help and --schema are runs that describe the tool` | implemented |
 | OUT-11a | `graft.struct_exports.rename.json`, captured from the real command on a commit renaming the exported `mermaidPie` to `pieChart` | `removed` is exactly `mermaidPie` and `added` exactly `pieChart`, both with file, kind and signature; `signatureChanged` empty; `semverImpact` `major` | `the export surface is a pure function of graft's JSON > a renamed export is reported removed and added` | implemented |
 | OUT-11b | A `changed` entry carrying `previousSignature` | the previous and new signatures are both kept, verbatim | `... > a signature change carries the previous signature` | implemented |
@@ -102,12 +108,48 @@ installed and fails loudly, naming the path, rather than skipping, if either is 
 | OUT-12g | `src/languages.ts`'s extensions against the installed `@flyingrobots/graft`'s `dist/parser/lang.js` | every footprint extension maps, through graft's own `detectLang`, to exactly graft's `SUPPORTED_LANGS`; editing one extension out of `src/languages.ts` turns this red | `footprint's supported-language list against the installed graft > every footprint extension maps, through graft's own detectLang, to exactly graft's SUPPORTED_LANGS` | implemented |
 | OUT-12h | graft's module missing from its expected path, or missing `SUPPORTED_LANGS`/`detectLang` | the test fails with a message naming the path, never skips or passes | by inspection of the `existsSync`/export-type guards in `test/languages-drift.test.ts`; no fixture simulates a missing module (see "Known gaps") | not implemented |
 
+| OUT-13a | `graft.struct_exports.signature_change.json`, captured from the real command on 543477a of this repository, where the exported `render` in `src/render.ts` gained `review?: StructuralReview \| null`; the call sites scanned live against this working tree | for every one of the seven symbols in that surface, the `(file, line)` pairs footprint lists are exactly the pairs an independent `grep -I -n -w <symbol>` finds over `git ls-files` — equal, not merely contained — and the signature change carries both signatures | `call sites are checked against an independent grep oracle > every call site grep finds on a real signature change in this repository is listed` | implemented |
+| OUT-13b | A symbol no file mentions, beside a symbol that is referenced | it is listed with `call_sites: []`; it is not dropped, the symbol beside it keeps its sites, and the `grep` oracle agrees nothing references it | `... > a symbol nothing references is listed with an empty list, not dropped` | implemented |
+| OUT-13c | A throwaway repository where a tracked file was deleted from the working tree | the deleted file is counted under `files_skipped.unreadable`, yields no call site, and the file beside it is still scanned; no throw | `the scan over a real git repository > a tracked file that is no longer on disk is skipped and counted, not a crash` | implemented |
+| OUT-13d | A throwaway repository holding a binary file whose bytes spell the symbol name | the file is counted under `files_skipped.binary`, yields no call site, and real `grep -I` over the same repository agrees it is not a text match | `... > a binary file is skipped and counted, exactly as grep -I skips it` | implemented |
+| OUT-13e | One file's text holding the identifier whole, inside a longer identifier, after an underscore, after a dot, with a leading `$`, twice on one line, and in a comment and a string | only whole-word occurrences match, the boundary being a letter, digit or underscore in any script on both sides; one entry per line however many times it occurs; a mention in a comment or a string is a match, because the scan cannot tell them apart | `the call-site scan is a pure function over one file's text > a whole-word occurrence is a call site and a substring is not`, `... > one line that mentions the symbol twice is one call site` | implemented |
+| OUT-13f | The same text through real `grep -nw`, in a throwaway repository, for `render` and for `r`, including the `rünïcode` case a differential fuzz caught | footprint's line numbers and grep's are the same set for both symbols, so the boundary is grep's own and not an approximation of it; `r` inside `rünïcode` is not a call site | `... > the boundary is grep's own: a real grep agrees line for line` | implemented |
+| OUT-13g | A buffer with a NUL byte, one without, and an empty one | the first is binary and the other two are not, which is the rule `grep -I` applies | `... > a buffer with a NUL byte is binary, and text is not` | implemented |
+| OUT-13h | A symbol the text never mentions, asked for beside one it does | both symbols get a key; the absent one's is an empty list rather than a missing entry | `... > a symbol the text never mentions gets an empty list, not a missing key` | implemented |
+| OUT-13i | A directory that is not a git repository | `call_site_scan.available: false` with code `scan.ls_files_failed` and a detail naming `git ls-files`; the sites for any symbol are `null`, never `[]`; no throw | `the scan over a real git repository > a scan that could not list the tracked files is stated, not an empty list` | implemented |
+| OUT-13j | A scan asked for no symbol at all | `files_scanned: 0` and nothing skipped: an empty surface reads no tree and claims no search | `... > no symbol to look up means no tree is read at all` | implemented |
+| OUT-13k | The live scan of this repository for `render` | the sites are ordered by file then line, so the digest follows the tree rather than the order git listed it in | `call sites are checked against an independent grep oracle > sites are ordered by file then line, so the digest does not follow the filesystem` | implemented |
+| OUT-13l | The record for a scanned surface | it validates against `schemas/footprint.blast_radius.schema.json` at 1.1.0; `call_site_scan.method` is `identifier_scan` with its `files_scanned`; `counts.call_sites` is the per-symbol lists added up; the signature-changed symbol carries its sites and a symbol with none carries `[]` | `the record carries the call sites > the record validates against schemas/footprint.blast_radius.schema.json at 1.1.0` | implemented |
+| OUT-13m | A surface parsed with no scan attached | `call_site_scan.available: false` with code `scan.not_run`, no `counts.call_sites`, and no symbol carrying a `call_sites` key — a scan that did not run cannot be read as one that found nothing | `... > a surface parsed without a scan says so rather than listing empty call sites` | implemented |
+| OUT-13n | A surface with a `scan.ls_files_failed` scan attached, and an unavailable surface with a good scan attached | the first states the reason on the record and no symbol carries `call_sites`; the second passes through untouched; both validate | `... > a scan that could not run is stated on the record, and no symbol carries call sites`, `... > an unavailable surface is unchanged by a scan and still validates` | implemented |
+| OUT-13o | The same surface and scan twice, once with one call site's line moved, and once with no scan | equal digests for the repeat, different when a call site moves, different again with no scan | `... > the digest moves when a call site moves` | implemented |
+| OUT-13p | The exported word boundary and the not-run scan | the boundary is the `[\\p{L}\\p{N}_]` the schema and the docs name, a letter in any script included, so the three cannot drift apart silently | `... > the scan's word boundary is the one the schema and the docs name` | implemented |
+| OUT-13q | The Markdown section for the signature-change fixture with sites attached, and with the scan unavailable | every site renders as `` `file:line` ``, a symbol with none says so rather than being left out, the footer names the scan as an identifier scan, every table row closes with a pipe; an unavailable scan prints its code and detail and never a zero count | `the blast-radius section carries the call sites > call sites are listed with file and line under each symbol`, `... > an unavailable call-site scan states its reason rather than reading as no call sites` | implemented |
+| OUT-13r | `543477a~1..543477a` against this repository — a range whose export surface is genuinely non-empty — and `--help` | the blast-radius line is `footprint.blast_radius` 1.1.0 and validates; with a surface available every listed symbol carries a `call_sites` array of `{file, line}`, `call_site_scan.available` is true over more than ten scanned files, `counts.call_sites` equals the lists added up, and a receipt step says how the call sites were found; `--help` declares `footprint.blast_radius@1.1.0` | `the CLI speaks the Parley output protocol > the blast-radius result carries the call sites of every symbol it lists`, `... > --help and --schema are runs that describe the tool` | implemented |
+
 ## Known gaps
 
 - The structural branch is exercised with whatever graft the test machine has; no test pins
   `structural.available: true`, because graft is optional and the test must pass without it. The
   same holds for the blast radius: OUT-10a accepts either branch from the live CLI, and the
   export-surface behavior is pinned by OUT-11's fixtures instead.
+- The oracle is exact for an **ASCII** symbol name. For a non-ASCII identifier footprint's
+  Unicode boundary and real `grep -w` can disagree, because grep's word characters are its
+  locale's and BSD grep's `-w` does not handle a multibyte pattern consistently with its own rule.
+  No test asserts parity there, and the reference says so rather than implying it holds.
+- The differential fuzz that found the boundary bug (2,400 random comparisons against real grep)
+  was a throwaway, not a committed test: it spawns a grep per comparison and takes minutes. What
+  it caught is pinned as the deterministic OUT-13f case instead.
+- The call-site scan is whole-word identifier matching, so the golden case pins footprint's answer
+  against `grep` and nothing else. No test distinguishes a call from a mention in a comment, a
+  string or the declaration itself, because the scan cannot: that is the stated limitation, not a
+  gap in the evidence. Dynamic dispatch and a re-export under another name are invisible to it and
+  no test claims otherwise.
+- Whether the live blast-radius branch is exercised at all depends on the machine. The same suite
+  reports 754 `expect()` calls locally, where graft answers, and 438 on CI, where it does not,
+  though it installs there: the graft-dependent assertions take their stated-limitation branch.
+  OUT-13r accepts both branches deliberately, so CI being green does not by itself mean a call
+  site was ever looked up in CI.
 - No test asserts that graft's live output still matches the fixtures. A graft release that changed
   the shape under the same `_schema` version would be caught only by OUT-10a's `counts` invariant.
 - OUT-12h (graft's language module missing, or missing the exports the drift test depends on) is

@@ -74,7 +74,18 @@ through its barrel. Decided: **the CLI contract that exists today**, named here 
 | `graft struct review --base <ref> --head <ref> --json` | `graft.cli.struct_review` | `2.0.0` | PR-level structural/formatting classification (already wired in `src/graft.ts`) |
 | `graft struct exports <base-ref> <head-ref> --json` | `graft.cli.struct_exports` | `1.0.0` | Export-surface diff — added/removed/signature-changed public symbols |
 | `graft struct diff --base <ref> --head <ref> --json` | `graft.cli.struct_diff` | `2.0.0` | Per-file structural diff |
-| `graft symbol blame <name> --json` | `graft.cli.symbol_blame` | `1.0.0` | Symbol-level references/call sites across history |
+| `graft symbol blame <name> --json` | `graft.cli.symbol_blame` | `1.0.0` | Symbol-level reference *count* across history — see the correction below |
+
+**Correction, flyingrobots/footprint#10.** The last row of that table was optimistic. No graft
+0.14.0 contract answers with a call site's **line**: `symbol_blame` carries a `referenceCount` and
+no per-reference list at all, and `struct_review`, `symbol difficulty` and `struct test-coverage`
+carry referencing *file paths* only. All four read the WARP index rather than the tree, and
+`symbol blame` answered `referenceCount: 0` for a symbol with live references in an unindexed
+checkout. So footprint's call sites are its own scan (`src/callsites.ts`), deliberately the most
+conservative rule an independent oracle can check — every whole-word occurrence of the name in the
+tracked, non-binary files of the working tree, `grep -w`'s boundary — and the test suite holds it
+to real `grep -I -n -w` over `git ls-files`. If graft later ships a contract carrying a line, that
+scan is the thing to replace, and the replacement must keep the grep oracle passing.
 
 Options rejected:
 

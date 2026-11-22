@@ -1,8 +1,8 @@
 # Blast radius
 
 What a change does to the **export surface**: which exported symbols it added, which it removed,
-and which kept their name but changed signature. One result line per run, `footprint.blast_radius`
-1.0.0, emitted after the landing plan.
+which kept their name but changed signature, and **where each of them is called from**. One result
+line per run, `footprint.blast_radius` 1.1.0, emitted after the landing plan.
 
 Composition answers how much changed. This answers what moved, which is the part a reviewer cannot
 get from a file list: a renamed export is two lines in a diff and a broken call site everywhere
@@ -10,7 +10,7 @@ else.
 
 ## Where the facts come from
 
-From graft's CLI JSON contract, and nothing else:
+The symbols come from graft's CLI JSON contract, and nothing else:
 
 ```bash
 graft struct exports <base-ref> <head-ref> --json
@@ -36,7 +36,8 @@ does not compute a semver impact and does not second-guess one.
 | `removed` | Exported at the base, not at head |
 | `signature_changed` | Exported at both ends under the same name, with a different signature; carries `previous_signature` when graft reported one |
 
-Each entry carries `symbol` and `file`, plus `kind` and `signature` when graft reported them. A
+Each entry carries `symbol` and `file`, plus `kind` and `signature` when graft reported them, and
+its `call_sites`. A
 renamed export therefore appears twice: the old name under `removed`, the new one under `added`.
 Nothing in graft's answer says "renamed", and footprint does not infer it — a removal and an
 addition that happen to be a rename and a removal that is a deletion look the same from the
@@ -45,6 +46,80 @@ outside, and guessing which is which would be a figure that was not computed.
 The base is the **merge base** when the range is written with three dots (`origin/main...HEAD`,
 which is the default), so symbols the default branch moved elsewhere are not attributed to this
 change. A two-dot range is compared end to end, exactly as given.
+
+## Call sites, and why they are footprint's own
+
+Each listed symbol carries `call_sites`, every one with a `file` and a `line`. These are **not**
+graft's: no graft CLI contract answers with a call site's line. Checked against graft 0.14.0, the
+version this repository pins:
+
+| Subcommand | What it answers with | A line? |
+| --- | --- | --- |
+| `graft symbol blame <name> --json` | `referenceCount`, an integer | No — there is no per-reference list in the payload at all |
+| `graft struct review --json` | `breakingChanges[].impactedFilePaths` | No — file paths |
+| `graft symbol difficulty --json` | `friction.referencingFiles` | No — file paths |
+| `graft struct test-coverage --json` | `referencingTestFiles` | No — file paths |
+
+All four read graft's WARP index rather than the tree, and `symbol blame` answered
+`referenceCount: 0` for a symbol with live references in a checkout that had not been indexed.
+Waiting for a contract that carries a line would mean shipping no call sites.
+
+So footprint computes them itself, with the most conservative rule that an independent oracle can
+check:
+
+> A call site is a **whole-word occurrence** of the symbol's name in a tracked, non-binary file of
+> the working tree.
+
+"Whole word" is `grep -w`'s own rule — the match may be neither preceded nor followed by a word
+character, which is a letter, a digit or an underscore **in any script** (`[\p{L}\p{N}_]`) —
+which is exactly why footprint's answer can be compared with real `grep -I -n -w` over
+`git ls-files`, line for line, instead of with a hand-written expectation. That comparison is the
+test, not a one-off: OUT-13a in the [output test plan](../output/test-plan.md).
+
+The Unicode part is not decoration. A differential fuzz against real grep, 2,400 comparisons over
+random hostile text, caught an ASCII-only `[A-Za-z0-9_]` reporting a call site for `r` inside
+`rünïcode`; grep in a UTF-8 locale reports none, and an identifier scan must not either. One limit
+remains, stated rather than papered over: for a symbol name that is **not** ASCII the two can
+disagree, because grep's word characters are its locale's and BSD grep's `-w` does not handle a
+multibyte pattern consistently with its own rule. Every symbol in the golden case, and every
+symbol graft has produced for this repository, is ASCII.
+
+The scan is over `git ls-files` of the **working tree**, so it reports what a reviewer would find
+in the checkout in front of them. One entry per line, however many times the name occurs on it,
+because that is what `grep -n` reports. Ordered by file then line, so the digest follows the tree
+rather than the order git listed it in. A file holding a NUL byte in its first 8192 is skipped, as
+`grep -I` skips it, and counted under `files_skipped.binary`; a tracked file that is no longer on
+disk is counted under `files_skipped.unreadable` and is not an error.
+
+**What it over-reports.** The declaration itself, a mention in a comment, a string, a changelog or
+prose, the same name belonging to something else entirely, and a name in a lockfile. A 71-call-site
+`render` in this repository includes its own `export function render`, its tests, and the word
+"render" in documentation.
+
+**What it under-reports.** A call through dynamic dispatch, a re-export under another name, a
+symbol reached through a computed property. A diff of declarations cannot see those, and neither
+can a scan of names.
+
+**It is per name, not per declaration.** Two exported symbols that share a name in different files
+share one call-site list, because an occurrence of the name is not attributable to one of them
+without resolving imports. The list is the union, and it is the same list on both entries.
+
+It is evidence a reviewer can check in one `grep`, not a call graph — and the `--human` section
+says so under every list it prints.
+
+### When the scan cannot run
+
+`call_site_scan` states it rather than showing zeroes, and **no symbol carries `call_sites` at
+all**, so a scan that did not run can never be read as one that found nothing:
+
+| `reason.code` | When |
+| --- | --- |
+| `scan.not_run` | The surface was parsed without a scan attached; no tree was read |
+| `scan.ls_files_failed` | `git ls-files -z` exited non-zero, so there was no file list to scan |
+
+The second also emits a `callsites.scan_failed` warning on stderr, and the run still exits 0. With
+no symbol to look up, nothing is read at all: the scan reports `files_scanned: 0` honestly rather
+than claiming it searched the tree for nobody.
 
 ## What counts as an export
 
@@ -116,12 +191,17 @@ footprint origin/main | jq -c 'select(._schema.id == "footprint.blast_radius") |
 footprint origin/main | jq -c 'select(._schema.id == "footprint.blast_radius") | .unanalysed_languages'
 ```
 
+```bash
+footprint origin/main | jq -c 'select(._schema.id == "footprint.blast_radius")
+  | .exports.signature_changed[] | {symbol, sites: (.call_sites | length)}'
+```
+
 The field-by-field reference is in [Output](../output/README.md); the contract is
-`schemas/footprint.blast_radius.schema.json`, and the cases that hold it are OUT-10, OUT-11 and
-OUT-12 in the [output test plan](../output/test-plan.md).
+`schemas/footprint.blast_radius.schema.json`, and the cases that hold it are OUT-10, OUT-11,
+OUT-12 and OUT-13 in the [output test plan](../output/test-plan.md).
 
 ## What this is not
 
-Not the call sites of those symbols, and not a grouping by system. Those are
-flyingrobots/footprint#10 and #11, and they will land as fields on this result with a schema
-version bump.
+Not a grouping by system: that is flyingrobots/footprint#11, and it will land as a field on this
+result with a schema version bump. Not a call graph either, and the call-site section above says
+exactly where that line is.
