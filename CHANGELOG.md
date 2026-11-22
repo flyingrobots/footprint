@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Decided
+
+- footprint#2's call-site/structural analysis depends on graft's **CLI JSON contract**, not a
+  library import: `struct review --json` (`graft.cli.struct_review` 2.0.0, already wired),
+  `struct exports --json` (`graft.cli.struct_exports` 1.0.0), `struct diff --json`
+  (`graft.cli.struct_diff` 2.0.0), and `symbol blame --json` (`graft.cli.symbol_blame` 1.0.0).
+  Rejected: graft's MCP tools (ruled out by footprint#2 §2a — the agent must not be in the
+  computation path) and waiting on a library barrel graft does not export today (its installed
+  `exports` map resolves only `"."`, and the capability thought to require one,
+  export-surface diffing, is already reachable as `struct exports`). (flyingrobots/footprint#8)
+
 ## [0.2.0] — 2026-11-22
 
 ### Changed
