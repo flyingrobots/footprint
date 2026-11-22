@@ -5,11 +5,14 @@ import { $ } from "bun";
 import { defineTool, main, type Run } from "@flyingrobots/parley-emit";
 import pkg from "../package.json" with { type: "json" };
 import { compose, parseNumstat } from "./footprint.ts";
-import { gutCheck, render } from "./render.ts";
+import { gutCheck, render, renderOverlap } from "./render.ts";
 import { resolveGraft, structuralReview } from "./graft.ts";
-import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord } from "./report.ts";
+import { computeOverlap, unavailableOverlap, type Overlap } from "./overlap.ts";
+import { isFailure, listOpenPullRequests, resolveGh } from "./pulls.ts";
+import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, OVERLAP_SCHEMA, OVERLAP_TYPE, compositionRecord, overlapRecord } from "./report.ts";
 
 let markdown = "";
+let overlapMarkdown = "";
 
 const tool = defineTool({
   name: "footprint",
@@ -17,13 +20,15 @@ const tool = defineTool({
   commands: {
     footprint: {
       intent: "Report what a change touches: its composition by file kind, the gut-check flags, and whether anything's shape moved",
-      effects: { reads: ["<cwd>/.git"], writes: [], network: false, idempotent: true },
+      // The network is read-only and optional: `gh` for the open pull requests, nothing else.
+      effects: { reads: ["<cwd>/.git"], writes: [], network: true, idempotent: true },
+      // No secret reaches footprint: `gh` holds its own credential and footprint never reads it.
       secrets: [],
-      emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }],
+      emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }, { ...OVERLAP_TYPE, schema: OVERLAP_SCHEMA }],
     },
   },
   retention: { count: 50 },
-  human: (line) => (line.event === "result" ? markdown : null),
+  human: (line) => (line.event !== "result" ? null : (line._schema as { id?: string } | undefined)?.id === OVERLAP_TYPE.id ? overlapMarkdown : markdown),
 });
 
 async function defaultBase(): Promise<string | null> {
@@ -63,6 +68,39 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   const gut = gutCheck(composition);
   markdown = changes.length === 0 ? `No changes in \`${range}\`.` : render(composition, changes, range, review);
   run.result(compositionRecord(range, composition, gut, review), COMPOSITION_TYPE, { files: changes, markdown });
+
+  // Cross-pull-request overlap: a second result in the same run, after the composition.
+  const overlap = await crossPullRequest(run, changes.map((c) => c.path));
+  overlapMarkdown = renderOverlap(overlap);
+  run.result(overlapRecord(range, overlap), OVERLAP_TYPE, { markdown: overlapMarkdown });
+}
+
+/**
+ * The open pull requests that share a file with this change, and an order they could land in.
+ * `gh` absent, unauthenticated or rate-limited is a stated limitation and the run still succeeds:
+ * an omitted section would read as "nothing overlaps", which is a different claim.
+ */
+async function crossPullRequest(run: Run, changed: readonly string[]): Promise<Overlap> {
+  const gh = resolveGh();
+  if (gh === null) {
+    run.step("cross-pull-request overlap unavailable", "gh is not on PATH; the result states the limitation rather than omitting the section");
+    return unavailableOverlap("gh.not_found", "gh is not installed or not on PATH");
+  }
+  const pulls = await listOpenPullRequests(gh, run.cwd);
+  if (isFailure(pulls)) {
+    run.step("cross-pull-request overlap unavailable", `gh resolved but could not list the open pull requests (${pulls.code}); the result states the limitation rather than omitting the section`);
+    run.warning({ code: pulls.code, problem: `gh could not list the open pull requests: ${pulls.reason}`, remedy: "run gh pr list by hand to see why; the composition result is unaffected", remedy_target: gh });
+    return unavailableOverlap(pulls.code, pulls.reason);
+  }
+  const overlap = computeOverlap(changed, pulls.pullRequests, { self: pulls.self, limit: pulls.limit });
+  run.step(`cross-pull-request overlap over ${overlap.openPullRequests} open pull request${overlap.openPullRequests === 1 ? "" : "s"}`, "gh listed the open pull requests and gh pr diff --name-only their files; waves are greedy first-fit over the conflict graph, a proposal rather than a minimum");
+  if (overlap.undetermined.length > 0) {
+    run.warning({ code: "gh.diff_failed", problem: `gh pr diff --name-only would not report the changed files of ${overlap.undetermined.map((u) => `#${u.number}`).join(", ")}; those pull requests are reported as undetermined rather than assumed disjoint`, remedy: "run gh pr diff --name-only by hand to see why", remedy_target: gh });
+  }
+  if (overlap.truncated) {
+    run.warning({ code: "gh.list_truncated", problem: `gh returned ${overlap.openPullRequests} open pull requests, the limit asked for; there may be more that were not considered`, measured: overlap.openPullRequests, limit: overlap.limit, remedy: "narrow the question, or raise the limit in src/pulls.ts" });
+  }
+  return overlap;
 }
 
 /**

@@ -5,10 +5,13 @@ import { join } from "node:path";
 import { canonical, sha256 } from "@flyingrobots/parley-emit";
 import type { Composition } from "./footprint.ts";
 import { structuralSummary, type StructuralReview } from "./graft.ts";
+import type { Overlap } from "./overlap.ts";
 import type { GutCheck } from "./render.ts";
 
 export const COMPOSITION_SCHEMA = JSON.parse(readFileSync(join(import.meta.dir, "../schemas/footprint.composition.schema.json"), "utf8")) as Record<string, unknown>;
 export const COMPOSITION_TYPE = { id: "footprint.composition", version: "1.0.0" } as const;
+export const OVERLAP_SCHEMA = JSON.parse(readFileSync(join(import.meta.dir, "../schemas/footprint.overlap.schema.json"), "utf8")) as Record<string, unknown>;
+export const OVERLAP_TYPE = { id: "footprint.overlap", version: "1.0.0" } as const;
 
 export interface Structural {
   readonly available: boolean;
@@ -27,5 +30,15 @@ export function structuralOf(review: StructuralReview | null): Structural {
 
 export function compositionRecord(range: string, composition: Composition, gut: GutCheck, review: StructuralReview | null) {
   const semantic = { range, composition, gut_check: gut, structural: structuralOf(review) };
+  return { event: "result", ...semantic, digest: sha256(canonical(semantic)) };
+}
+
+/**
+ * The overlap result, emitted after the composition in the same run. Its digest covers the live
+ * state of the open pull requests, so — unlike the composition's — it moves when they move, under
+ * the same `inv`.
+ */
+export function overlapRecord(range: string, overlap: Overlap) {
+  const semantic = { range, overlap };
   return { event: "result", ...semantic, digest: sha256(canonical(semantic)) };
 }
