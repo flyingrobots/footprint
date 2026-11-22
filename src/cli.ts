@@ -5,14 +5,16 @@ import { $ } from "bun";
 import { defineTool, main, type Run } from "@flyingrobots/parley-emit";
 import pkg from "../package.json" with { type: "json" };
 import { compose, parseNumstat } from "./footprint.ts";
-import { gutCheck, render } from "./render.ts";
+import { blastRadius, gutCheck, render } from "./render.ts";
 import { resolveGraft, structuralReview } from "./graft.ts";
 import { landingPlan, readLandingDocs, LANDING_DOCUMENTS } from "./landing.ts";
 import { renderLanding } from "./render.ts";
 import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord } from "./report.ts";
+import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, exportSurface, exportsRecord } from "./exports.ts";
 
 let markdown = "";
 let landingMarkdown = "";
+let blastMarkdown = "";
 
 const tool = defineTool({
   name: "footprint",
@@ -22,11 +24,17 @@ const tool = defineTool({
       intent: "Report what a change touches: its composition by file kind, the gut-check flags, whether anything's shape moved, and how it lands -- what the diff puts before a reviewer, and the after-merge steps read from the repository's own RELEASE.md and AGENTS.md",
       effects: { reads: ["<cwd>/.git"], writes: [], network: false, idempotent: true },
       secrets: [],
-      emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }, { ...LANDING_TYPE, schema: LANDING_SCHEMA }],
+      emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }, { ...LANDING_TYPE, schema: LANDING_SCHEMA }, { ...BLAST_RADIUS_TYPE, schema: BLAST_RADIUS_SCHEMA }],
     },
   },
   retention: { count: 50 },
-  human: (line) => (line.event !== "result" ? null : (line._schema as { id?: string } | undefined)?.id === LANDING_TYPE.id ? landingMarkdown : markdown),
+  human: (line) => {
+    if (line.event !== "result") return null;
+    const id = (line._schema as { id?: string } | undefined)?.id;
+    if (id === LANDING_TYPE.id) return landingMarkdown;
+    if (id === BLAST_RADIUS_TYPE.id) return blastMarkdown;
+    return markdown;
+  },
 });
 
 async function defaultBase(): Promise<string | null> {
@@ -78,6 +86,14 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   );
   landingMarkdown = renderLanding(landing);
   run.result(landingRecord(range, landing), LANDING_TYPE, { markdown: landingMarkdown });
+
+  // The export surface, after the composition result and in the same run (flyingrobots/footprint#9).
+  const surface = await exportSurface(graft, run.cwd, range);
+  if (!surface.available && surface.reason.code !== "graft.not_resolved") {
+    run.warning({ code: "graft.exports_failed", problem: `the export-surface diff is unavailable (${surface.reason.code}): ${surface.reason.detail}`, remedy: "run graft struct exports <base> <head> --json by hand to see why", remedy_target: graft ?? range });
+  }
+  blastMarkdown = blastRadius(surface);
+  run.result(exportsRecord(range, surface), BLAST_RADIUS_TYPE, { markdown: blastMarkdown });
 }
 
 /**

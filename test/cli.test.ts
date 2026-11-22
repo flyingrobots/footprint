@@ -27,6 +27,9 @@ byPair.set("footprint.blast_radius@1.0.0", ajv.compile(BLAST_RADIUS));
 
 type Line = Record<string, unknown> & { _schema: { id: string; version: string } };
 
+// A real run spawns graft twice (struct review and struct exports), each of which parses the
+// repository; the default 5s is not enough for that on a cold cache.
+
 function validateAll(text: string, stream: string): Line[] {
   const lines = text.split("\n").filter((l) => l !== "");
   expect(text === "" || text.endsWith("\n")).toBe(true);
@@ -80,8 +83,8 @@ describe("the CLI speaks the Parley output protocol", () => {
     const out = validateAll(r.stdout, "stdout");
     validateAll(r.stderr, "stderr");
     const results = out.filter((o) => o.event === "result");
-    expect(results.map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.blast_radius"]);
-    const blast = results[1] as Line & { range: string; digest: string; exports: Record<string, unknown> };
+    expect(results.map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius"]);
+    const blast = results[2] as Line & { range: string; digest: string; exports: Record<string, unknown> };
     expect(blast._schema).toEqual({ id: "footprint.blast_radius", version: "1.0.0" });
     expect(blast.range).toBe("HEAD~1..HEAD");
     expect(blast.digest).toMatch(/^[0-9a-f]{64}$/);
@@ -100,7 +103,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(human.status).toBe(0);
     expect(human.stdout).toContain("## Blast radius");
     expect(human.stdout).toContain("## Footprint");
-  });
+  }, CLI_TIMEOUT);
 
   test("the head carries the resolved range with both commit ids, and inv moves with them", async () => {
     const a = await cli(["HEAD~1..HEAD"]);
@@ -149,7 +152,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(r.status).toBe(0);
     const out = validateAll(r.stdout, "stdout");
     const results = out.filter((o) => o.event === "result");
-    expect(results.map((o) => `${o._schema.id}@${o._schema.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0"]);
+    expect(results.map((o) => `${o._schema.id}@${o._schema.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.0.0"]);
     const landing = results[1] as Line & {
       before_merge: { unguarded: boolean; guards: unknown[]; unguarded_because: string; items: unknown[] };
       after_merge: { read: { file: string; present: boolean }[]; steps: unknown[]; declared: boolean; nothing_to_do: boolean; statement: string };
@@ -161,7 +164,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(landing.after_merge.statement.length).toBeGreaterThan(0);
     expect(landing.digest).toMatch(/^[0-9a-f]{64}$/);
     const receipt = receiptOf(out);
-    expect(receipt.filter((o) => o.event === "result").length).toBe(2);
+    expect(receipt.filter((o) => o.event === "result").length).toBe(3);
   }, CLI_TIMEOUT);
 
   test("--human prints Before merge and After merge after the composition comment", async () => {
