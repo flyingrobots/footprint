@@ -32,6 +32,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `docs/topics/blast-radius/README.md`: what the export-surface diff lists, which graft contract it
   comes from, and the two failure modes it inherits (re-exports read as changes, dynamic dispatch
   invisible).
+- **Call sites for each changed symbol, with file and line.** Every symbol on the blast radius
+  carries `call_sites`, each a `{ file, line }`; a symbol nothing references is listed with an
+  empty list rather than dropped. `exports.call_site_scan` says how they were found and
+  `counts.call_sites` adds them up, and the `## Blast radius` section of `--human` gains a
+  **Call sites** column and a collapsed `file:line` list per symbol. These are footprint's own,
+  not graft's: no graft CLI contract answers with a call site's *line* — `symbol blame --json`
+  carries a `referenceCount` and no per-reference list, and `struct review`, `symbol difficulty`
+  and `struct test-coverage` carry referencing file paths only. So the rule is the most
+  conservative one an independent oracle can check: every whole-word occurrence of the name in the
+  tracked, non-binary files of the working tree, `grep -w`'s boundary. It counts the declaration,
+  comments, strings and prose, and misses dynamic dispatch and a re-export under another name;
+  both limits are stated in the result, in the schema and under the list in the comment. A binary
+  file is skipped exactly as `grep -I` skips it and a tracked file no longer on disk is counted,
+  not fatal; a scan that could not run is `call_site_scan.available: false` with a reason and a
+  `callsites.scan_failed` warning, and then no symbol carries `call_sites` at all.
+  (flyingrobots/footprint#10)
 
 ### Decided
 
@@ -43,6 +59,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   computation path) and waiting on a library barrel graft does not export today (its installed
   `exports` map resolves only `"."`, and the capability thought to require one,
   export-surface diffing, is already reachable as `struct exports`). (flyingrobots/footprint#8)
+
+### Schemas
+
+- `footprint.blast_radius` **1.0.0 → 1.1.0**, additive: `call_sites` on every symbol of `added`,
+  `removed` and `signature_changed`; `exports.call_site_scan`; `counts.call_sites`. When
+  `call_site_scan.available` is true the schema *requires* `call_sites` on every listed symbol, so
+  "listed with an empty list, not dropped" is structural rather than a convention. A consumer
+  pinned to 1.0.0 keeps reading every field it already read. (flyingrobots/footprint#10)
 
 ## [0.2.0] — 2026-11-22
 

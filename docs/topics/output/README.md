@@ -61,11 +61,12 @@ read and how the guard rule is computed is [landing](../landing/README.md).
 The receipt copy also carries `markdown`, the two `--human` sections. Under `--human` the landing
 plan prints as **Before merge** and **After merge**, after the composition comment.
 
-### `footprint.blast_radius` 1.0.0
+### `footprint.blast_radius` 1.1.0
 
-The export-surface diff, emitted after the composition result in the same run
-(`schemas/footprint.blast_radius.schema.json`). What it lists, and the graft contract it comes
-from, is [Blast radius](../blast-radius/README.md); these are its fields:
+The export-surface diff and the call sites of every symbol in it, emitted after the composition
+result in the same run (`schemas/footprint.blast_radius.schema.json`). What it lists, the graft
+contract the symbols come from, and why the call sites are footprint's own scan rather than
+graft's, is [Blast radius](../blast-radius/README.md); these are its fields:
 
 | Field | Meaning |
 | --- | --- |
@@ -74,16 +75,24 @@ from, is [Blast radius](../blast-radius/README.md); these are its fields:
 | `exports.reason` | Present when `available` is `false`: `code` — one of `graft.not_resolved`, `graft.exports_failed`, `graft.output_unreadable`, `graft.schema_mismatch`, `range.unresolved` — and a `detail` to act on. The section is stated, never omitted. |
 | `exports.base`, `exports.head` | The refs passed to graft: the merge base for a three-dot range, the given base otherwise |
 | `exports.added`, `exports.removed`, `exports.signature_changed` | The symbols, each with `symbol` and `file`, plus `kind` and `signature` when graft reported them, and `previous_signature` on a signature change. Sorted by file then symbol, so the digest follows the surface rather than graft's ordering. |
-| `exports.counts` | `added`, `removed`, `signature_changed` — the lengths of those three lists, and footprint's only arithmetic here |
+| `<symbol>.call_sites` | Where that symbol's name occurs as a whole word in the tracked, non-binary files of the working tree: one `{ file, line }` per line, ordered by file then line. Empty means the scan found none — a symbol nothing references is listed, never dropped. Absent means no scan ran, which `call_site_scan.reason` states. |
+| `exports.call_site_scan` | How the call sites were found: `method` is always `identifier_scan`, with `files_scanned` and `files_skipped` (`binary`, `unreadable`). `available: false` carries a `reason` — `scan.not_run` or `scan.ls_files_failed` — and then no symbol carries `call_sites` at all. |
+| `exports.counts` | `added`, `removed`, `signature_changed` — the lengths of those three lists — and `call_sites`, their call sites added up, present only when the scan ran |
 | `exports.semver_impact` | graft's own judgement, verbatim; `null` when it reported none. footprint derives no semver impact. |
 | `exports.contract` | The graft CLI contract that answered: `graft.cli.struct_exports` 1.0.0 |
 | `digest` | SHA-256 over the canonical JSON of `range` and `exports` |
 
-Everything under `added`, `removed` and `signature_changed` is graft's, passed through unchanged.
-The receipt copy carries the `markdown` of this section.
+Every `symbol`, `kind` and `signature` is graft's, passed through unchanged. The `call_sites` are
+footprint's own conservative whole-word identifier scan — `grep -w`'s boundary, over
+`git ls-files` — so they count the declaration itself and a mention in a comment, a string or
+prose, and they miss dynamic dispatch and a re-export under another name. Both limits are printed
+under the list in the `--human` section. The receipt copy carries the `markdown` of this section.
 
 `--human` prints both sections, the composition's `## Footprint` and then `## Blast radius`, so one
-run is one comment.
+run is one comment. The blast-radius section carries a `Call sites` column and a collapsed list of
+`file:line` per symbol; it spells out up to twenty per symbol and counts the rest, because the
+result line carries every one of them and a pull-request comment should not be buried by a symbol
+with four hundred.
 
 ## Identity
 
@@ -106,19 +115,21 @@ bootstrap line is written; that is the only work done before it. The derivation 
 | `git.diff_failed` | `git diff --numstat` exited non-zero; `problem` carries git's message | 2 |
 | `uncaught.exception` | A defect in footprint; `detail.stack` is in the receipt | 2 |
 
-Two warnings say graft resolved but could not be read, and the run still succeeds:
+Three warnings leave the run successful. Two say graft resolved but could not be read:
 `graft.review_failed` with `structural.available: false`, and `graft.exports_failed` with
 `exports.available: false` and the reason on the result. graft being absent entirely is not a
-warning — it is the `graft.not_resolved` reason on the result and a step saying so.
+warning — it is the `graft.not_resolved` reason on the result and a step saying so. The third,
+`callsites.scan_failed`, says the call-site scan could not list the tracked files;
+`exports.call_site_scan.available` is then `false` with its reason, and no symbol carries
+`call_sites`.
 
 ## Discovery
 
 `footprint --help` and `footprint --schema` are runs too: they bootstrap, write a receipt, emit
 one `command` line and the schemas footprint can emit, and close with `end`. `--help` carries
-`footprint.composition`, `footprint.landing` and `parley.error`; `--schema` adds every protocol
-schema the writer itself emits.
-`footprint.composition`, `footprint.blast_radius` and `parley.error`; `--schema` adds every
-protocol schema the writer itself emits.
+`footprint.composition` 1.0.0, `footprint.landing` 1.0.0, `footprint.blast_radius` 1.1.0 and
+`parley.error` 2.0.0, in that order; `--schema` adds every protocol schema the writer itself
+emits.
 
 ## Exit status
 
