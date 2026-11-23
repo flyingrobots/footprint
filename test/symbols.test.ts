@@ -274,6 +274,14 @@ describe("the overlap schema 2.0.0", () => {
   const record = (overlap: unknown) => ({ event: "result", t: 1, seq: 2, run: "r", range: "a...b", overlap, digest: "0".repeat(64), _schema: { id: "footprint.overlap", version: "2.0.0" } });
   const prs = [{ number: 1, title: "1", isDraft: false, files: ["x.ts"] }, { number: 2, title: "2", isDraft: false, files: ["x.ts"] }];
 
+  test("every undetermined code src/symbols.ts can produce is one the schema accepts", () => {
+    const source = readFileSync(join(ROOT, "src/symbols.ts"), "utf8");
+    const produced = [...new Set([...source.matchAll(/code: "([a-z]+\.[a-z_]+)"/g)].map((m) => m[1]!))].filter((c) => c !== "symbols.cleanup_failed").sort();
+    const defs = (schema as { $defs: { fileLevel: { properties: { code: { enum: string[] } } } } }).$defs;
+    expect(produced.length).toBeGreaterThan(10);
+    for (const code of produced) expect(defs.fileLevel.properties.code.enum).toContain(code);
+  });
+
   test("a result whose edges carry symbolLevel validates; an edge without it does not", () => {
     const o = computeOverlap(["x.ts"], prs);
     expect(validate(record(o))).toBe(true);
