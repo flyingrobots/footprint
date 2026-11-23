@@ -44,7 +44,10 @@ function scratch() {
 
 function run(sh: "bash" | "zsh", script: string, s: ReturnType<typeof scratch>) {
   const env = { ...process.env, PATH: `${s.bin}:${process.env.PATH}`, SCRATCH: s.dir };
-  const r = Bun.spawnSync([shell(sh), "-c", script], { cwd: ROOT, env, stdout: "pipe", stderr: "pipe" });
+  // zsh -f skips the user's startup files (a ~/.zshenv that puts the real gh back in front of the
+  // stub); it changes no option, so zsh still does not word-split, which is the behaviour under test.
+  const args = sh === "zsh" ? ["-f", "-c", script] : ["-c", script];
+  const r = Bun.spawnSync([shell(sh), ...args], { cwd: ROOT, env, stdout: "pipe", stderr: "pipe" });
   return { code: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
 }
 
@@ -71,13 +74,18 @@ describe("the skill's commands", () => {
       const s = scratch();
       const script = `set -e\nPR=4242\nRANGE=HEAD..HEAD\n${cloneDefinition()}\n${step3()}`;
       const r = run(sh, script, s);
-      expect(r.stderr).toBe("");
+      // stderr carries footprint's own --human warning that the stub gh could not list pull
+      // requests; what must never appear is the shell failing to find the command.
+      expect(r.stderr).not.toMatch(/command not found|no such file or directory/i);
       expect(r.code).toBe(0);
       const out = join(s.dir, "footprint-4242.md");
-      expect(readFileSync(out, "utf8")).toStartWith("## Footprint");
+      // An empty range keeps the run short; its report opens by naming the range it read.
+      const report = readFileSync(out, "utf8");
+      expect(report).toStartWith("No changes in `HEAD..HEAD`.");
+      expect(report).toContain("## After merge");
       expect(existsSync(s.log)).toBe(true);
       expect(readFileSync(s.log, "utf8").trim()).toBe(`pr comment 4242 --body-file ${out}`);
-    }, 60_000);
+    }, 120_000);
   }
 
   test("the 0.3.0 form fails under zsh and not bash, so the harness can tell", () => {

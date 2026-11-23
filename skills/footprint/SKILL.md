@@ -26,7 +26,7 @@ run a bare `footprint`. Use, in this order:
 1. **The published package**, when `npm view @flyingrobots/footprint version` answers:
 
    ```bash
-   FP="bunx @flyingrobots/footprint"
+   fp() { bunx @flyingrobots/footprint "$@"; }
    ```
 
 2. **Before the package is published**, a clone of `flyingrobots/footprint` with its dependencies
@@ -35,11 +35,16 @@ run a bare `footprint`. Use, in this order:
    ```bash
    git clone https://github.com/flyingrobots/footprint "$SCRATCH/footprint"
    (cd "$SCRATCH/footprint" && bun install)
-   FP="bun $SCRATCH/footprint/src/cli.ts"
+   fp() { bun "$SCRATCH/footprint/src/cli.ts" "$@"; }
    ```
 
    `$SCRATCH` stands for whatever directory you use for temporary files; do not write a
    machine-specific path into any repository.
+
+`fp` is a shell function, not a variable holding a command, because zsh (the macOS default shell)
+does not word-split an unquoted variable: `FP="bun …"; $FP` runs the whole string as one command
+name and exits 127. A function runs the same in bash and zsh. Shell state may not survive from one
+tool call to the next, so define `fp` in the same command that runs it.
 
 footprint runs on **Bun**. Its structural analysis comes from graft, which runs on **Node**, so
 `node` must be on `PATH` (`command -v node`). Without it the report still posts, but says the
@@ -74,7 +79,7 @@ it.
 
 ```bash
 OUT="$SCRATCH/footprint-$PR.md"
-$FP "$RANGE" --human > "$OUT"
+fp "$RANGE" --human > "$OUT"
 gh pr comment "$PR" --body-file "$OUT"
 ```
 

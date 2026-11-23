@@ -9,8 +9,10 @@ triggers on every push to `main` and on every pull request. One job, `test`, on 
 
 1. Checks out the repository.
 2. Installs Bun with [`oven-sh/setup-bun@v2`](https://github.com/oven-sh/setup-bun).
-3. Installs dependencies with `bun install --frozen-lockfile`, against the committed `bun.lock`.
-4. Runs the gate: `bun test`, with five environment variables set (below) that a local run does
+3. Installs `zsh`, which `test/skill.test.ts` needs to run the agent skill's commands under both
+   bash and zsh; `ubuntu-latest` ships only bash.
+4. Installs dependencies with `bun install --frozen-lockfile`, against the committed `bun.lock`.
+5. Runs the gate: `bun test`, with five environment variables set (below) that a local run does
    not need.
 
 `@flyingrobots/graft`, the optional structural-enrichment dependency some CLI tests exercise, is

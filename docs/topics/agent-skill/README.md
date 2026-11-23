@@ -11,7 +11,9 @@ repeat them.
 1. **Finds the program** without ever running a bare `footprint`, because on macOS
    `/usr/bin/footprint` is an unrelated Apple memory tool that comes first on `PATH`. It uses
    `bunx @flyingrobots/footprint` once the package is on npm, and before then `bun <clone>/src/cli.ts`
-   from a clone of this repository. It checks that `node` is on `PATH`, which graft needs.
+   from a clone of this repository, named by a shell function `fp` rather than a variable, so the
+   same commands run in bash and in zsh, which does not word-split an unquoted variable
+   (flyingrobots/footprint#37). It checks that `node` is on `PATH`, which graft needs.
 2. **Resolves the range** as `origin/<base>...origin/<head>` after `git fetch`, or the fetched
    `pull/<n>/head` for a pull request from a fork.
 3. **Runs footprint with `--human`** from inside the repository under review and posts the output,
@@ -43,4 +45,5 @@ release; [`RELEASE.md`](../../../RELEASE.md) lists that as an after-merge step.
 | Bun | footprint runs on Bun, not Node |
 | Node on `PATH` | graft, the optional structural analysis, runs on Node; without it the report says the structural section is unavailable |
 | `gh`, authenticated | to read the pull request, post the comment, and find overlapping pull requests |
+| bash or zsh | the commands are checked under both ([test plan](test-plan.md)) |
 | A checkout of the repository under review | footprint reads its git history, `RELEASE.md` and `AGENTS.md` |

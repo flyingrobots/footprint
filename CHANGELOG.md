@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Fixed
 
+- **The skill's commands run in zsh.** `skills/footprint/SKILL.md` set `FP="bun …/src/cli.ts"` and
+  ran `$FP …`, which zsh, the macOS default shell, does not word-split, so the command failed with
+  exit 127. It now defines a shell function, `fp() { bun "$SCRATCH/footprint/src/cli.ts" "$@"; }`
+  (or `bunx` once published), which bash and zsh call the same way; `test/skill.test.ts` runs the
+  skill's step 3 verbatim under both. CI installs `zsh` for it. Reinstall the skill.
+  (flyingrobots/footprint#37)
+
 - **`bin.footprint` survives `npm publish`.** It was written `./src/cli.ts`, a form npm's
   publish-time normalization removes ("script name src/cli.ts was invalid and removed"), so 0.3.0
   as tagged would have published with no command and `bunx @flyingrobots/footprint` would have
