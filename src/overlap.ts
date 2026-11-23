@@ -250,7 +250,7 @@ export function computeOverlap(
     conflicts: conflictGraph(prs, opts.symbols),
     waves: mergeWaves(prs, opts.symbols),
     undetermined,
-    symbolAnalysis: opts.symbols?.analysis ?? { outlinesRun: 0, outlineBudget: 0, outlineTimeoutMs: 0 },
+    symbolAnalysis: opts.symbols?.analysis ?? { outlinesRun: 0, outlineBudget: 0, outlineTimeoutMs: 0, remoteCalls: 0, remoteBudget: 0, remoteTimeoutMs: 0 },
     summary: summarize(prs.length, overlapping.length, undetermined.length, self !== null && prs.some((p) => p.number === self)),
   };
 }

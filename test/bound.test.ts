@@ -168,7 +168,7 @@ describe("the --human report is bounded to the comment limit", () => {
   // OUT-21i
   test("the overlap section names how many pull requests it omitted", () => {
     const overlapping = Array.from({ length: 100 }, (_, i) => ({ number: i + 1, title: `Pull request ${i} ${"x".repeat(80)}`, isDraft: false, sharedFiles: Array.from({ length: 30 }, (_, j) => `dir/file-${i}-${j}.ts`) })).map((p) => ({ ...p, symbolLevel: undeterminedLevel(p.sharedFiles, "symbols.not_analysed", "symbol-level analysis was not run") }));
-    const o: Overlap = { available: true, self: null, openPullRequests: 100, limit: 100, truncated: false, overlapping, conflicts: [], waves: [], undetermined: [], symbolAnalysis: { outlinesRun: 0, outlineBudget: 0, outlineTimeoutMs: 0 }, summary: "100 open pull requests overlap" };
+    const o: Overlap = { available: true, self: null, openPullRequests: 100, limit: 100, truncated: false, overlapping, conflicts: [], waves: [], undetermined: [], symbolAnalysis: { outlinesRun: 0, outlineBudget: 0, outlineTimeoutMs: 0, remoteCalls: 0, remoteBudget: 0, remoteTimeoutMs: 0 }, summary: "100 open pull requests overlap" };
     const md = renderOverlap(o, 8192);
     expect(md.length).toBeLessThanOrEqual(8192);
     const said = /(\d+) more pull requests? omitted/.exec(md);

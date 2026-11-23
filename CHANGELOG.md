@@ -5,6 +5,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-11-23
+
+### Added
+
+- **Symbol-level overlap for pull requests whose commits are not in the local clone**
+  (flyingrobots/footprint#55). A pull request whose head or base commit is absent locally, as a
+  fork's head is in CI, was always `undetermined` with `git.head_missing`. It is now read over
+  read-only `gh api` calls pinned to exact commit ids, and never fetched (`git fetch` writes to
+  `.git`; footprint declares no writes):
+  - `gh api repos/{owner}/{repo}/compare/<baseRefOid>...<headRefOid>` gives the merge base
+    (`merge_base_commit.sha`) and each file's patch from that merge base to the head, the same
+    comparison `git diff` makes locally. `gh pr diff` is not used: it diffs against the pull
+    request's current merge base, which can differ from the pinned one;
+  - the file's content at the merge base and at the head comes from
+    `gh api -H 'Accept: application/vnd.github.raw' repos/{owner}/{repo}/contents/<path>?ref=<sha>`,
+    each path segment percent-encoded;
+  - nothing is sent but full commit ids and the file's own path, and every call is a GET;
+  - bounded like the outline calls: at most 32 calls per run (`REMOTE_BUDGET`), each stopped after
+    20 seconds (`REMOTE_TIMEOUT_MS`), contents over 1 MiB not read, and no call after a rate limit;
+  - the rule of 0.4.1 holds: a merge base the compare does not state as a commit id, a file with
+    no patch or renamed, a file the compare did not list, a failed, timed-out or rate-limited call,
+    and a head that moved or a base `gh` did not report all leave the file `undetermined` with the
+    reason, never `symbol-disjoint`.
+  - `--human` marks a file whose side was read over the API, and the overlap section counts the
+    calls.
+
+### Changed
+
+- **`footprint.overlap` 2.2.0.** Additive. `symbolLevel.files[].github` (`["a"]`, `["b"]` or both)
+  names the sides read over the GitHub API; the undetermined `code` enum gains `gh.remote_failed`,
+  `gh.rate_limited`, `gh.timeout`, `gh.budget_spent`, `gh.compare_unpinned`,
+  `gh.compare_incomplete`, `gh.patch_unavailable` and `gh.content_too_large`; `symbolAnalysis`
+  gains `remoteCalls`, `remoteBudget` and `remoteTimeoutMs`.
+- The second side of a shared file is not resolved once the first is undetermined, so a pair
+  already undetermined spends no `gh api` call.
+
 ## [0.4.1] — 2026-11-22
 
 ### Fixed

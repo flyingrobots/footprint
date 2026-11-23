@@ -517,8 +517,9 @@ function symbolLines(level: SymbolLevel, a: string, b: string, limit: number, in
     return shown.map((x) => `\`${x}\``).join(", ") + (left > 0 ? ` and ${left} more` : "");
   };
   const out = level.files.slice(0, cap).map((f) => {
-    if (f.level === "symbol-disjoint") return `${indent}- \`${f.path}\`: different symbols — ${a} ${names(f.a!.symbols)}; ${b} ${names(f.b!.symbols)}`;
-    if (f.level === "symbol-overlapping") return `${indent}- \`${f.path}\`: the same symbols — ${names(f.shared!)}`;
+    const via = f.github === undefined ? "" : ` <sub>(${f.github.map((x) => (x === "a" ? a : b)).join(" and ")} read over the GitHub API)</sub>`;
+    if (f.level === "symbol-disjoint") return `${indent}- \`${f.path}\`: different symbols — ${a} ${names(f.a!.symbols)}; ${b} ${names(f.b!.symbols)}${via}`;
+    if (f.level === "symbol-overlapping") return `${indent}- \`${f.path}\`: the same symbols — ${names(f.shared!)}${via}`;
     return `${indent}- \`${f.path}\`: symbol level undetermined — ${f.reason}`;
   });
   const left = level.files.length - Math.min(level.files.length, cap);
@@ -575,7 +576,7 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
 
   if (o.truncated) out.push(`<sub>The pull-request list came back at the ${o.limit}-request limit; there may be more.</sub>`, "");
   out.push("<sub>Pull requests from `gh pr list`; their files from `gh pr diff --name-only`; the symbols of a shared file from `git diff -U0` against each side's merge base and the top-level symbols of `graft read outline` at both ends" +
-    ` (${o.symbolAnalysis.outlinesRun} of at most ${o.symbolAnalysis.outlineBudget} outline calls this run). Merge waves are greedy first-fit over the conflict graph: a proposal, not a minimum, and not a gate.</sub>`);
+    ` (${o.symbolAnalysis.outlinesRun} of at most ${o.symbolAnalysis.outlineBudget} outline calls${o.symbolAnalysis.remoteCalls > 0 ? ` and ${o.symbolAnalysis.remoteCalls} read-only \`gh api\` calls for pull requests not in the clone` : ""} this run). Merge waves are greedy first-fit over the conflict graph: a proposal, not a minimum, and not a gate.</sub>`);
   const text = out.join("\n");
   return { text, sizes: { pulls: text.length } };
 }

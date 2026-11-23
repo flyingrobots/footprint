@@ -19,8 +19,9 @@ It reports. It does not merge anything, does not rebase anything, and is not a g
 | That each head is still the one the files were listed for | the same `gh pr list`, run again after the file lists |
 | Each side's changed lines in a shared file | `git diff -U0 --no-textconv --no-ext-diff --no-relative <merge-base> <head> -- ':(top,literal)<file>'`, local and read-only |
 | The top-level symbols of that file at each end | `graft read outline <file> --json`, its jump table |
+| The same two facts for a pull request whose head or base commit is **not in the local clone** | `gh api repos/{owner}/{repo}/compare/<baseRefOid>...<headRefOid>` (merge base and per-file patch) and `gh api -H 'Accept: application/vnd.github.raw' repos/{owner}/{repo}/contents/<path>?ref=<sha>` at the merge base and the head; see [Commits the clone lacks](#commits-the-clone-lacks) |
 
-The `gh` calls are the whole of footprint's contact with GitHub. Everything after them is
+The `gh` calls are the whole of footprint's contact with GitHub, and every one is read-only. Everything after them is
 computation over `{number, title, isDraft, files}` records, which is why the test suite needs
 neither the network nor an open pull request on this repository.
 
@@ -104,8 +105,16 @@ symbol. Two pull requests that change different methods of one class are reporte
 | `gh.head_unknown` | `gh` did not report the pull request's head commit |
 | `gh.head_moved` | the head commit differed, or was missing, when `gh pr list` was asked again after the file lists, so the files and the commit are not one snapshot |
 | `gh.base_unknown` | `gh` did not report the base commit (`baseRefOid`); a local branch tip is not a substitute |
-| `git.head_missing` | the head commit is not in the local repository; `git fetch origin pull/<n>/head` makes it available. A fork's pull request is usually the case |
-| `git.base_missing`, `git.merge_base` | the base commit is not in the local repository (`git fetch origin` makes it available), or has no common commit with the head |
+| `git.head_missing` | the head commit is not in the local repository and the GitHub API fallback was not available (no base commit reported); `git fetch origin pull/<n>/head` makes it available. A fork's pull request is usually the case |
+| `git.base_missing`, `git.merge_base` | the base commit is not in the local repository and the fallback was not available (`git fetch origin` makes it available), or it has no common commit with the head |
+| `gh.remote_failed` | a `gh api` call for a commit the clone lacks failed; the reason carries gh's message and the local `git fetch` remedy |
+| `gh.rate_limited` | a `gh api` call hit the rate limit; no further call is made that run |
+| `gh.timeout` | a `gh api` call did not answer within its timeout and was stopped |
+| `gh.budget_spent` | the run's budget of `gh api` calls was used up before this file was reached |
+| `gh.compare_unpinned` | the compare did not state its merge base as a commit id, or was unreadable, so the comparison is not pinned to exact commits |
+| `gh.compare_incomplete` | the compare did not list the shared file (its file list is capped) |
+| `gh.patch_unavailable` | the compare lists the file without a patch (binary, very large) or as renamed |
+| `gh.content_too_large` | the file's content at a commit is over 1 MiB |
 | `symbols.file_unchanged` | the side is listed as changing the file, but its own diff changes no line of it, so the list and the commits disagree |
 | `git.diff_failed`, `git.show_failed`, `git.binary` | git could not give the lines or the content, or the file is binary |
 | `symbols.outside` | both sides change lines outside every symbol, which no symbol can tell apart |
@@ -130,6 +139,34 @@ Past either limit the file is `undetermined` with the reason. `symbolAnalysis` o
 records the calls made, the budget and the timeout. If the temporary directory cannot be removed at
 the end, the run carries a `symbols.cleanup_failed` warning and keeps the levels it computed.
 
+### Commits the clone lacks
+
+When a pull request's head or base commit is not in the local repository, footprint does not ask
+for a `git fetch`, which would write to `.git`. It reads that side over the GitHub API with `gh`,
+pinned to exact commit ids:
+
+- **`gh api repos/{owner}/{repo}/compare/<baseRefOid>...<headRefOid>`** answers with the merge base
+  (`merge_base_commit.sha`) and, for each changed file, the patch from that merge base to the head.
+  That is the comparison `git diff <merge-base> <head>` makes locally. `gh pr diff` is not used,
+  because it diffs against the pull request's *current* merge base, which can differ from the one
+  the two commits pin.
+- **`gh api -H 'Accept: application/vnd.github.raw' repos/{owner}/{repo}/contents/<path>?ref=<sha>`**
+  gives the file's content at the merge base (for removed lines) and at the head (for added
+  lines), which graft outlines exactly as it does a local blob.
+
+The file's record carries `github: ["a"]`, `["b"]` or both, naming the sides this way, and
+`--human` says so beside the file. The fallback holds to the same rule as the rest: the file is
+`undetermined`, with a code, whenever the comparison is not exact. A compare with no commit-id
+merge base, a file with no patch or a rename, a file the compare did not list, a failed call, a
+rate limit, a timeout, a call past the budget and a file over 1 MiB each have a code (table above).
+A head that moved, or a base `gh` did not report, spends no call at all.
+
+Only full commit ids and the file's own path (each segment percent-encoded) are sent, every call
+is a GET, and `{owner}/{repo}` is `gh`'s own placeholder, filled from the clone's remote. The calls
+are bounded like the outline calls: at most 32 per run (`REMOTE_BUDGET` in `src/remote.ts`), each
+stopped after 20 seconds (`REMOTE_TIMEOUT_MS`), cached by request, and none after a rate limit.
+`symbolAnalysis` records `remoteCalls`, `remoteBudget` and `remoteTimeoutMs`.
+
 ### Decision: a symbol-disjoint edge does not separate waves
 
 This decision was made under the owner's delegation of 2026-11-22 and is recorded on
@@ -145,7 +182,7 @@ append a different function at the end of one file are symbol-disjoint, and git 
 textual conflict between them. Predicting textual conflicts is out of scope.
 
 The waves invariant changed from "no two in a wave share a file" to "... unless the edge is
-symbol-disjoint", so the result's schema moved to a new major version: `footprint.overlap` 2.0.0. 2.1.0 adds the undetermined codes `gh.head_moved`, `gh.base_unknown` and `symbols.file_unchanged` (flyingrobots/footprint#56); nothing else in the record changed.
+symbol-disjoint", so the result's schema moved to a new major version: `footprint.overlap` 2.0.0. 2.1.0 adds the undetermined codes `gh.head_moved`, `gh.base_unknown` and `symbols.file_unchanged` (flyingrobots/footprint#56). 2.2.0 adds the `github` field, the eight `gh.*` codes of the API fallback and the `remote*` fields of `symbolAnalysis` (flyingrobots/footprint#55); nothing else in the record changed.
 
 ### On a real pair
 
@@ -243,7 +280,7 @@ per message, one ledger for the messages.
 
 ## Reading it
 
-The JSON Lines result is `footprint.overlap` 2.1.0 — fields in
+The JSON Lines result is `footprint.overlap` 2.2.0 — fields in
 [the output reference](../output/README.md#the-overlap-result). `--human` renders the same record
 as an `### Open pull requests` section: the summary, the overlapping pull requests with the files
 they share and a nested line per file at the symbol level, and a collapsed merge order. Each list
