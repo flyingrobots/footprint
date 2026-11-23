@@ -7,6 +7,8 @@ import { classify } from "./classify.ts";
 import { structuralSummary, type StructuralReview } from "./graft.ts";
 import type { BeforeMergeKind, Landing } from "./landing.ts";
 import type { Exports, ExportedSymbol } from "./exports.ts";
+import { surfaceCallSiteRows } from "./exports.ts";
+import { MITIGATION_RULE, SYSTEM_RULE_DETAIL, groupBySystem, type SystemGroup } from "./systems.ts";
 import type { UnsupportedLanguage } from "./languages.ts";
 import type { Overlap } from "./overlap.ts";
 
@@ -185,38 +187,84 @@ export function blastRadius(exports: Exports, unanalysed: readonly UnsupportedLa
     out.push(details(`Exported symbols (${rows.length})`, [head, ...body].join("\n")), "");
   }
 
-  // The call sites themselves. Collapsed, because this is the longest part of the comment, and
+  // The call sites themselves, grouped by system: one table per system
+  // (flyingrobots/footprint#11). Collapsed, because this is the longest part of the comment, and
   // stated when the scan could not run: an absent list would read as a symbol nothing calls.
   if (!scan.available) {
     out.push(`<sub>Call sites not listed (\`${scan.reason.code}\`): ${scan.reason.detail}.</sub>`, "");
   } else if (rows.length > 0) {
+    const groups = groupBySystem(surfaceCallSiteRows(s));
     const total = rows.reduce((n, [, x]) => n + (x.callSites?.length ?? 0), 0);
-    const body = rows.map(([, x]) => callSiteLines(x)).join("\n\n");
-    out.push(details(`Call sites (${total} across ${scan.filesScanned} scanned file${scan.filesScanned === 1 ? "" : "s"})`, body), "");
+    const body = [
+      ...groups.map(systemTable),
+      ...unreferenced(rows.map(([, x]) => x)),
+    ].join("\n\n");
+    const summary =
+      `Call sites by system (${total} across ${groups.length} system${groups.length === 1 ? "" : "s"}, ` +
+      `${scan.filesScanned} scanned file${scan.filesScanned === 1 ? "" : "s"})`;
+    out.push(details(summary, body), "");
   }
 
   out.push(FROM_GRAFT);
-  if (scan.available) out.push("", FROM_SCAN);
+  if (scan.available) out.push("", FROM_SCAN, "", FROM_GROUPING);
   out.push("", unanalysedSection(unanalysed));
   return out.join("\n");
 }
 
 /**
- * How many call sites are spelled out per symbol before the comment just says how many more there
- * are. The result line carries every one of them; this is a pull-request comment, and a symbol
- * with four hundred call sites would bury everything else in it.
+ * How many call sites of one symbol are spelled out inside one system's table before the comment
+ * just says how many more there are. The result line carries every one of them; this is a
+ * pull-request comment, and a symbol with four hundred call sites would bury everything else in
+ * it. The remainder is a sentence under the table rather than a row, because a row with nothing in
+ * its mitigation cell is exactly the padded row flyingrobots/footprint#11 forbids.
  */
 const CALL_SITES_SHOWN = 20;
 
-function callSiteLines(x: ExportedSymbol): string {
-  if (x.callSites === undefined) return `**\`${x.symbol}\`** — not scanned; the scan carries no entry for this symbol.`;
-  const sites = x.callSites;
-  if (sites.length === 0) return `**\`${x.symbol}\`** — no call site found in the tracked files.`;
-  const shown = sites.slice(0, CALL_SITES_SHOWN).map((c) => `- \`${c.file}:${c.line}\``);
-  const rest = sites.length - shown.length;
-  const head = `**\`${x.symbol}\`** — ${sites.length} call site${sites.length === 1 ? "" : "s"}`;
-  return [head, "", ...shown, ...(rest > 0 ? [`- …and ${rest} more; the result line carries every one.`] : [])].join("\n");
+/** One system, one table: a row per call site, each with the mitigation its basis derived. */
+function systemTable(group: SystemGroup): string {
+  const head = "| Symbol | Call site | Mitigation |\n| --- | --- | --- |";
+  const body: string[] = [];
+  const elided = new Map<string, number>();
+  let symbol: string | null = null;
+  let shown = 0;
+  for (const row of group.rows) {
+    if (row.symbol !== symbol) {
+      symbol = row.symbol;
+      shown = 0;
+    }
+    shown += 1;
+    if (shown <= CALL_SITES_SHOWN) {
+      body.push(`| \`${row.symbol}\` | \`${row.site.file}:${row.site.line}\` | ${pipes(row.site.mitigation)} |`);
+    } else {
+      elided.set(row.symbol, (elided.get(row.symbol) ?? 0) + 1);
+    }
+  }
+  const title = `**\`${group.system}\`** — ${group.rows.length} call site${group.rows.length === 1 ? "" : "s"}`;
+  const rest = [...elided.entries()].map(([sym, n]) => `…and ${n} more for \`${sym}\``);
+  const tail = rest.length === 0 ? [] : ["", `<sub>${rest.join(", ")}; the result line carries every one.</sub>`];
+  return [title, "", head, ...body, ...tail].join("\n");
 }
+
+/**
+ * The symbols with no call site at all. They belong to no system, so no table holds them, and
+ * leaving them out would read as a symbol that was never looked up — which is a different claim
+ * from one nothing references.
+ */
+function unreferenced(symbols: readonly ExportedSymbol[]): string[] {
+  const none = symbols.filter((x) => x.callSites !== undefined && x.callSites.length === 0).map((x) => `\`${x.symbol}\``);
+  const missing = symbols.filter((x) => x.callSites === undefined).map((x) => `\`${x.symbol}\``);
+  const out: string[] = [];
+  if (none.length > 0) out.push(`<sub>No call site found in the tracked files for ${none.join(", ")}.</sub>`);
+  if (missing.length > 0) out.push(`<sub>Not scanned, and so in no system: ${missing.join(", ")}. The scan carries no entry for them.</sub>`);
+  return out;
+}
+
+/** A table cell cannot carry a pipe. Mitigations are derived from paths, which may hold one. */
+function pipes(text: string): string {
+  return text.replace(/\|/g, "\\|");
+}
+
+const FROM_GROUPING = `<sub>**The grouping.** ${SYSTEM_RULE_DETAIL} **The mitigations.** ${MITIGATION_RULE}</sub>`;
 
 const FROM_SCAN =
   "<sub>Call sites are footprint's own whole-word identifier scan, not graft's: every whole-word occurrence of the name in the tracked, non-binary files of the working tree (`grep -w`'s boundary -- a letter, digit or underscore in any script). It counts the declaration itself and a mention in a comment, a string or prose, and it cannot see a call through dynamic dispatch or a re-export under another name. Evidence to check, not a call graph.</sub>";

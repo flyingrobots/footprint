@@ -65,8 +65,8 @@ plan prints as **Before merge** and **After merge**, after the composition comme
 
 ### `footprint.blast_radius` 1.1.0
 
-The export-surface diff and the call sites of every symbol in it, the third result line of the run,
-after the landing plan (`schemas/footprint.blast_radius.schema.json`). What it lists, the graft
+The export-surface diff and the call sites of every symbol in it, grouped by the system that
+contains them, the third result line of the run, after the landing plan (`schemas/footprint.blast_radius.schema.json`). What it lists, the graft
 contract the symbols come from, and why the call sites are footprint's own scan rather than
 graft's, is [Blast radius](../blast-radius/README.md); these are its fields:
 
@@ -77,7 +77,8 @@ graft's, is [Blast radius](../blast-radius/README.md); these are its fields:
 | `exports.reason` | Present when `available` is `false`: `code` — one of `graft.not_resolved`, `graft.exports_failed`, `graft.output_unreadable`, `graft.schema_mismatch`, `range.unresolved` — and a `detail` to act on. The section is stated, never omitted. |
 | `exports.base`, `exports.head` | The refs passed to graft: the merge base for a three-dot range, the given base otherwise |
 | `exports.added`, `exports.removed`, `exports.signature_changed` | The symbols, each with `symbol` and `file`, plus `kind` and `signature` when graft reported them, and `previous_signature` on a signature change. Sorted by file then symbol, so the digest follows the surface rather than graft's ordering. |
-| `<symbol>.call_sites` | Where that symbol's name occurs as a whole word in the tracked, non-binary files of the working tree: one `{ file, line }` per line, ordered by file then line. Empty means the scan found none — a symbol nothing references is listed, never dropped. Absent means no scan ran, which `call_site_scan.reason` states. |
+| `<symbol>.call_sites` | Where that symbol's name occurs as a whole word in the tracked, non-binary files of the working tree: one entry per line, ordered by file then line. Each carries `file`, `line`, the `system` containing it, its `mitigation` and the `mitigation_basis` that derived it. Empty means the scan found none — a symbol nothing references is listed, never dropped. Absent means no scan ran, which `call_site_scan.reason` states. |
+| `exports.call_site_systems` | The grouping, with the rule named on it: `rule` is `path_prefix`, `rule_detail` and `mitigation_rule` state both rules in words, `unassigned` is the literal `(unassigned)`, and `systems` lists each system with its `call_sites` count, ordered by name with the unassigned group last. The counts sum to `counts.call_sites`. Present exactly when the scan ran. |
 | `exports.call_site_scan` | How the call sites were found: `method` is always `identifier_scan`, with `files_scanned` and `files_skipped` (`binary`, `unreadable`). `available: false` carries a `reason` — `scan.not_run` or `scan.ls_files_failed` — and then no symbol carries `call_sites` at all. |
 | `exports.counts` | `added`, `removed`, `signature_changed` — the lengths of those three lists — and `call_sites`, their call sites added up, present only when the scan ran |
 | `exports.semver_impact` | graft's own judgement, verbatim; `null` when it reported none. footprint derives no semver impact. |
@@ -91,10 +92,14 @@ underscore in any script, over `git ls-files` — so they count the declaration 
 prose, and they miss dynamic dispatch and a re-export under another name. Both limits are printed
 under the list in the `--human` section. The receipt copy carries the `markdown` of this section.
 
-The blast-radius section of `--human` carries a `Call sites` column and a collapsed list of
-`file:line` per symbol; it spells out up to twenty per symbol and counts the rest, because the
-result line carries every one of them and a pull-request comment should not be buried by a symbol
-with four hundred.
+The blast-radius section of `--human` carries a `Call sites` column on the symbol table and, below
+it, one Markdown table per system — `| Symbol | Call site | Mitigation |` — in the same order as
+`call_site_systems.systems`. Inside a system it spells out up to twenty call sites per symbol and
+names the remainder in a sentence under the table, because the result line carries every one of
+them, a pull-request comment should not be buried by a symbol with four hundred, and a row with
+nothing in its mitigation cell is exactly the padded row flyingrobots/footprint#11 forbids. A
+symbol with no call site at all is in no system and so in no table; it is stated under them
+instead, because leaving it out would read as a symbol that was never looked up.
 
 ### `footprint.overlap` 1.0.0
 

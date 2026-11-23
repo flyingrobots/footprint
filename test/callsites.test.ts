@@ -298,7 +298,13 @@ describe("the record carries the call sites", () => {
     expect((ex.call_site_scan as Record<string, unknown>).files_scanned).toBe(3);
     expect((ex.counts as Record<string, number>).call_sites).toBe(7);
     const changed = (ex.signature_changed as Array<Record<string, unknown>>)[0]!;
-    expect(changed.call_sites).toEqual([{ file: "src/cli.ts", line: 7 }, { file: "test/cli.test.ts", line: 90 }]);
+    // The system and the mitigation ride each call site (flyingrobots/footprint#11): `render` is
+    // declared in src/render.ts, so the call in src/cli.ts is another file in its own system, and
+    // the one in the test file needs nothing. The derivation itself is OUT-14d.
+    expect(changed.call_sites).toEqual([
+      { file: "src/cli.ts", line: 7, system: "src", mitigation: "Call site in src, outside the changed file.", mitigation_basis: "other_system" },
+      { file: "test/cli.test.ts", line: 90, system: "test", mitigation: "None needed", mitigation_basis: "test_file" },
+    ]);
     const dev = (ex.added as Array<Record<string, unknown>>).find((s) => s.symbol === "devDependencies")!;
     expect(dev.call_sites).toEqual([]);
   });
