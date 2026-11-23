@@ -5,7 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-11-22
+
 ### Fixed
+
+- **The structural section compares a three-dot range from the merge base.** `footprint
+  origin/main...origin/branch` handed `graft struct review` the base ref itself, `origin/main`'s
+  tip, while the composition and exports sections used the merge base. Every symbol the default
+  branch gained after the branch was cut was reported as removed by the branch and as a breaking
+  change (35 of them on a one-file test change in flyingrobots/school). graft is now given the
+  merge base, from the same `rangeBase` the exports section uses, so the three sections compare
+  one range. A two-dot range, which was split on `...` and so handed graft the whole range as one
+  ref, is now compared from its written base. A range with no merge base states the limitation
+  as a `graft.review_failed` warning. No schema moved. (flyingrobots/footprint#39)
 
 - **Markdown under `spec/` is documentation, not test.** The `spec/` directory rule, meant for
   RSpec-style test code, classified a specification repository's prose (`spec/parley-v0.2.md`) as

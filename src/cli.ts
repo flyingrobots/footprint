@@ -11,7 +11,7 @@ import { landingPlan, readLandingDocs, LANDING_DOCUMENTS } from "./landing.ts";
 import { computeOverlap, underReview, unavailableOverlap, type Overlap, type RangeHead } from "./overlap.ts";
 import { isFailure, listOpenPullRequests, resolveGh } from "./pulls.ts";
 import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord, OVERLAP_SCHEMA, OVERLAP_TYPE, overlapRecord } from "./report.ts";
-import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, attachCallSites, exportSurface, exportsRecord, surfaceSymbols } from "./exports.ts";
+import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, attachCallSites, exportSurface, rangeBase, rangeEnds, exportsRecord, surfaceSymbols } from "./exports.ts";
 import { unsupportedLanguages } from "./languages.ts";
 
 let markdown = "";
@@ -68,13 +68,14 @@ async function footprint(run: Run, args: string[]): Promise<void> {
     return;
   }
   const changes = parseNumstat(diff.text());
-  const [base, head = "HEAD"] = range.split("...");
+  const { head } = rangeEnds(range);
+  const baseRef = await rangeBase(run.cwd, range);
 
   const graft = await resolveGraft(process.env.FOOTPRINT_GRAFT);
   run.step(graft === null ? "structural analysis unavailable" : `structural analysis via ${graft}`, graft === null ? "graft could not be resolved through the package or PATH; the report states the limitation rather than omitting the section" : "graft resolved through the package dependency, PATH or FOOTPRINT_GRAFT");
-  const review = graft === null || changes.length === 0 ? null : await structuralReview(graft, run.cwd, base!, head);
+  const review = graft === null || changes.length === 0 || !baseRef.ok ? null : await structuralReview(graft, run.cwd, baseRef.ref, head);
   if (graft !== null && changes.length > 0 && review === null) {
-    run.warning({ code: "graft.review_failed", problem: "graft struct review failed or returned output footprint could not read; structural analysis unavailable for this run", remedy: "run graft struct review --json by hand to see why", remedy_target: graft });
+    run.warning({ code: "graft.review_failed", problem: baseRef.ok ? "graft struct review failed or returned output footprint could not read; structural analysis unavailable for this run" : `${baseRef.detail}; structural analysis unavailable for this run`, remedy: "run graft struct review --json by hand to see why", remedy_target: graft });
   }
 
   const composition = compose(changes);

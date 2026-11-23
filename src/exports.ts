@@ -172,22 +172,31 @@ export async function exportSurface(graft: string | null, repo: string, range: s
   if (graft === null) {
     return unavailableExports("graft.not_resolved", "graft could not be resolved through the package dependency, PATH or FOOTPRINT_GRAFT");
   }
-  const { base, head, threeDot } = rangeEnds(range);
-  let baseRef = base;
-  if (threeDot) {
-    const mb = await $`git -C ${repo} merge-base ${base} ${head}`.quiet().nothrow();
-    const sha = mb.text().trim();
-    if (mb.exitCode !== 0 || sha === "") {
-      return unavailableExports("range.unresolved", `git merge-base ${base} ${head} found no common commit, so there is no merge base to compare the export surface from`);
-    }
-    baseRef = sha;
-  }
+  const { head } = rangeEnds(range);
+  const resolved = await rangeBase(repo, range);
+  if (!resolved.ok) return unavailableExports("range.unresolved", `${resolved.detail}, so there is no merge base to compare the export surface from`);
+  const baseRef = resolved.ref;
   const run = await $`${graft} --cwd ${repo} struct exports ${baseRef} ${head} --json`.quiet().nothrow();
   if (run.exitCode !== 0) {
     const why = run.stderr.toString().trim().split("\n")[0] ?? "(no message)";
     return unavailableExports("graft.exports_failed", `graft struct exports ${baseRef} ${head} --json exited ${run.exitCode}: ${why}`);
   }
   return parseExportSurfaceText(run.text());
+}
+
+/**
+ * The ref graft is given as the base of a range: the merge base for a three-dot range, so what
+ * the default branch gained after the branch was cut is not attributed to the branch
+ * (flyingrobots/footprint#39), and the written base itself for a two-dot range. Every graft call
+ * in a run takes its base from here, so the sections cannot disagree about what was compared.
+ */
+export async function rangeBase(repo: string, range: string): Promise<{ ok: true; ref: string } | { ok: false; detail: string }> {
+  const { base, head, threeDot } = rangeEnds(range);
+  if (!threeDot) return { ok: true, ref: base };
+  const mb = await $`git -C ${repo} merge-base ${base} ${head}`.quiet().nothrow();
+  const sha = mb.text().trim();
+  if (mb.exitCode !== 0 || sha === "") return { ok: false, detail: `git merge-base ${base} ${head} found no common commit` };
+  return { ok: true, ref: sha };
 }
 
 /** The two ends of a range, and whether it was written with three dots (merge-base semantics). */
