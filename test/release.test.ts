@@ -23,6 +23,16 @@ describe("footprint's own landing steps", () => {
     }
   });
 
+  // flyingrobots/footprint#34: a skill-only change used to read as documentation only, which set
+  // RELEASE.md's "reinstall the skill" step aside.
+  test("a change to the skill alone reports the after-merge steps, reinstall included", () => {
+    const l = landingPlan(["skills/footprint/SKILL.md"], readLandingDocs(ROOT));
+    expect(l.after_merge.nothing_to_do).toBe(false);
+    expect(l.after_merge.steps.length).toBeGreaterThan(0);
+    for (const s of l.after_merge.steps) expect(s.file).toBe("RELEASE.md");
+    expect(l.after_merge.steps.some((s) => s.step.includes("`skills/footprint/`") && /reinstall/i.test(s.step))).toBe(true);
+  });
+
   test("the manifest version has a dated changelog heading", () => {
     const { version } = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version: string };
     const changelog = readFileSync(join(ROOT, "CHANGELOG.md"), "utf8");
