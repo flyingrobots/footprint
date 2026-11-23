@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Fixed
+
+- **`bin.footprint` survives `npm publish`.** It was written `./src/cli.ts`, a form npm's
+  publish-time normalization removes ("script name src/cli.ts was invalid and removed"), so 0.3.0
+  as tagged would have published with no command and `bunx @flyingrobots/footprint` would have
+  found nothing. It is now `src/cli.ts`. Do not publish 0.3.0. (flyingrobots/footprint#35)
+
+### Added
+
+- **The release fails on a manifest npm would correct.** `scripts/manifest-check.ts`, run as the
+  `sanity` job's last step with the npm the `publish` job uses, fails when `npm pkg fix` would
+  change any field or `npm publish --dry-run` reports a correction. See
+  [`docs/workflows/release/README.md`](docs/workflows/release/README.md#the-manifest-npm-publishes).
+  (flyingrobots/footprint#35)
+
 ## [0.3.0] — 2026-11-22
 
 The first release to carry the landing plan, the blast radius and the cross-pull-request overlap.

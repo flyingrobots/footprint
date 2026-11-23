@@ -81,6 +81,13 @@ jobs:
       - name: Verify the pack contents
         run: npm pack --dry-run
 
+      # flyingrobots/footprint#35: npm normalizes package.json at publish time and drops what it
+      # considers invalid with only a warning (at v0.3.0, `bin.footprint`). Fail instead: with the
+      # same npm the publish job uses, `npm pkg fix` must change no field and a publish dry run
+      # must report no correction. See docs/workflows/release/README.md.
+      - name: Verify npm would publish the manifest unchanged
+        run: bun scripts/manifest-check.ts --npm "npx -y npm@latest"
+
   release:
     needs: sanity
     runs-on: ubuntu-latest

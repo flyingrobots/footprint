@@ -31,6 +31,13 @@ text, so most of them need neither git nor graft; the golden case is live agains
 and compares footprint's answer with an independent `grep` oracle, and the edges build a throwaway
 git repository under `$TMPDIR` so a deleted file and a binary file are real rather than mocked.
 
+`test/manifest.test.ts` holds the published-manifest cases (flyingrobots/footprint#35, OUT-18). Its
+fixtures under `test/fixtures/npm-publish/` are captured `npm publish --dry-run --access public`
+output, npm 11.20.0: one from the `v0.3.0` tree, one from the same tree with only the `bin` path
+fixed. OUT-18a runs the real `npm pkg fix`, and OUT-18e and OUT-18f run the real
+`scripts/manifest-check.ts`, so they need `npm` on `PATH`; the latter two also need the network,
+because a publish dry run asks the registry about the package.
+
 | ID | Requirement |
 | --- | --- |
 | OUT-1 | Every line on stdout and stderr is a JSON object that validates against its declared schema; the run opens with the bootstrap line and closes with `end` |
@@ -51,6 +58,7 @@ git repository under `$TMPDIR` so a deleted file and a binary file are real rath
 | OUT-15 | A report on an open pull request does not list that pull request as an overlap. The pull request whose head commit equals the range's resolved head commit is excluded from `overlapping` and named in the overlap result's `self` field, which is always present and null when none was found; the head branch name decides only when no head commit matches and only for a same-repository pull request, so a fork's pull request that shares the branch name is never excluded for it. With the pull request under review excluded, the summary counts the *other* open pull requests (flyingrobots/footprint#29). The change is part of `footprint.overlap` 1.0.0, released in 0.3.0 |
 | OUT-16 | The summary's breaking-change count and the blast radius's semver reading each name the graft command they come from, `graft struct review` and `graft struct exports`, so two readings of one change cannot read as a contradiction; footprint reports both and picks neither (flyingrobots/footprint#29) |
 | OUT-17 | footprint reports its own landing steps: this repository declares its after-merge steps in `RELEASE.md`, under a heading footprint reads as a landing section and as top-level list items, so a run on a change here quotes them back with file and heading; and the manifest version always has a dated changelog heading, so a tag that matches the manifest has notes to release (flyingrobots/footprint#30) |
+| OUT-18 | The published manifest is the manifest in the repository: npm's publish-time normalization (`npm pkg fix`, and the corrections `npm publish` makes and reports) changes nothing in `package.json`, so the package keeps `bin.footprint` and `bunx @flyingrobots/footprint` finds a command; and the release workflow's `sanity` job fails, rather than warns, when a `npm publish --dry-run` reports a correction (flyingrobots/footprint#35) |
 
 | ID | Case | Oracle | Evidence | Status |
 | --- | --- | --- | --- | --- |
@@ -160,6 +168,12 @@ git repository under `$TMPDIR` so a deleted file and a binary file are real rath
 | OUT-17a | This repository's own `RELEASE.md` and `AGENTS.md`, read by `readLandingDocs` from the repository root, under a change to `src/cli.ts` | `declared` true; at least one step; every step cites `RELEASE.md` and the heading `After merge`; none of them is a heading or a line of a fenced block | `footprint's own landing steps > this repository's RELEASE.md declares after-merge steps that footprint reads` (`test/release.test.ts`) | implemented |
 | OUT-17b | `package.json`'s `version` and `CHANGELOG.md` | the changelog carries a `## [X.Y.Z] — YYYY-MM-DD` heading for exactly that version, the check the release workflow's `sanity` job also makes before it will release a tag | `footprint's own landing steps > the manifest version has a dated changelog heading` (`test/release.test.ts`) | implemented |
 | OUT-17c | footprint `--human` run on the pull request that adds `RELEASE.md` (flyingrobots/footprint#30) | the `## After merge` section lists the `RELEASE.md` steps, each cited `` `RELEASE.md` › After merge`` (run by hand; the captured comment is on the pull request) | by hand on flyingrobots/footprint#32 at `b1e7b12`: `## After merge` read "3 steps read from `RELEASE.md`", each cited `` `RELEASE.md` › After merge`` | implemented |
+| OUT-18a | This repository's `package.json`, copied alone into an empty directory, put through the real `npm pkg fix` | the fixed manifest deep-equals the original, field by field, and `bin.footprint` names a file that exists in the repository | `the published manifest > npm's own normalization changes nothing in package.json` (`test/manifest.test.ts`) | implemented |
+| OUT-18b | `npm publish --dry-run --access public` output captured at `v0.3.0` with npm 11.20.0 (`test/fixtures/npm-publish/v0.3.0-npm-11.20.0.txt`) | `publishCorrections` returns exactly the one correction npm reported, the removed `bin[footprint]` | `the published manifest > a dry run that corrected the manifest yields each correction` (`test/manifest.test.ts`) | implemented |
+| OUT-18c | The same dry run captured with the fixed `bin` (`test/fixtures/npm-publish/bin-fixed-npm-11.20.0.txt`) | `publishCorrections` returns nothing | `the published manifest > a clean dry run yields no corrections` (`test/manifest.test.ts`) | implemented |
+| OUT-18d | `manifestChanges` over a manifest and an altered copy of it | names each top-level field that was changed, removed or added, and nothing else | `the published manifest > manifestChanges names every field npm changed, removed or added` (`test/manifest.test.ts`) | implemented |
+| OUT-18e | `scripts/manifest-check.ts --cwd <dir>`, as the `sanity` job runs it, on a throwaway unpublished package whose `bin` is `./a.ts` | exit 1; stdout only, every line JSON with a `kind`; one `manifest_rewrite` naming `bin`, one `publish_correction`, and a last `manifest_check` line with `ok: false` | `the published manifest > the sanity check fails on a manifest npm would correct, naming each correction` (`test/manifest.test.ts`) | implemented |
+| OUT-18f | The same package with `bin` `a.ts` | exit 0; a single `manifest_check` line with `ok: true` | `the published manifest > the sanity check passes on a manifest npm leaves alone` (`test/manifest.test.ts`) | implemented |
 
 ## Known gaps
 
