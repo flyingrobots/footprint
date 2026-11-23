@@ -4,8 +4,8 @@
 // fixed inputs. The impure half runs against throwaway git repositories under $TMPDIR and the
 // installed graft, so the golden case is a real `graft read outline` answer rather than a mock:
 // a fixture standing in for graft would pass while graft's jump table drifted underneath it.
-import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { afterAll, describe, expect, test } from "bun:test";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { $ } from "bun";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -20,6 +20,30 @@ import { OVERLAP_BUDGET } from "../src/bound.ts";
 const ROOT = resolve(import.meta.dir, "..");
 /** Each outline is a graft process; several of them on a loaded machine take longer than 5s. */
 const GRAFT_TIMEOUT = 120_000;
+/**
+ * graft is an optional dependency, so the cases that need a real `graft read outline` answer run
+ * only when graft resolves, or when `FOOTPRINT_REQUIRE_GRAFT=1` asks for them regardless, as CI
+ * does: there a missing graft fails them loudly, as test/require-graft.test.ts does, rather than
+ * skipping (flyingrobots/footprint#56). A graft-free local run skips them by name and still runs
+ * every case below that uses the stand-in outliner.
+ */
+const GRAFT = await resolveGraft();
+const withGraft = GRAFT !== null || process.env.FOOTPRINT_REQUIRE_GRAFT === "1" ? test : test.skip;
+
+/**
+ * Every directory this file makes is under one root that the suite removes when it ends, so
+ * repeated runs leave no fixture repositories, stand-in executables or CLI state behind
+ * (flyingrobots/footprint#56). Outliners are disposed where they are made.
+ */
+const SCRATCH = mkdtempSync(join(tmpdir(), "footprint-sym-"));
+function scratch(prefix: string): string {
+  return mkdtempSync(join(SCRATCH, prefix));
+}
+afterAll(() => {
+  // A case may leave a directory read-only on purpose; make it writable again first.
+  Bun.spawnSync(["chmod", "-R", "u+rwx", SCRATCH]);
+  rmSync(SCRATCH, { recursive: true, force: true });
+});
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
   const p = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } });
@@ -49,7 +73,7 @@ type Edit = (lib: string) => string;
 
 /** `main` holds lib.ts and README.md; each branch applies its edit to lib.ts (and README.md when asked). */
 async function fixture(branches: Record<string, { lib?: Edit; readme?: boolean }>): Promise<{ dir: string; heads: Record<string, string>; main: string }> {
-  const dir = mkdtempSync(join(tmpdir(), "footprint-sym-repo-"));
+  const dir = scratch("repo-");
   await git(dir, "init", "-q", "-b", "main");
   writeFileSync(join(dir, "lib.ts"), LIB);
   writeFileSync(join(dir, "README.md"), "# fixture\n");
@@ -76,17 +100,22 @@ function pull(number: number, head: string, files: readonly string[], base: stri
 /** File-level overlap, then the symbol analysis over its edges, then the overlap again with the levels. */
 async function analysed(dir: string, prs: PullRequest[], opts: { graft?: string | null; outliner?: Outliner; budget?: number } = {}) {
   const fileLevel = computeOverlap([], prs);
-  const graft = opts.graft === undefined ? await resolveGraft() : opts.graft;
-  const symbols = await analyseSymbols({
-    repo: dir,
-    prs,
-    conflicts: fileLevel.conflicts,
-    overlapping: [],
-    range: null,
-    outliner: opts.outliner ?? (graft === null ? null : graftOutliner(graft)),
-    ...(opts.budget === undefined ? {} : { outlineBudget: opts.budget }),
-  });
-  return computeOverlap([], prs, { symbols });
+  const graft = opts.graft === undefined ? GRAFT : opts.graft;
+  const owned = opts.outliner === undefined && graft !== null ? graftOutliner(graft) : null;
+  try {
+    const symbols = await analyseSymbols({
+      repo: dir,
+      prs,
+      conflicts: fileLevel.conflicts,
+      overlapping: [],
+      range: null,
+      outliner: opts.outliner ?? owned,
+      ...(opts.budget === undefined ? {} : { outlineBudget: opts.budget }),
+    });
+    return computeOverlap([], prs, { symbols });
+  } finally {
+    owned?.dispose();
+  }
 }
 
 const alphaBody: Edit = (s) => s.replace("return 1;", "return 10;");
@@ -95,7 +124,7 @@ const betaBody: Edit = (s) => s.replace("return 2;", "return 20;");
 const renameAlpha: Edit = (s) => s.replace("export function alpha()", "export function gamma()");
 
 describe("symbol-level overlap through graft", () => {
-  test("golden: two pull requests changing different functions of one file are symbol-disjoint, with the symbols named", async () => {
+  withGraft("golden: two pull requests changing different functions of one file are symbol-disjoint, with the symbols named", async () => {
     const { dir, heads, main } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
     const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)]);
     expect(o.conflicts).toHaveLength(1);
@@ -105,7 +134,7 @@ describe("symbol-level overlap through graft", () => {
     expect(o.conflicts[0]!.reason).toContain("different symbols");
   }, GRAFT_TIMEOUT);
 
-  test("two pull requests changing the same function are symbol-overlapping, naming it", async () => {
+  withGraft("two pull requests changing the same function are symbol-overlapping, naming it", async () => {
     const { dir, heads, main } = await fixture({ a: { lib: alphaBody }, b: { lib: alphaBodyAgain } });
     const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)]);
     const file = o.conflicts[0]!.symbolLevel.files[0]!;
@@ -114,7 +143,7 @@ describe("symbol-level overlap through graft", () => {
     expect(o.conflicts[0]!.symbolLevel.level).toBe("symbol-overlapping");
   }, GRAFT_TIMEOUT);
 
-  test("a rename read as a removal plus an addition is never reported disjoint from an edit to the old name", async () => {
+  withGraft("a rename read as a removal plus an addition is never reported disjoint from an edit to the old name", async () => {
     const { dir, heads, main } = await fixture({ a: { lib: renameAlpha }, b: { lib: alphaBody } });
     const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)]);
     const file = o.conflicts[0]!.symbolLevel.files[0]!;
@@ -142,7 +171,7 @@ describe("symbol-level overlap through graft", () => {
     expect(calls).toBe(0);
   }, GRAFT_TIMEOUT);
 
-  test("both sides changing lines outside every symbol is undetermined; one side alone still decides by the symbols", async () => {
+  withGraft("both sides changing lines outside every symbol is undetermined; one side alone still decides by the symbols", async () => {
     const header: Edit = (s) => s.replace("// header comment", "// header comment, edited");
     const between: Edit = (s) => s.replace("// a comment between", "// a comment between, edited");
     const both = await fixture({ a: { lib: header }, b: { lib: between } });
@@ -154,25 +183,26 @@ describe("symbol-level overlap through graft", () => {
     expect(p.conflicts[0]!.symbolLevel.files[0]).toEqual({ path: "lib.ts", level: "symbol-disjoint", a: { symbols: ["alpha"], outside: 2 }, b: { symbols: ["beta"], outside: 0 } });
   }, GRAFT_TIMEOUT);
 
-  test("past the outline budget a file is undetermined, and so is a graft call that timed out", async () => {
+  withGraft("past the outline budget a file is undetermined, and so is a graft call that timed out", async () => {
     const { dir, heads, main } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
-    const graft = await resolveGraft();
-    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)], { outliner: graftOutliner(graft!), budget: 1 });
+    const real = graftOutliner(GRAFT!);
+    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)], { outliner: real, budget: 1 }).finally(() => real.dispose());
     expect(o.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "undetermined", code: "budget.spent" });
     expect(o.symbolAnalysis.outlinesRun).toBe(1);
 
     // A graft that never answers: the call is killed at the timeout and the file degrades.
-    const bin = mkdtempSync(join(tmpdir(), "footprint-sym-slow-"));
+    const bin = scratch("slow-");
     const slow = join(bin, "graft");
     writeFileSync(slow, "#!/bin/sh\nsleep 30\n");
     chmodSync(slow, 0o755);
     const started = Date.now();
-    const t = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)], { outliner: graftOutliner(slow, { timeoutMs: 300 }) });
+    const slowOutliner = graftOutliner(slow, { timeoutMs: 300 });
+    const t = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)], { outliner: slowOutliner }).finally(() => slowOutliner.dispose());
     expect(t.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "undetermined", code: "graft.outline_timeout" });
     expect(Date.now() - started).toBeLessThan(20_000);
   }, GRAFT_TIMEOUT);
 
-  test("a pull request whose head commit is not in the local repository is undetermined, naming git fetch", async () => {
+  withGraft("a pull request whose head commit is not in the local repository is undetermined, naming git fetch", async () => {
     const { dir, heads, main } = await fixture({ a: { lib: alphaBody } });
     const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, "0123456789abcdef0123456789abcdef01234567", ["lib.ts"], main)]);
     const file = o.conflicts[0]!.symbolLevel.files[0]!;
@@ -284,7 +314,7 @@ describe("symbol-level overlap through the CLI", () => {
   // A stand-in `gh` that answers the two read-only calls footprint makes, so the end-to-end run
   // needs no network; `git` and `node` are the real ones, and graft is the installed one.
   async function fakeGh(dir: string, base: string, prs: Array<{ number: number; head: string; branch: string; files: string[] }>): Promise<string> {
-    const bin = mkdtempSync(join(tmpdir(), "footprint-sym-bin-"));
+    const bin = scratch("bin-");
     for (const exe of ["git", "node"]) {
       const found = Bun.which(exe);
       // A symlink, not a shell wrapper: a wrapper would split a path holding a space (flyingrobots/footprint#56).
@@ -305,10 +335,10 @@ describe("symbol-level overlap through the CLI", () => {
     return bin;
   }
 
-  test("golden end to end: the overlap result names the other pull request's symbols and validates as 2.0.0", async () => {
+  withGraft("golden end to end: the overlap result names the other pull request's symbols and validates as 2.0.0", async () => {
     const { dir, heads, main } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
     const bin = await fakeGh(dir, main, [{ number: 1, head: heads.a!, branch: "a", files: ["lib.ts"] }, { number: 2, head: heads.b!, branch: "b", files: ["lib.ts"] }]);
-    const env = { ...process.env, PATH: bin, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-sym-state-")) };
+    const env = { ...process.env, PATH: bin, XDG_STATE_HOME: scratch("state-") };
     const run = async (args: string[]) => {
       const proc = Bun.spawn([process.execPath, join(ROOT, "src/cli.ts"), ...args], { cwd: dir, env, stdout: "pipe", stderr: "pipe" });
       const [stdout, , status] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
@@ -354,7 +384,7 @@ describe("symbol-level overlap, review follow-ups (flyingrobots/footprint#56)", 
 
   /** `main` holds `base`; each branch starts from `from` (default `main`) and writes its files. */
   async function repo(base: Record<string, string>, branches: Record<string, { from?: string; files: Record<string, string> }>) {
-    const dir = mkdtempSync(join(tmpdir(), "footprint-sym-repo-"));
+    const dir = scratch("repo-");
     await git(dir, "init", "-q", "-b", "main");
     for (const [p, c] of Object.entries(base)) { mkdirSync(join(dir, p, ".."), { recursive: true }); writeFileSync(join(dir, p), c); }
     await git(dir, "add", ".");
@@ -402,7 +432,7 @@ describe("symbol-level overlap, review follow-ups (flyingrobots/footprint#56)", 
   });
 
   test("the outline deadline covers reading the pipes, not only the process exit", async () => {
-    const bin = mkdtempSync(join(tmpdir(), "footprint-sym-pipe-"));
+    const bin = scratch("pipe-");
     const held = join(bin, "graft");
     // Exits at once, but a background child keeps stdout and stderr open for 20 seconds.
     writeFileSync(held, "#!/bin/sh\n(sleep 20) &\necho '{}'\nexit 0\n");
@@ -487,7 +517,7 @@ describe("symbol-level overlap, review follow-ups (flyingrobots/footprint#56)", 
 
   test("a head that moved while the files were listed leaves that pull request's files undetermined", async () => {
     const r = await repo({ "lib.ts": LIB }, { a: { files: { "lib.ts": alphaBody(LIB) } }, b: { files: { "lib.ts": betaBody(LIB) } }, b2: { from: "b", files: { "lib.ts": alphaBodyAgain(betaBody(LIB)) } } });
-    const bin = mkdtempSync(join(tmpdir(), "footprint-sym-gh-"));
+    const bin = scratch("gh-");
     const row = (n: number, head: string) => ({ number: n, title: `${n}`, isDraft: false, headRefOid: head, headRefName: `h${n}`, isCrossRepository: false, baseRefName: "main", baseRefOid: r.main });
     writeFileSync(join(bin, "list1.json"), JSON.stringify([row(1, r.heads.a!), row(2, r.heads.b!)]));
     writeFileSync(join(bin, "list2.json"), JSON.stringify([row(1, r.heads.a!), row(2, r.heads.b2!)]));
@@ -532,11 +562,11 @@ describe("symbol-level overlap, review follow-ups (flyingrobots/footprint#56)", 
   }
 
   async function cliIn(dir: string, gh: string[], args: string[], env: Record<string, string> = {}) {
-    const bin = mkdtempSync(join(tmpdir(), "footprint-sym-bin-"));
+    const bin = scratch("bin-");
     for (const exe of ["git", "node"]) { const found = Bun.which(exe); if (found !== null) symlinkSync(found, join(bin, exe)); }
     writeFileSync(join(bin, "gh"), `${gh.join("\n")}\n`);
     chmodSync(join(bin, "gh"), 0o755);
-    const proc = Bun.spawn([process.execPath, join(ROOT, "src/cli.ts"), ...args], { cwd: dir, env: { ...process.env, PATH: bin, FOOTPRINT_GRAFT: fakeGraft(bin), XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-sym-state-")), ...env }, stdout: "pipe", stderr: "pipe" });
+    const proc = Bun.spawn([process.execPath, join(ROOT, "src/cli.ts"), ...args], { cwd: dir, env: { ...process.env, PATH: bin, FOOTPRINT_GRAFT: fakeGraft(bin), XDG_STATE_HOME: scratch("state-"), ...env }, stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr, status] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
     const lines = `${stdout}${stderr}`.split("\n").filter((l) => l !== "").map((l) => JSON.parse(l) as Record<string, unknown> & { _schema: { id: string } });
     return { status, lines, overlap: (lines.find((l) => l.event === "result" && l._schema.id === "footprint.overlap") as { overlap: ReturnType<typeof computeOverlap> } | undefined)?.overlap };
@@ -568,7 +598,7 @@ describe("symbol-level overlap, review follow-ups (flyingrobots/footprint#56)", 
     const r = await repo({ "lib.ts": LIB }, { a: { files: { "lib.ts": alphaBody(LIB) } }, b: { files: { "lib.ts": betaBody(LIB) } } });
     const row = (n: number, head: string, branch: string) => ({ number: n, title: `${n}`, isDraft: false, headRefOid: head, headRefName: branch, isCrossRepository: false, baseRefName: "main", baseRefOid: r.main });
     const gh = listingGh(r.dir, [row(1, r.heads.a!, "a"), row(2, r.heads.b!, "b")], { 1: ["lib.ts"], 2: ["lib.ts"] });
-    const tmp = mkdtempSync(join(tmpdir(), "footprint-sym-tmp-"));
+    const tmp = scratch("tmp-");
     try {
       const run = await cliIn(r.dir, gh, ["main...a"], { TMPDIR: tmp, FAKE_GRAFT_LOCK: "1" });
       expect(run.status).toBe(0);
