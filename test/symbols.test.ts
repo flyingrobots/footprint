@@ -256,7 +256,7 @@ describe("symbol-level overlap, computed", () => {
       ["1-2", { level: "symbol-disjoint" as const, files: [{ path: "x.ts", level: "symbol-disjoint" as const, a: { symbols: ["a"], outside: 0 }, b: { symbols: ["b"], outside: 0 } }] }],
       ["3-4", { level: "undetermined" as const, files: [{ path: "y.ts", level: "undetermined" as const, code: "graft.not_resolved", reason: "no graft" }] }],
     ]);
-    const o = computeOverlap([], prs, { symbols: { edges: levels, overlapping: new Map(), analysis: { outlinesRun: 0, outlineBudget: 0, outlineTimeoutMs: 0 } } });
+    const o = computeOverlap([], prs, { symbols: { edges: levels, overlapping: new Map(), analysis: { outlinesRun: 0, outlineBudget: 0, outlineTimeoutMs: 0, remoteCalls: 0, remoteBudget: 0, remoteTimeoutMs: 0 } } });
     expect(o.waves).toEqual([{ wave: 1, pullRequests: [1, 2, 3] }, { wave: 2, pullRequests: [4] }]);
     expect(o.conflicts).toHaveLength(2);
   });
@@ -268,10 +268,10 @@ describe("symbol-level overlap, computed", () => {
   });
 });
 
-describe("the overlap schema 2.1.0", () => {
+describe("the overlap schema 2.2.0", () => {
   const schema = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.overlap.schema.json"), "utf8")) as Record<string, unknown>;
   const validate = new Ajv2020({ strict: false, allErrors: true }).compile(schema);
-  const record = (overlap: unknown) => ({ event: "result", t: 1, seq: 2, run: "r", range: "a...b", overlap, digest: "0".repeat(64), _schema: { id: "footprint.overlap", version: "2.1.0" } });
+  const record = (overlap: unknown) => ({ event: "result", t: 1, seq: 2, run: "r", range: "a...b", overlap, digest: "0".repeat(64), _schema: { id: "footprint.overlap", version: "2.2.0" } });
   const prs = [{ number: 1, title: "1", isDraft: false, files: ["x.ts"] }, { number: 2, title: "2", isDraft: false, files: ["x.ts"] }];
 
   test("every undetermined code src/symbols.ts can produce is one the schema accepts", () => {
@@ -298,7 +298,7 @@ describe("the overlap section with symbol levels", () => {
 
   test("names the symbols of a disjoint file and the reason of an undetermined one", () => {
     const prs = [{ number: 1, title: "one", isDraft: false, files: ["x.ts"] }, { number: 2, title: "two", isDraft: false, files: ["x.ts", "README.md"] }];
-    const o = computeOverlap(["x.ts", "README.md"], prs, { self: 1, symbols: { edges: new Map([["1-2", { level: "undetermined" as const, files: [...disjoint.files, ...undetermined.files] }]]), overlapping: new Map([[2, { level: "undetermined" as const, files: [...disjoint.files, ...undetermined.files] }]]), analysis: { outlinesRun: 4, outlineBudget: 24, outlineTimeoutMs: 20000 } } });
+    const o = computeOverlap(["x.ts", "README.md"], prs, { self: 1, symbols: { edges: new Map([["1-2", { level: "undetermined" as const, files: [...disjoint.files, ...undetermined.files] }]]), overlapping: new Map([[2, { level: "undetermined" as const, files: [...disjoint.files, ...undetermined.files] }]]), analysis: { outlinesRun: 4, outlineBudget: 24, outlineTimeoutMs: 20000, remoteCalls: 0, remoteBudget: 0, remoteTimeoutMs: 0 } } });
     const md = renderOverlap(o, OVERLAP_BUDGET);
     expect(md).toContain("`alpha`");
     expect(md).toContain("`beta`");
@@ -311,7 +311,7 @@ describe("the overlap section with symbol levels", () => {
     for (let b = 2; b <= 101; b += 1) edges.set(`1-${b}`, disjoint);
     const overlapping = new Map<number, typeof disjoint>();
     for (let b = 2; b <= 101; b += 1) overlapping.set(b, disjoint);
-    const o = computeOverlap(["x.ts"], prs, { self: 1, symbols: { edges, overlapping, analysis: { outlinesRun: 24, outlineBudget: 24, outlineTimeoutMs: 20000 } } });
+    const o = computeOverlap(["x.ts"], prs, { self: 1, symbols: { edges, overlapping, analysis: { outlinesRun: 24, outlineBudget: 24, outlineTimeoutMs: 20000, remoteCalls: 0, remoteBudget: 0, remoteTimeoutMs: 0 } } });
     const md = renderOverlap(o, OVERLAP_BUDGET);
     expect(md.length).toBeLessThanOrEqual(OVERLAP_BUDGET);
     expect(md).toMatch(/\d+ more pull requests? omitted/);
@@ -343,7 +343,7 @@ describe("symbol-level overlap through the CLI", () => {
     return bin;
   }
 
-  withGraft("golden end to end: the overlap result names the other pull request's symbols and validates as 2.1.0", async () => {
+  withGraft("golden end to end: the overlap result names the other pull request's symbols and validates as 2.2.0", async () => {
     const { dir, heads, main } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
     const bin = await fakeGh(dir, main, [{ number: 1, head: heads.a!, branch: "a", files: ["lib.ts"] }, { number: 2, head: heads.b!, branch: "b", files: ["lib.ts"] }]);
     const env = { ...process.env, PATH: bin, XDG_STATE_HOME: scratch("state-") };
@@ -355,7 +355,7 @@ describe("symbol-level overlap through the CLI", () => {
     };
     const lines = (await run(["main...a"])).split("\n").filter((l) => l !== "").map((l) => JSON.parse(l) as Record<string, unknown> & { _schema: { id: string; version: string } });
     const result = lines.find((l) => l.event === "result" && l._schema.id === "footprint.overlap") as Record<string, unknown> & { overlap: ReturnType<typeof computeOverlap> };
-    expect(result._schema.version).toBe("2.1.0");
+    expect(result._schema.version).toBe("2.2.0");
     const schema = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.overlap.schema.json"), "utf8")) as Record<string, unknown>;
     const validate = new Ajv2020({ strict: false, allErrors: true }).compile(schema);
     expect(validate(result)).toBe(true);

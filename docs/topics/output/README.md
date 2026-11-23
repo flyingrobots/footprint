@@ -103,9 +103,9 @@ nothing in its mitigation cell is exactly the padded row flyingrobots/footprint#
 symbol with no call site at all is in no system and so in no table; it is stated under them
 instead, because leaving it out would read as a symbol that was never looked up.
 
-### `footprint.overlap` 2.1.0
+### `footprint.overlap` 2.2.0
 
-The fourth line in the same run, after the blast radius: schema `footprint.overlap` 2.1.0
+The fourth line in the same run, after the blast radius: schema `footprint.overlap` 2.2.0
 (`schemas/footprint.overlap.schema.json`). What it means and how the waves are built is
 [the overlap reference](../overlap/README.md); this is the field list.
 
@@ -119,9 +119,9 @@ The fourth line in the same run, after the blast radius: schema `footprint.overl
 | `overlap.openPullRequests`, `limit`, `truncated` | How many open pull requests were listed, the `gh pr list --limit` used, and whether the list came back at it |
 | `overlap.overlapping` | Open pull requests changing a file this change changes: `number`, `title`, `isDraft`, `sharedFiles`, and `symbolLevel` with this change as side `a`. Ascending by number |
 | `overlap.conflicts` | One edge per pair of open pull requests sharing a file: `a`, `b`, `sharedFiles`, a `reason` naming them, and `symbolLevel` |
-| `…symbolLevel` | `level` (`symbol-disjoint`, `symbol-overlapping` or `undetermined`) and one entry per shared file: `path`, `level`, each side's `a` and `b` as `{symbols, outside}`, `shared` when overlapping, and `code` and `reason` when undetermined. See [the overlap reference](../overlap/README.md#the-symbol-level) |
+| `…symbolLevel` | `level` (`symbol-disjoint`, `symbol-overlapping` or `undetermined`) and one entry per shared file: `path`, `level`, each side's `a` and `b` as `{symbols, outside}`, `shared` when overlapping, `github` (`["a"]`, `["b"]` or both) naming the sides read over the GitHub API because their commits are not in the clone, and `code` and `reason` when undetermined. See [the overlap reference](../overlap/README.md#the-symbol-level) |
 | `overlap.waves` | The proposed merge order: `wave` and its `pullRequests`. No two in a wave share a file unless the edge between them is symbol-disjoint; wave N+1 lands after wave N |
-| `overlap.symbolAnalysis` | `outlinesRun`, `outlineBudget` and `outlineTimeoutMs`: how many graft outline calls the symbol level took, the most a run may take, and the timeout on each |
+| `overlap.symbolAnalysis` | `outlinesRun`, `outlineBudget` and `outlineTimeoutMs`: how many graft outline calls the symbol level took, the most a run may take, and the timeout on each; `remoteCalls`, `remoteBudget` and `remoteTimeoutMs` the same for the read-only `gh api` calls that read a pull request not in the clone |
 | `overlap.undetermined` | Open pull requests whose files `gh` would not report, kept out of the graph and the waves rather than assumed disjoint |
 | `digest` | SHA-256 over the canonical JSON of `range` and `overlap` |
 
@@ -229,7 +229,7 @@ and `overlap.code` says which:
 `footprint --help` and `footprint --schema` are runs too: they bootstrap, write a receipt, emit
 one `command` line and the schemas footprint can emit, and close with `end`. `--help` carries
 `footprint.composition` 1.0.0, `footprint.landing` 1.0.0, `footprint.blast_radius` 1.1.0,
-`footprint.overlap` 2.1.0 and `parley.error` 2.0.0, in that order; `--schema` adds every protocol
+`footprint.overlap` 2.2.0 and `parley.error` 2.0.0, in that order; `--schema` adds every protocol
 schema the writer itself emits.
 
 ## Exit status

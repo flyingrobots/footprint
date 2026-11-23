@@ -11,6 +11,7 @@ import { landingPlan, readLandingDocs, LANDING_DOCUMENTS } from "./landing.ts";
 import { computeOverlap, underReview, unavailableOverlap, type Overlap, type RangeHead } from "./overlap.ts";
 import { isFailure, listOpenPullRequests, resolveGh } from "./pulls.ts";
 import { analyseSymbols, graftOutliner, type Symbols } from "./symbols.ts";
+import { ghRemote } from "./remote.ts";
 import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord, OVERLAP_SCHEMA, OVERLAP_TYPE, overlapRecord } from "./report.ts";
 import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, attachCallSites, exportSurface, rangeBase, rangeEnds, exportsRecord, surfaceSymbols } from "./exports.ts";
 import { unsupportedLanguages } from "./languages.ts";
@@ -182,6 +183,7 @@ async function crossPullRequest(
       overlapping: fileLevel.overlapping,
       range: baseRef.ok ? { base: baseRef.ref, head: headRef.commit ?? headRef.ref } : { code: "git.merge_base", reason: `${baseRef.detail}, so this change has no merge base to compare symbols from` },
       outliner,
+      remote: ghRemote(gh, run.cwd),
     });
   } catch (e) {
     // The symbol level is enrichment: a fault in it leaves every edge undetermined (file-level),
@@ -197,7 +199,7 @@ async function crossPullRequest(
   const counted = (lv: string) => overlap.conflicts.filter((c) => c.symbolLevel.level === lv).length;
   if (symbols !== undefined) run.step(
     `symbol level of ${overlap.conflicts.length} edge${overlap.conflicts.length === 1 ? "" : "s"}: ${counted("symbol-disjoint")} disjoint, ${counted("symbol-overlapping")} overlapping, ${counted("undetermined")} undetermined`,
-    `each side's changed lines from git diff -U0 against its merge base, attributed to the top-level symbols of graft read outline at the merge base and the head; ${symbols.analysis.outlinesRun} of at most ${symbols.analysis.outlineBudget} outline calls, each stopped after ${symbols.analysis.outlineTimeoutMs} ms; a symbol-disjoint edge does not separate waves`,
+    `each side's changed lines from git diff -U0 against its merge base, attributed to the top-level symbols of graft read outline at the merge base and the head; ${symbols.analysis.outlinesRun} of at most ${symbols.analysis.outlineBudget} outline calls, each stopped after ${symbols.analysis.outlineTimeoutMs} ms; a pull request whose commits are not in the clone is read over read-only gh api calls by commit id, never fetched (${symbols.analysis.remoteCalls} of at most ${symbols.analysis.remoteBudget}, each stopped after ${symbols.analysis.remoteTimeoutMs} ms); a symbol-disjoint edge does not separate waves`,
   );
   if (self !== null) run.step(`#${self} is the pull request under review`, "its head commit is the range's head commit (or, failing a commit match, its same-repository head branch is the range's head branch), so it is excluded from the overlap rather than listed against itself");
   run.step(`cross-pull-request overlap over ${overlap.openPullRequests} open pull request${overlap.openPullRequests === 1 ? "" : "s"}`, "gh listed the open pull requests and gh pr diff --name-only their files; waves are greedy first-fit over the conflict graph, a proposal rather than a minimum");

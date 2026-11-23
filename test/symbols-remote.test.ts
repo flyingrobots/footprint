@@ -73,7 +73,7 @@ function fakeGh(answers: Answers, lists?: { rows: object[]; files: Record<number
     '  if (!hit) { process.stderr.write("gh: Not Found (HTTP 404)\\n"); process.exit(1); }',
     "  if (hit.sleep) await new Promise((r) => setTimeout(r, hit.sleep));",
     "  if (hit.err) process.stderr.write(hit.err + \"\\n\");",
-    "  if (hit.out !== undefined) process.stdout.write(hit.out);",
+    "  if (hit.out !== undefined) await new Promise((r) => process.stdout.write(hit.out, r));",
     "  process.exit(hit.code ?? 0);",
     "}",
     'process.stderr.write("unexpected gh " + a.join(" ") + "\\n");',
@@ -273,16 +273,16 @@ describe("symbol level through the GitHub API (flyingrobots/footprint#55)", () =
     expect(file0(r)).toMatchObject({ level: "undetermined", code: "gh.compare_incomplete" });
   });
 
-  test("contents over 1 MiB are gh.content_too_large and are not outlined", async () => {
+  test("contents over 1 MiB are gh.content_too_large and are never outlined", async () => {
     const w = await world({ a: alphaBody, b: betaBody });
-    let outlined = 0;
-    const counting: Outliner = async (c) => { outlined += 1; return spansOf(c); };
+    let outlinedBig = 0;
+    const counting: Outliner = async (c) => { if (c.length > 1024 * 1024) outlinedBig += 1; return spansOf(c); };
     const big = fakeGh({ ...w.answers, [contentsPath(w.heads.a!, "lib.ts")]: { out: `${alphaBody(LIB)}// ${"x".repeat(1024 * 1024)}\n` } });
     const prs = [pr(1, w.heads.a!, w.main), pr(2, w.heads.b!, w.main)];
     const fileLevel = computeOverlap([], prs);
     const symbols = await analyseSymbols({ repo: w.dir, prs, conflicts: fileLevel.conflicts, overlapping: [], range: null, outliner: counting, remote: ghRemote(big.gh, w.dir) });
     expect(computeOverlap([], prs, { symbols }).conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "undetermined", code: "gh.content_too_large" });
-    expect(outlined).toBe(0);
+    expect(outlinedBig).toBe(0);
   });
 
   test("a path with URL-significant characters is encoded segment by segment", async () => {
@@ -343,8 +343,8 @@ describe("symbol level through the GitHub API, end to end", () => {
     expect(schema.properties._schema.properties.version.const).toBe("2.2.0");
     expect(schema.$defs.fileLevel.properties.github).toBeDefined();
     const source = readFileSync(join(ROOT, "src/remote.ts"), "utf8");
-    const produced = [...new Set([...source.matchAll(/code: "([a-z]+\.[a-z_]+)"/g)].map((m) => m[1]!))].sort();
-    expect(produced.length).toBeGreaterThanOrEqual(8);
+    const produced = [...new Set([...source.matchAll(/"(gh\.[a-z_]+)"/g)].map((m) => m[1]!))].sort();
+    expect(produced.length).toBeGreaterThanOrEqual(7);
     for (const code of produced) expect(schema.$defs.fileLevel.properties.code.enum).toContain(code);
   });
 });

@@ -37,6 +37,7 @@ import { basename, join } from "node:path";
 import { $ } from "bun";
 import { extensionOf, parsableByGraft } from "./languages.ts";
 import type { ConflictEdge, PullRequest, SharedWith } from "./overlap.ts";
+import { MAX_CONTENT_BYTES, type Remote, type RemoteCompare } from "./remote.ts";
 
 export type Level = "symbol-disjoint" | "symbol-overlapping" | "undetermined";
 
@@ -56,7 +57,8 @@ export interface Failure {
   readonly reason: string;
 }
 
-export type SideResult = ({ readonly ok: true; readonly touched: Touched }) | ({ readonly ok: false } & Failure);
+/** `remote` is true when the side was read over the GitHub API rather than from local git. */
+export type SideResult = ({ readonly ok: true; readonly touched: Touched; readonly remote?: boolean }) | ({ readonly ok: false } & Failure);
 
 /** One shared file at the symbol level. `a` and `b` are the edge's two sides, in its order. */
 export interface FileSymbols {
@@ -66,6 +68,8 @@ export interface FileSymbols {
   readonly b?: Touched;
   /** The symbols both sides change; present when `symbol-overlapping`. */
   readonly shared?: readonly string[];
+  /** The sides read over the GitHub API (flyingrobots/footprint#55), because their commits are not in the local clone; absent when every side was read from local git. */
+  readonly github?: readonly ("a" | "b")[];
   readonly code?: string;
   readonly reason?: string;
 }
@@ -81,6 +85,10 @@ export interface SymbolAnalysis {
   readonly outlinesRun: number;
   readonly outlineBudget: number;
   readonly outlineTimeoutMs: number;
+  /** `gh api` calls actually started this run (flyingrobots/footprint#55); cache hits are free. */
+  readonly remoteCalls: number;
+  readonly remoteBudget: number;
+  readonly remoteTimeoutMs: number;
 }
 
 export interface Symbols {
@@ -210,7 +218,9 @@ export function classifyFile(path: string, a: SideResult, b: SideResult): FileSy
   if (!b.ok) return { path, level: "undetermined", code: b.code, reason: b.reason };
   const inB = new Set(b.touched.symbols);
   const shared = a.touched.symbols.filter((s) => inB.has(s));
-  if (shared.length > 0) return { path, level: "symbol-overlapping", a: a.touched, b: b.touched, shared };
+  const sides = [...(a.remote === true ? ["a" as const] : []), ...(b.remote === true ? ["b" as const] : [])];
+  const github = sides.length === 0 ? {} : { github: sides };
+  if (shared.length > 0) return { path, level: "symbol-overlapping", a: a.touched, b: b.touched, shared, ...github };
   if (a.touched.outside > 0 && b.touched.outside > 0) {
     return {
       path,
@@ -219,9 +229,10 @@ export function classifyFile(path: string, a: SideResult, b: SideResult): FileSy
       b: b.touched,
       code: "symbols.outside",
       reason: `both sides change lines outside every top-level symbol graft found (${a.touched.outside} and ${b.touched.outside}: comments, imports or top-level code), which no symbol can tell apart`,
+      ...github,
     };
   }
-  return { path, level: "symbol-disjoint", a: a.touched, b: b.touched };
+  return { path, level: "symbol-disjoint", a: a.touched, b: b.touched, ...github };
 }
 
 /** The edge's level from its files': any overlap overlaps; disjoint only when every file is. Pure. */
@@ -313,7 +324,7 @@ async function drain(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<s
 }
 
 /** One side of a comparison: a revision range, or why it has none. */
-type Side = { readonly ok: true; readonly base: string; readonly head: string; readonly label: string } | ({ readonly ok: false } & Failure);
+type Side = { readonly ok: true; readonly base: string; readonly head: string; readonly label: string; readonly compare?: RemoteCompare } | ({ readonly ok: false } & Failure);
 
 export interface AnalyseInput {
   readonly repo: string;
@@ -327,6 +338,11 @@ export interface AnalyseInput {
   /** Null when graft could not be resolved. */
   readonly outliner: Outliner | null;
   readonly outlineBudget?: number;
+  /**
+   * The read-only GitHub API fallback (flyingrobots/footprint#55) for a pull request whose head or
+   * base commit is not in the local clone. Null or absent: such a side stays undetermined.
+   */
+  readonly remote?: Remote | null;
 }
 
 async function git(repo: string, ...args: string[]): Promise<{ ok: boolean; text: string; err: string }> {
@@ -342,6 +358,7 @@ async function git(repo: string, ...args: string[]): Promise<{ ok: boolean; text
  */
 export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
   const budget = input.outlineBudget ?? OUTLINE_BUDGET;
+  const remote = input.remote ?? null;
   const timeoutMs = (input.outliner as { timeoutMs?: number } | null)?.timeoutMs ?? OUTLINE_TIMEOUT_MS;
   let outlinesRun = 0;
   const outlines = new Map<string, Promise<readonly Span[] | Failure>>();
@@ -353,7 +370,7 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
     const key = `#${n}`;
     let s = sides.get(key);
     if (s === undefined) {
-      s = resolvePullSide(input.repo, byNumber.get(n));
+      s = resolvePullSide(input.repo, byNumber.get(n), remote);
       sides.set(key, s);
     }
     return s;
@@ -362,7 +379,26 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
     ? null
     : isFailure(input.range) ? { ok: false, ...input.range } : { ok: true, base: input.range.base, head: input.range.head, label: "this change" };
 
-  const outlineAt = async (rev: string, path: string): Promise<readonly Span[] | Failure> => {
+  /** The outline of a file at a commit the clone lacks, read over the API by commit id; cached by commit and path. */
+  const outlineRemote = (rev: string, path: string): Promise<readonly Span[] | Failure> => {
+    const key = `gh\0${rev}\0${path}`;
+    let p = outlines.get(key);
+    if (p === undefined) {
+      p = (async () => {
+        const content = await remote!.content(rev, path);
+        if (isFailure(content)) return content;
+        if (Buffer.byteLength(content) > MAX_CONTENT_BYTES) return { code: "gh.content_too_large", reason: `${path} at ${rev.slice(0, 12)} is larger than ${MAX_CONTENT_BYTES} bytes, which footprint does not read` };
+        if (outlinesRun >= budget) return { code: "budget.spent", reason: `the run's budget of ${budget} graft outline call${budget === 1 ? "" : "s"} was spent before this file was reached` };
+        outlinesRun += 1;
+        return input.outliner!(content, path);
+      })();
+      outlines.set(key, p);
+    }
+    return p;
+  };
+
+  const outlineAt = async (rev: string, path: string, viaRemote = false): Promise<readonly Span[] | Failure> => {
+    if (viaRemote) return outlineRemote(rev, path);
     const blob = await git(input.repo, "rev-parse", "--verify", "--quiet", `${rev}:${path}`);
     if (!blob.ok) return { code: "git.show_failed", reason: `${path} does not exist at ${rev.slice(0, 12)}` };
     const id = blob.text.trim();
@@ -398,14 +434,28 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
     // Raw content, root-relative and literal (flyingrobots/footprint#56): textconv would hand the
     // diff a different text than `cat-file blob` hands graft, and a plain pathspec is relative to
     // the working directory and treats `[`, `*` and `?` as a glob.
+    if (side.compare !== undefined) return touchedRemote(side, path);
     const diff = await git(input.repo, "diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "--no-renames", side.base, side.head, "--", `:(top,literal)${path}`);
     if (!diff.ok) return { ok: false, code: "git.diff_failed", reason: `git diff ${side.base.slice(0, 12)} ${side.head.slice(0, 12)} -- ${path} failed: ${diff.err.split("\n")[0] || "(no message)"}` };
-    const lines = changedLines(diff.text);
+    return attributeLines(side, path, changedLines(diff.text));
+  };
+
+  /** A side read over the API: its patch is the compare's, for exactly merge base..head. */
+  const touchedRemote = (side: Side & { ok: true }, path: string): Promise<SideResult> => {
+    const patch = side.compare!.patches.get(path);
+    if (patch === undefined) return Promise.resolve({ ok: false, code: "gh.compare_incomplete", reason: `the GitHub compare for ${side.label} did not list ${path} (its file list is capped), so its changed lines are not known` });
+    if (isFailure(patch)) return Promise.resolve({ ok: false, ...patch });
+    return attributeLines(side, path, changedLines(patch));
+  };
+
+  const attributeLines = async (side: Side & { ok: true }, path: string, lines: ChangedLines): Promise<SideResult> => {
+    const viaRemote = side.compare !== undefined;
+    const from = viaRemote ? `the GitHub compare ${side.base.slice(0, 12)}...${side.head.slice(0, 12)}` : `git diff ${side.base.slice(0, 12)} ${side.head.slice(0, 12)}`;
     if (lines.binary) return { ok: false, code: "git.binary", reason: `${path} is binary in ${side.label}'s change, so it has no symbols` };
     // The file was listed as changed by this side, yet its own diff changes no line of it: the list
     // and the commits disagree (a head that moved, a base that is not the pull request's), so the
     // side is not an empty one, it is unknown.
-    if (lines.hunks === 0) return { ok: false, code: "symbols.file_unchanged", reason: `${path} is listed as changed by ${side.label}, but git diff ${side.base.slice(0, 12)} ${side.head.slice(0, 12)} changes no line of it, so the file list and the commits do not describe one comparison` };
+    if (lines.hunks === 0) return { ok: false, code: "symbols.file_unchanged", reason: `${path} is listed as changed by ${side.label}, but ${from} changes no line of it, so the file list and the commits do not describe one comparison` };
     // Old lines from the merge base's outline, new lines from the head's; a side with no lines on
     // one end does not need (or spend budget on) that end's outline.
     const ends: Array<[string, readonly number[], readonly number[]]> = [[side.base, lines.old, lines.blank.old], [side.head, lines.new, lines.blank.new]];
@@ -413,13 +463,13 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
     let outside = 0;
     for (const [rev, ls, blank] of ends) {
       if (ls.length === 0) continue;
-      const spans = await outlineAt(rev, path);
+      const spans = await outlineAt(rev, path, viaRemote);
       if (isFailure(spans)) return { ok: false, ...spans };
       const t = attribute(ls, spans, blank);
       t.symbols.forEach((s) => names.add(s));
       outside += t.outside;
     }
-    return { ok: true, touched: { symbols: [...names].sort(), outside } };
+    return { ok: true, touched: { symbols: [...names].sort(), outside }, ...(viaRemote ? { remote: true } : {}) };
   };
 
   const fileLevel = async (path: string, a: () => Promise<Side>, b: () => Promise<Side>): Promise<FileSymbols> => {
@@ -428,11 +478,11 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
       return { path, level: "undetermined", code: "language.unsupported", reason: `graft has no grammar for ${ext === "" ? "files without an extension" : `${ext} files`}, so the file has no symbols to compare` };
     }
     if (input.outliner === null) return { path, level: "undetermined", code: "graft.not_resolved", reason: "graft could not be resolved through the package dependency, PATH or FOOTPRINT_GRAFT, so the file is compared by name only" };
-    const [sa, sb] = await Promise.all([a(), b()]);
-    // A side with no range already makes the file undetermined: spend no outline on the other
-    // (flyingrobots/footprint#56). Sequential per file, so the budget is spent in a deterministic
-    // order, and the second side is skipped when the first fails.
+    // Sequential, and the second side is not resolved once the first fails: resolving a side may
+    // cost a `gh api` call, and a pair already undetermined spends none (flyingrobots/footprint#56, #55).
+    const sa = await a();
     if (!sa.ok) return classifyFile(path, sa, sa);
+    const sb = await b();
     if (!sb.ok) return classifyFile(path, sb, sb);
     const ta = await sideTouched(sa, path);
     if (!ta.ok) return classifyFile(path, ta, ta);
@@ -458,7 +508,7 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
     edges.set(edgeKey(e.a, e.b), edgeLevel(files));
   }
 
-  return { edges, overlapping, analysis: { outlinesRun, outlineBudget: budget, outlineTimeoutMs: timeoutMs } };
+  return { edges, overlapping, analysis: { outlinesRun, outlineBudget: budget, outlineTimeoutMs: timeoutMs, remoteCalls: remote?.stats().calls ?? 0, remoteBudget: remote?.stats().budget ?? 0, remoteTimeoutMs: remote?.stats().timeoutMs ?? 0 } };
 }
 
 /**
@@ -467,7 +517,7 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
  * the head, which would make the merge base the head itself and the diff empty
  * (flyingrobots/footprint#56).
  */
-async function resolvePullSide(repo: string, p: PullRequest | undefined): Promise<Side> {
+async function resolvePullSide(repo: string, p: PullRequest | undefined, remote: Remote | null): Promise<Side> {
   if (p === undefined || p.headCommit === undefined) {
     return { ok: false, code: "gh.head_unknown", reason: `gh did not report the head commit of ${p === undefined ? "the pull request" : `#${p.number}`}` };
   }
@@ -475,15 +525,24 @@ async function resolvePullSide(repo: string, p: PullRequest | undefined): Promis
     return { ok: false, code: "gh.head_moved", reason: `the head commit of #${p.number} changed, or could not be read again, while gh listed its files, so the files and the commit are not one snapshot` };
   }
   const head = p.headCommit;
-  if (!(await git(repo, "cat-file", "-e", `${head}^{commit}`)).ok) {
-    return { ok: false, code: "git.head_missing", reason: `the head commit ${head.slice(0, 12)} of #${p.number} is not in the local repository; git fetch origin pull/${p.number}/head makes it available` };
-  }
   const base = p.baseCommit;
+  // A commit the clone lacks is read over the GitHub API when there is a way to, never fetched:
+  // `git fetch` writes to `.git`. The API answer is pinned to the same commit ids, so the rule is
+  // the same: no exact comparison, no level (flyingrobots/footprint#55).
+  const viaGitHub = async (local: Failure): Promise<Side> => {
+    if (remote === null || base === undefined) return { ok: false, ...local };
+    const c = await remote.compare(base, head);
+    if ("code" in c) return { ok: false, code: c.code, reason: `${c.reason}; locally: ${local.reason}` };
+    return { ok: true, base: c.mergeBase, head, label: `#${p.number}`, compare: c };
+  };
+  if (!(await git(repo, "cat-file", "-e", `${head}^{commit}`)).ok) {
+    return viaGitHub({ code: "git.head_missing", reason: `the head commit ${head.slice(0, 12)} of #${p.number} is not in the local repository; git fetch origin pull/${p.number}/head makes it available` });
+  }
   if (base === undefined) {
     return { ok: false, code: "gh.base_unknown", reason: `gh did not report the base commit (baseRefOid) of #${p.number}, and a local branch tip is not a substitute for it` };
   }
   if (!(await git(repo, "cat-file", "-e", `${base}^{commit}`)).ok) {
-    return { ok: false, code: "git.base_missing", reason: `the base commit ${base.slice(0, 12)} of #${p.number}${p.baseBranch === undefined ? "" : ` (${p.baseBranch})`} is not in the local repository; git fetch origin makes it available` };
+    return viaGitHub({ code: "git.base_missing", reason: `the base commit ${base.slice(0, 12)} of #${p.number}${p.baseBranch === undefined ? "" : ` (${p.baseBranch})`} is not in the local repository; git fetch origin makes it available` });
   }
   const mb = await git(repo, "merge-base", base, head);
   const sha = mb.text.trim();

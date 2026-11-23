@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.overlap/2.1.0",
-  "title": "footprint.overlap 2.1.0",
+  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.overlap/2.2.0",
+  "title": "footprint.overlap 2.2.0",
   "description": "The fourth result of a footprint run: which open pull requests touch a file this change touches, the conflict graph between the open pull requests, and a proposed merge order as waves. Every figure comes from gh pr list --json and gh pr diff --name-only; each shared file of a pair is also compared at the symbol level, from git diff -U0 and graft read outline's jump table at each side's merge base and head (flyingrobots/footprint#33). When gh cannot answer, available is false and the reason is stated rather than the section being omitted.",
   "type": "object",
   "required": [
@@ -254,10 +254,13 @@
           "required": [
             "outlinesRun",
             "outlineBudget",
-            "outlineTimeoutMs"
+            "outlineTimeoutMs",
+            "remoteCalls",
+            "remoteBudget",
+            "remoteTimeoutMs"
           ],
           "additionalProperties": false,
-          "description": "How the symbol level was bounded this run: graft outline calls started, the most a run may start, and the timeout on each. All zero when no analysis was run.",
+          "description": "How the symbol level was bounded this run: graft outline calls started, the most a run may start, and the timeout on each; and the same three for the read-only gh api calls that read a pull request whose commits are not in the local clone (flyingrobots/footprint#55). All zero when no analysis was run.",
           "properties": {
             "outlinesRun": {
               "type": "integer",
@@ -268,6 +271,18 @@
               "minimum": 0
             },
             "outlineTimeoutMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "remoteCalls": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "remoteBudget": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "remoteTimeoutMs": {
               "type": "integer",
               "minimum": 0
             }
@@ -292,7 +307,7 @@
           "const": "footprint.overlap"
         },
         "version": {
-          "const": "2.1.0"
+          "const": "2.2.0"
         }
       }
     }
@@ -414,13 +429,34 @@
             "git.show_failed",
             "git.binary",
             "symbols.outside",
-            "symbols.file_unchanged"
+            "symbols.file_unchanged",
+            "gh.remote_failed",
+            "gh.rate_limited",
+            "gh.timeout",
+            "gh.budget_spent",
+            "gh.compare_unpinned",
+            "gh.compare_incomplete",
+            "gh.patch_unavailable",
+            "gh.content_too_large"
           ],
           "description": "Why the symbol level could not be decided; present only when undetermined"
         },
         "reason": {
           "type": "string",
           "minLength": 1
+        },
+        "github": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "a",
+              "b"
+            ]
+          },
+          "description": "The sides read over the GitHub API (gh api compare and contents, by exact commit id) because their commits are not in the local clone; absent when every side was read from local git"
         }
       }
     },
