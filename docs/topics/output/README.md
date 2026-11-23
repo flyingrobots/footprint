@@ -143,11 +143,11 @@ it left out. Nothing is dropped silently.
 
 | Section | What is cut | How |
 | --- | --- | --- |
-| Composition | The `Files` list | 200 files, then `N more files omitted`; at most 16384 characters for the section |
+| Composition | The `Files` list, and the paths graft labels `formatting` | 200 files and 20 formatting paths, then `N more files omitted` (the receipt's `files` field has every one) and `N more formatting-labelled files omitted`; at most 16384 characters for the section |
 | Blast radius, `Exported symbols` | Table rows | 100 rows, signature-changed and removed before added, then `N more exported symbols omitted` |
-| Blast radius, `Call sites by system` | Rows of each system's table, the summary table, and the names of symbols with no call site | 100 rows per system, rows whose mitigation is not `None needed` first, then `N more call sites in this system omitted (K of them with a mitigation other than None needed)` |
+| Blast radius, `Call sites by system` | Rows of each system's table, the summary table, and the names of symbols with no call site | 100 rows per system, rows whose mitigation is not `None needed` first, then `N more call sites in this system omitted (K of them with a mitigation other than None needed)`; the `…and N more for <symbol>` remainder notes name at most 10 symbols per system and count the rest together |
 | Overlap | Pull requests, conflicts, waves, and the files one pull request shares | 50 of each and 10 shared files, then `N more pull requests omitted`, `and N more files`; at most 8192 characters for the section |
-| Before merge, After merge | Nothing | They are read from the repository's own documents and are short; they are counted against the limit |
+| Before merge, After merge | Items and steps | 50 of each, then `N more steps omitted` naming the files to read them in; at most 8192 characters for the two sections together |
 
 Past those starting limits the blast radius is held to what the other sections leave of 65536:
 while it is over, the larger of its two tables has its limit halved and it is rendered again. The
@@ -164,9 +164,7 @@ word. footprint still scans for those names and still records every site; it rep
 judge which names are worth scanning. The per-symbol cap of 20 rows in one system still applies
 below the threshold.
 
-If every list has been cut to nothing and the report is still over the limit, footprint emits the
-warning `report.over_limit` with the measured length. That cannot happen from list growth alone;
-it would take sections that are not lists.
+**Last resort.** Each section is also clamped to its own budget (composition 16384, landing 8192, overlap 8192, blast radius the rest), so the total cannot exceed 65536 whatever the input: text still over its budget after every list was cut to nothing is cut again at a line boundary, any `<details>` it left open is closed, and the end says `N characters of <section> omitted`.
 
 ## Identity
 
@@ -220,7 +218,6 @@ and `overlap.code` says which:
 | `gh.unauthenticated`, `gh.rate_limited`, `gh.no_remote`, `gh.list_failed`, `gh.list_unreadable` | `gh` resolved but could not list the open pull requests; `overlap.available` is false. No warning when `gh` is simply absent — that is not a failure of anything footprint ran | 0 |
 | `gh.diff_failed` | `gh pr diff --name-only` would not report some pull request's files; they are in `overlap.undetermined` | 0 |
 | `gh.list_truncated` | The pull-request list came back at the limit, so there may be more than were considered | 0 |
-| `report.over_limit` | The `--human` report is over 65536 characters after every list was cut to nothing; carries `measured` and `limit`. The JSON Lines are unaffected | 0 |
 | `callsites.scan_failed` | The call-site scan could not list the tracked files; `exports.call_site_scan.available` is false with its reason and no symbol carries `call_sites` | 0 |
 
 ## Discovery

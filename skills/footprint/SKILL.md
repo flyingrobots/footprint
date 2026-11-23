@@ -87,10 +87,10 @@ gh pr comment "$PR" --body-file "$OUT"
 if you need a field rather than the prose. Post the report as footprint wrote it; do not edit,
 trim or summarise it into the comment.
 
-The report is bounded to GitHub's 65536-character comment limit, so a very large change prints
-summaries and says what it left out (`N more ... omitted`, or a `Symbols with more than 50 call
+The report is bounded to GitHub's 65536-character comment limit in total, whatever the change, so a large change prints
+summaries and says what it omitted (`N more ... omitted`, or a `Symbols with more than 50 call
 sites` table with a count per system). It is already the whole report that can be posted; the
-rest is in the JSON Lines result lines and the receipt, which are not bounded.
+rest is in the JSON Lines result lines and the receipt (its `files` field for the file list), which are not bounded.
 
 ## 4. Follow what it lists
 

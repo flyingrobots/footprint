@@ -19,13 +19,16 @@ export const COMPOSITION_BUDGET = 16384;
  */
 export const OVERLAP_BUDGET = 8192;
 
+/** What the landing section may take: the steps it reads out of the repository's own documents. */
+export const LANDING_BUDGET = 8192;
+
 /** Newlines the output protocol puts between the four sections, with margin. */
 const JOIN_SLACK = 16;
 
 /**
  * The room left for the blast-radius section once composition and landing have been rendered.
- * Never negative: when the other two have already used everything the section is trimmed as far
- * as it can go and the CLI says the bound could not hold.
+ * Each of the other three sections is clamped to its own budget, so with composition and landing
+ * at most COMPOSITION_BUDGET and LANDING_BUDGET this is never below 32752.
  */
 export function blastBudget(compositionLength: number, landingLength: number): number {
   return Math.max(0, REPORT_LIMIT - compositionLength - landingLength - OVERLAP_BUDGET - JOIN_SLACK);
@@ -89,4 +92,28 @@ export function shrinkToFit<K extends string>(
     out = build(limits);
   }
   return out;
+}
+
+/**
+ * The last resort, which makes the bound total: whatever a section's lists were cut to, text over
+ * `max` is cut again here, at a line boundary, so no input can exceed it. Any `<details>` the cut
+ * left open is closed, and the end says how many characters were cut and from what, so even this
+ * is never silent. Reached only by a section that is not a list, or by lists whose cut-to-nothing
+ * form is still too long.
+ */
+export function clamp(text: string, max: number, what: string): string {
+  if (text.length <= max) return text;
+  const notice = (cut: number): string =>
+    `<sub>${cut} character${cut === 1 ? "" : "s"} of ${what} omitted to keep the comment under GitHub's ${REPORT_LIMIT}-character limit.</sub>`;
+  let keep = Math.max(0, max - 400);
+  for (;;) {
+    let prefix = text.slice(0, keep);
+    const newline = prefix.lastIndexOf("\n");
+    if (newline > 0) prefix = prefix.slice(0, newline);
+    const open = Math.max(0, (prefix.match(/<details>/g) ?? []).length - (prefix.match(/<\/details>/g) ?? []).length);
+    const out = `${prefix}\n\n${"</details>\n\n".repeat(open)}${notice(text.length - prefix.length)}`;
+    if (out.length <= max) return out;
+    if (keep === 0) return notice(text.length).slice(0, max);
+    keep = Math.max(0, keep - Math.max(1, out.length - max));
+  }
 }

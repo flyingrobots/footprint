@@ -13,7 +13,7 @@ import { isFailure, listOpenPullRequests, resolveGh } from "./pulls.ts";
 import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord, OVERLAP_SCHEMA, OVERLAP_TYPE, overlapRecord } from "./report.ts";
 import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, attachCallSites, exportSurface, rangeBase, rangeEnds, exportsRecord, surfaceSymbols } from "./exports.ts";
 import { unsupportedLanguages } from "./languages.ts";
-import { COMPOSITION_BUDGET, OVERLAP_BUDGET, REPORT_LIMIT, blastBudget } from "./bound.ts";
+import { COMPOSITION_BUDGET, LANDING_BUDGET, OVERLAP_BUDGET, blastBudget } from "./bound.ts";
 
 let markdown = "";
 let landingMarkdown = "";
@@ -93,7 +93,7 @@ async function footprint(run: Run, args: string[]): Promise<void> {
       `the before-merge guard rule is path patterns over the changed files, and found ${landing.before_merge.guards.length}`,
     { read: landing.after_merge.read, guards: landing.before_merge.guards },
   );
-  landingMarkdown = renderLanding(landing);
+  landingMarkdown = renderLanding(landing, LANDING_BUDGET);
   run.result(landingRecord(range, landing), LANDING_TYPE, { markdown: landingMarkdown });
 
   // The export surface, the third result in the same run (flyingrobots/footprint#9), and the call
@@ -130,10 +130,6 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   // Cross-pull-request overlap: the fourth result in the same run, after the blast radius.
   const overlap = await crossPullRequest(run, changes.map((c) => c.path), range.split(/\.{2,3}/)[1] || "HEAD");
   overlapMarkdown = renderOverlap(overlap, OVERLAP_BUDGET);
-  const reportLength = [markdown, landingMarkdown, blastMarkdown, overlapMarkdown].reduce((n, m) => n + m.length, 0);
-  if (reportLength > REPORT_LIMIT) {
-    run.warning({ code: "report.over_limit", problem: `the --human report is ${reportLength} characters, over GitHub's ${REPORT_LIMIT}-character comment limit, with every list already cut to nothing; what is left is not a list footprint can trim`, measured: reportLength, limit: REPORT_LIMIT, remedy: "post the report in parts, or read the JSON Lines result lines" });
-  }
   run.result(overlapRecord(range, overlap), OVERLAP_TYPE, { markdown: overlapMarkdown });
 }
 

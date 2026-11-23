@@ -248,14 +248,14 @@ describe("the --human report is bounded to the comment limit", () => {
     writeFileSync(join(repo, "README.md"), "x\n");
     git("add", "-A"); git("commit", "-q", "-m", "base");
     mkdirSync(join(repo, "data"));
-    for (let i = 0; i < 3000; i++) writeFileSync(join(repo, "data", `a-fairly-long-file-name-${i}.json`), "{}\n");
+    for (let i = 0; i < 3000; i++) writeFileSync(join(repo, "data", `a-fairly-long-file-name-${i}.dat`), "x\n");
     const steps = Array.from({ length: 1500 }, (_, i) => `- [ ] Step ${i} ${"y".repeat(50)}`).join("\n");
     writeFileSync(join(repo, "RELEASE.md"), `# Releasing\n\n## After merge\n\n${steps}\n`);
     git("add", "-A"); git("commit", "-q", "-m", "head");
     const bin = mkdtempSync(join(tmpdir(), "footprint-bin-"));
     const out = execFileSync(process.execPath, [resolve(import.meta.dir, "../src/cli.ts"), "HEAD~1..HEAD", "--human"], {
-      cwd: repo, encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
-      env: { ...process.env, PATH: `${dirname(process.execPath)}:${dirname(Bun.which("git")!)}`, XDG_STATE_HOME: bin },
+      cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024,
+      env: { ...process.env, PATH: `${dirname(process.execPath)}:${dirname(Bun.which("git")!)}`, XDG_STATE_HOME: bin, FOOTPRINT_GRAFT: "/nonexistent/graft" },
     });
     expect(out.length).toBeLessThanOrEqual(REPORT_LIMIT);
     expect(out).toMatch(/\d+ more files? omitted/);

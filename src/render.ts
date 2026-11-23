@@ -11,7 +11,7 @@ import { surfaceCallSiteRows } from "./exports.ts";
 import { MITIGATION_RULE, NONE_NEEDED, SYSTEM_RULE_DETAIL, groupBySystem, type SystemGroup, type SystemRow } from "./systems.ts";
 import type { UnsupportedLanguage } from "./languages.ts";
 import type { Overlap } from "./overlap.ts";
-import { BLAST_LIMITS, COMPOSITION_BUDGET, REPORT_LIMIT, shrinkToFit, type BlastLimits, type Rendered } from "./bound.ts";
+import { BLAST_LIMITS, COMPOSITION_BUDGET, LANDING_BUDGET, REPORT_LIMIT, clamp, shrinkToFit, type BlastLimits, type Rendered } from "./bound.ts";
 
 export interface GutCheck {
   readonly headline: string;
@@ -71,8 +71,12 @@ export function render(
   review?: StructuralReview | null,
   budget: number = COMPOSITION_BUDGET,
 ): string {
-  return shrinkToFit({ files: FILES_SHOWN }, (l) => renderComposition(c, changes, range, review, l.files), budget).text;
+  const fit = shrinkToFit({ files: FILES_SHOWN, formatting: FORMATTING_SHOWN }, (l) => renderComposition(c, changes, range, review, l.files, l.formatting), budget);
+  return clamp(fit.text, budget, "the composition section");
 }
+
+/** How many formatting-labelled paths the structural note names before it counts the rest. */
+const FORMATTING_SHOWN = 20;
 
 /** How many files the Files list names before it counts the rest. */
 const FILES_SHOWN = 200;
@@ -83,11 +87,13 @@ function renderComposition(
   range: string,
   review: StructuralReview | null | undefined,
   filesLimit: number,
-): Rendered<"files"> {
+  formattingLimit: number,
+): Rendered<"files" | "formatting"> {
   const gut = gutCheck(c);
   const out: string[] = ["## Footprint", "", `**${gut.headline}** · \`${range}\``, ""];
   if (gut.flags.length > 0) out.push(...gut.flags.map((f) => `- ${f}`), "");
 
+  let formattingSize = 0;
   if (review != null) {
     const s = structuralSummary(review);
     const symbols = s.symbolsAdded + s.symbolsRemoved + s.symbolsChanged;
@@ -99,12 +105,16 @@ function renderComposition(
     );
     const formatting = review.files.filter((f) => f.category === "formatting");
     if (formatting.length > 0) {
-      out.push(
+      const shown = formatting.slice(0, Math.max(0, formattingLimit));
+      const left = formatting.length - shown.length;
+      const names = shown.map((f) => `\`${f.path}\``).join(", ") +
+        (left > 0 ? `${shown.length > 0 ? ", and " : ""}${left} more formatting-labelled file${left === 1 ? "" : "s"} omitted (the \`files\` field of the receipt and graft's own output name every one)` : "");
+      const note =
         `- graft's label, not footprint's claim: it saw no symbol added, removed or changed in ` +
-          `${formatting.map((f) => `\`${f.path}\``).join(", ")}. A changed value inside an existing symbol ` +
-          `(a rule table, a constant) can carry that label, so read the diff.`,
-        "",
-      );
+        `${names}. A changed value inside an existing symbol ` +
+        `(a rule table, a constant) can carry that label, so read the diff.`;
+      formattingSize = note.length;
+      out.push(note, "");
     }
     if (review.breakingChanges.length > 0) {
       out.push(`- **${review.breakingChanges.length} breaking change(s)**, as \`graft struct review\` lists them.`, "");
@@ -136,14 +146,14 @@ function renderComposition(
   }
   const omitted = Math.max(0, changes.length - filesLimit);
   if (omitted > 0) {
-    groups.push(`<sub>${omitted} more file${omitted === 1 ? "" : "s"} omitted to keep the comment under GitHub's ${REPORT_LIMIT}-character limit; the composition result line carries every one.</sub>`);
+    groups.push(`<sub>${omitted} more file${omitted === 1 ? "" : "s"} omitted to keep the comment under GitHub's ${REPORT_LIMIT}-character limit; the \`files\` field of the receipt carries every one.</sub>`);
   }
   const listing = groups.join("\n\n");
   const listed = listing === "" ? "" : details(`Files (${c.files})`, listing);
   if (listed !== "") out.push(listed, "");
 
   out.push("<sub>Figures computed from `git diff --numstat`. Composition is a sanity check, not a verdict.</sub>");
-  return { text: out.join("\n"), sizes: { files: listed.length } };
+  return { text: out.join("\n"), sizes: { files: listed.length, formatting: formattingSize } };
 }
 
 const BEFORE_MERGE_LABEL: Record<BeforeMergeKind, string> = {
@@ -158,22 +168,38 @@ const BEFORE_MERGE_LABEL: Record<BeforeMergeKind, string> = {
  * GitHub alert because it is the one line here a reader must not scroll past — it is still an
  * observation about paths, not a verdict, and the sentence says which rule found it.
  */
-export function renderLanding(l: Landing): string {
+export function renderLanding(l: Landing, budget: number = LANDING_BUDGET): string {
+  return clamp(shrinkToFit({ rows: LANDING_ROWS_SHOWN }, (x) => landingSection(l, x.rows), budget).text, budget, "the landing section");
+}
+
+/** How many before-merge items and after-merge steps are written out before the rest are counted. */
+const LANDING_ROWS_SHOWN = 50;
+
+function landingSection(l: Landing, limit: number): Rendered<"rows"> {
   // Opens with a blank line: this follows the composition comment on the same stream, and two
   // Markdown blocks run together without one.
   const out: string[] = ["", "## Before merge", ""];
   if (l.before_merge.unguarded) {
     out.push("> [!WARNING]", `> **Nothing in this change guards it.** ${l.before_merge.unguarded_because}`, "");
   }
-  for (const item of l.before_merge.items) out.push(`- **${BEFORE_MERGE_LABEL[item.kind]}** ${item.says}`);
+  for (const item of l.before_merge.items.slice(0, limit)) out.push(`- **${BEFORE_MERGE_LABEL[item.kind]}** ${item.says}`);
+  const itemsLeft = l.before_merge.items.length - Math.min(limit, l.before_merge.items.length);
+  if (itemsLeft > 0) out.push(`- <sub>${itemsLeft} more before-merge item${itemsLeft === 1 ? "" : "s"} omitted to keep the comment under GitHub's ${REPORT_LIMIT}-character limit; the landing result line carries every one.</sub>`);
   if (l.before_merge.items.length > 0) out.push("");
   if (!l.before_merge.unguarded && l.before_merge.items.length === 0) out.push(`- ${l.before_merge.unguarded_because}`, "");
 
   out.push("## After merge", "", l.after_merge.statement, "");
-  for (const s of l.after_merge.steps) out.push(`- [ ] ${s.step} <sub>— \`${s.file}\` › ${s.heading}</sub>`);
+  const mark = out.length;
+  for (const s of l.after_merge.steps.slice(0, limit)) out.push(`- [ ] ${s.step} <sub>— \`${s.file}\` › ${s.heading}</sub>`);
+  const left = l.after_merge.steps.slice(limit);
+  if (left.length > 0) {
+    const files = [...new Set(left.map((s) => s.file))].map((f) => `\`${f}\``).join(", ");
+    out.push(`- <sub>${left.length} more step${left.length === 1 ? "" : "s"} omitted to keep the comment under GitHub's ${REPORT_LIMIT}-character limit; read them in ${files} or in the landing result line.</sub>`);
+  }
+  const size = out.slice(mark).join("\n").length + out.slice(0, mark).filter((x) => x.startsWith("- **")).join("\n").length;
   if (l.after_merge.steps.length > 0) out.push("");
   out.push("<sub>After-merge steps are read from this repository's own `RELEASE.md` and `AGENTS.md`, never invented. The guard rule is path patterns, documented in footprint's `docs/topics/landing/README.md`.</sub>");
-  return out.join("\n");
+  return { text: out.join("\n"), sizes: { rows: size } };
 }
 
 // ---- blast radius (flyingrobots/footprint#9) ---------------------------------------------------
@@ -194,7 +220,7 @@ export function blastRadius(
   limits: BlastLimits = BLAST_LIMITS,
 ): string {
   const start = { symbols: limits.symbols, sites: limits.sites };
-  return shrinkToFit(start, (l) => blastSections(exports, unanalysed, { ...limits, ...l }), budget).text;
+  return clamp(shrinkToFit(start, (l) => blastSections(exports, unanalysed, { ...limits, ...l }), budget).text, budget, "the blast-radius section");
 }
 
 /** One rendering of the section at the given limits, with how much each trimmable part took. */
@@ -352,6 +378,9 @@ function heavyTable(heavy: readonly HeavySymbol[], above: number, limit: number)
  */
 const CALL_SITES_SHOWN = 20;
 
+/** How many symbols one system's table names a capped remainder for, before counting the rest together. */
+const NOTES_SHOWN = 10;
+
 /**
  * One system, one table: a row per call site, each with the mitigation its basis derived. Symbols
  * in `skip` are the summarised ones and have no row here. At most `limit` rows are written; the
@@ -381,7 +410,16 @@ function systemTable(group: SystemGroup, limit: number, skip: ReadonlySet<string
   const body = kept.map((row) => `| \`${row.symbol}\` | \`${row.site.file}:${row.site.line}\` | ${pipes(row.site.mitigation)} |`);
   const title = `**\`${group.system}\`** — ${group.rows.length} call site${group.rows.length === 1 ? "" : "s"}`;
   const notes: string[] = [];
-  const rest = [...elided.entries()].map(([sym, n]) => `…and ${n} more for \`${sym}\``);
+  // One note per capped symbol, up to NOTES_SHOWN of them and never more than the row limit; the
+  // symbols past that are counted together, so the total of omitted sites stays exact.
+  const all = [...elided.entries()];
+  const noted = all.slice(0, Math.max(0, Math.min(limit, NOTES_SHOWN)));
+  const rest = noted.map(([sym, n]) => `…and ${n} more for \`${sym}\``);
+  const more = all.slice(noted.length);
+  if (more.length > 0) {
+    const sites = more.reduce((n, [, c]) => n + c, 0);
+    rest.push(`…and ${sites} more call site${sites === 1 ? "" : "s"} for ${more.length} more symbol${more.length === 1 ? "" : "s"}`);
+  }
   if (rest.length > 0) notes.push(`${rest.join(", ")}; the result line carries every one.`);
   if (summarised > 0) notes.push(`${summarised} call site${summarised === 1 ? "" : "s"} here belong to the symbols counted above rather than listed.`);
   const left = candidates.length - kept.length;
@@ -454,7 +492,7 @@ function cell(signature: string | undefined): string {
  * composition section above stays exactly what it was.
  */
 export function renderOverlap(o: Overlap, budget: number = REPORT_LIMIT): string {
-  return shrinkToFit({ pulls: PULLS_SHOWN }, (l) => overlapSection(o, l.pulls), budget).text;
+  return clamp(shrinkToFit({ pulls: PULLS_SHOWN }, (l) => overlapSection(o, l.pulls), budget).text, budget, "the overlap section");
 }
 
 /** How many pull requests, conflicts and waves the overlap section names before it counts the rest. */

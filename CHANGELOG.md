@@ -18,7 +18,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   fields of a JSON Schema file, such as `type` and `id`, were the cause) is summarised as a count per
   system instead of a row per site. footprint still scans for those names and still records every
   site. The same range now renders at 54368 characters. The JSON Lines records are unchanged and not
-  bounded; a new warning `report.over_limit` says so if the bound cannot hold. (flyingrobots/footprint#51)
+  bounded. The landing section, the formatting-labelled paths and the per-symbol remainder notes are
+  bounded too, and a last-resort clamp on every section makes the total bound hold for any input,
+  stating what it cut. (flyingrobots/footprint#51)
 
 ## [0.3.2] — 2026-11-22
 
