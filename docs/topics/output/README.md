@@ -103,9 +103,9 @@ nothing in its mitigation cell is exactly the padded row flyingrobots/footprint#
 symbol with no call site at all is in no system and so in no table; it is stated under them
 instead, because leaving it out would read as a symbol that was never looked up.
 
-### `footprint.overlap` 1.0.0
+### `footprint.overlap` 2.0.0
 
-The fourth line in the same run, after the blast radius: schema `footprint.overlap` 1.0.0
+The fourth line in the same run, after the blast radius: schema `footprint.overlap` 2.0.0
 (`schemas/footprint.overlap.schema.json`). What it means and how the waves are built is
 [the overlap reference](../overlap/README.md); this is the field list.
 
@@ -117,9 +117,11 @@ The fourth line in the same run, after the blast radius: schema `footprint.overl
 | `overlap.code`, `overlap.reason` | Only when `available: false`: the stable code and `gh`'s own message |
 | `overlap.self` | This change's own pull request, excluded from `overlapping` and kept in `waves`; null when the branch has none |
 | `overlap.openPullRequests`, `limit`, `truncated` | How many open pull requests were listed, the `gh pr list --limit` used, and whether the list came back at it |
-| `overlap.overlapping` | Open pull requests changing a file this change changes: `number`, `title`, `isDraft`, `sharedFiles`. Ascending by number |
-| `overlap.conflicts` | One edge per pair of open pull requests sharing a file: `a`, `b`, `sharedFiles`, and a `reason` naming them |
-| `overlap.waves` | The proposed merge order: `wave` and its `pullRequests`. No two in a wave share a file; wave N+1 lands after wave N |
+| `overlap.overlapping` | Open pull requests changing a file this change changes: `number`, `title`, `isDraft`, `sharedFiles`, and `symbolLevel` with this change as side `a`. Ascending by number |
+| `overlap.conflicts` | One edge per pair of open pull requests sharing a file: `a`, `b`, `sharedFiles`, a `reason` naming them, and `symbolLevel` |
+| `…symbolLevel` | `level` (`symbol-disjoint`, `symbol-overlapping` or `undetermined`) and one entry per shared file: `path`, `level`, each side's `a` and `b` as `{symbols, outside}`, `shared` when overlapping, and `code` and `reason` when undetermined. See [the overlap reference](../overlap/README.md#the-symbol-level) |
+| `overlap.waves` | The proposed merge order: `wave` and its `pullRequests`. No two in a wave share a file unless the edge between them is symbol-disjoint; wave N+1 lands after wave N |
+| `overlap.symbolAnalysis` | `outlinesRun`, `outlineBudget` and `outlineTimeoutMs`: how many graft outline calls the symbol level took, the most a run may take, and the timeout on each |
 | `overlap.undetermined` | Open pull requests whose files `gh` would not report, kept out of the graph and the waves rather than assumed disjoint |
 | `digest` | SHA-256 over the canonical JSON of `range` and `overlap` |
 
@@ -218,6 +220,7 @@ and `overlap.code` says which:
 | `gh.unauthenticated`, `gh.rate_limited`, `gh.no_remote`, `gh.list_failed`, `gh.list_unreadable` | `gh` resolved but could not list the open pull requests; `overlap.available` is false. No warning when `gh` is simply absent — that is not a failure of anything footprint ran | 0 |
 | `gh.diff_failed` | `gh pr diff --name-only` would not report some pull request's files; they are in `overlap.undetermined` | 0 |
 | `gh.list_truncated` | The pull-request list came back at the limit, so there may be more than were considered | 0 |
+| `symbols.analysis_failed` | The symbol-level comparison threw. Every edge is file-level, with `symbols.not_analysed` on each shared file. A graft or git failure on one file is not this warning; it is that file's `undetermined` code | 0 |
 | `callsites.scan_failed` | The call-site scan could not list the tracked files; `exports.call_site_scan.available` is false with its reason and no symbol carries `call_sites` | 0 |
 
 ## Discovery
@@ -225,7 +228,7 @@ and `overlap.code` says which:
 `footprint --help` and `footprint --schema` are runs too: they bootstrap, write a receipt, emit
 one `command` line and the schemas footprint can emit, and close with `end`. `--help` carries
 `footprint.composition` 1.0.0, `footprint.landing` 1.0.0, `footprint.blast_radius` 1.1.0,
-`footprint.overlap` 1.0.0 and `parley.error` 2.0.0, in that order; `--schema` adds every protocol
+`footprint.overlap` 2.0.0 and `parley.error` 2.0.0, in that order; `--schema` adds every protocol
 schema the writer itself emits.
 
 ## Exit status

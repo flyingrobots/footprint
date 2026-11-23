@@ -84,8 +84,12 @@ See [`docs/topics/blast-radius/README.md`](docs/topics/blast-radius/README.md).
 ## Cross-pull-request overlap
 
 A fourth result says which **open pull requests** change a file this change changes — by number and
-title — and proposes an order the open pull requests could land in, as waves where no two pull
-requests in a wave share a file, with the shared files named for every edge that forces one. The
+title — and proposes an order the open pull requests could land in, as waves, with the shared files
+named for every edge. Each shared file is also compared at the **symbol level**. Each side's changed
+lines are attributed to the top-level symbols graft finds in the file, and the file is reported as
+`symbol-disjoint` with the symbols named, as `symbol-overlapping`, or as `undetermined` with the
+reason. A symbol-disjoint edge is reported, but it does not split two pull requests into different
+waves. An undetermined edge splits them, as a file-level edge does. The
 open pull requests come from `gh pr list`, their files from `gh pr diff --name-only`, and nothing
 is merged or rebased: the order is a proposal, not a gate. When `gh` is absent or cannot answer,
 the result says so with a code and `gh`'s own message and the run still succeeds, because an
@@ -108,12 +112,11 @@ than quietly omitting it. A degraded run should never read as a clean one.
 
 ## Status
 
-**v0.3.3** — composition, the landing plan, the export-surface diff with the call sites of each
-changed symbol grouped by system, the unanalysed languages, and the cross-pull-request overlap,
-all as JSON Lines through the Parley output protocol. Released on GitHub; on npm as
-`@flyingrobots/footprint` once its first publish is done (see
-[the release workflow](docs/workflows/release/README.md)). Symbol-level overlap is
-tracked as flyingrobots/footprint#33.
+**v0.4.0** — composition, the landing plan, the export-surface diff with the call sites of each
+changed symbol grouped by system, the unanalysed languages, and the cross-pull-request overlap
+down to the symbol level, all as JSON Lines through the Parley output protocol. Released on GitHub
+when its tag is pushed; on npm as `@flyingrobots/footprint` once its first publish is done (see
+[the release workflow](docs/workflows/release/README.md)).
 
 Documentation: [`docs/README.md`](docs/README.md). Working agreement: [`AGENTS.md`](AGENTS.md).
 

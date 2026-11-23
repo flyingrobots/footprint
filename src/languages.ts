@@ -72,3 +72,12 @@ export function unsupportedLanguages(paths: readonly string[]): UnsupportedLangu
     .map(([extension, count]) => ({ extension: extension === "" ? "(none)" : extension, count }))
     .sort((a, b) => a.extension.localeCompare(b.extension));
 }
+
+/**
+ * Whether graft's grammars can read this path at all, by extension alone. The symbol-level overlap
+ * (flyingrobots/footprint#33) asks it before spending a graft call on a file: a Markdown file has no
+ * symbols to compare, whatever classify() calls it.
+ */
+export function parsableByGraft(path: string): boolean {
+  return SUPPORTED_EXTENSIONS.has(extensionOf(path));
+}

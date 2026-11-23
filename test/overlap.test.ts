@@ -5,6 +5,11 @@ import { describe, expect, test } from "bun:test";
 import { computeOverlap, mergeWaves, sharedFiles, unavailableOverlap, type PullRequest } from "../src/overlap.ts";
 import { classifyFailure } from "../src/pulls.ts";
 
+/** What an overlap or an edge carries when no symbol analysis was passed in (footprint.overlap 2.0.0). */
+function notAnalysed(files: string[]) {
+  return { level: "undetermined", files: files.map((path) => ({ path, level: "undetermined", code: "symbols.not_analysed", reason: "symbol-level analysis was not run" })) };
+}
+
 function pr(number: number, files: readonly string[] | null, extra: Partial<PullRequest> = {}): PullRequest {
   return { number, title: `pull request ${number}`, isDraft: false, files, ...extra };
 }
@@ -15,7 +20,7 @@ describe("overlap with this change", () => {
     expect(o.available).toBe(true);
     expect(o.openPullRequests).toBe(1);
     expect(o.overlapping).toEqual([
-      { number: 7, title: "pull request 7", isDraft: false, sharedFiles: ["src/audit.ts"] },
+      { number: 7, title: "pull request 7", isDraft: false, sharedFiles: ["src/audit.ts"], symbolLevel: notAnalysed(["src/audit.ts"]) },
     ]);
     expect(o.summary).toBe("1 of 1 open pull request touches a file this change touches.");
   });
@@ -68,7 +73,13 @@ describe("the conflict graph", () => {
   test("an edge names the files the two pull requests share", () => {
     const o = computeOverlap([], [pr(7, ["a.ts", "b.ts"]), pr(9, ["b.ts", "a.ts"]), pr(11, ["c.ts"])]);
     expect(o.conflicts).toEqual([
-      { a: 7, b: 9, sharedFiles: ["a.ts", "b.ts"], reason: "#7 and #9 both change a.ts and b.ts" },
+      {
+        a: 7,
+        b: 9,
+        sharedFiles: ["a.ts", "b.ts"],
+        reason: "#7 and #9 both change a.ts and b.ts; the symbol level is undetermined, so the edge separates waves as a file-level one does",
+        symbolLevel: notAnalysed(["a.ts", "b.ts"]),
+      },
     ]);
   });
 

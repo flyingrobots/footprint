@@ -4,7 +4,7 @@
 //
 // Two `gh` calls per run plus one per pull request, all read-only:
 //
-//   gh pr list --state open --json number,title,isDraft,headRefOid,headRefName,isCrossRepository --limit <n>
+//   gh pr list --state open --json number,title,isDraft,headRefOid,headRefName,isCrossRepository,baseRefName --limit <n>
 //   gh pr diff <number> --name-only
 //
 // `gh` missing, unauthenticated or rate-limited is a stated limitation, never an omitted section:
@@ -57,6 +57,7 @@ interface Listed {
   headRefOid?: unknown;
   headRefName?: unknown;
   isCrossRepository?: unknown;
+  baseRefName?: unknown;
 }
 
 /**
@@ -64,7 +65,7 @@ interface Listed {
  * `null`, which the computation reports as undetermined rather than treating as disjoint.
  */
 export async function listOpenPullRequests(gh: string, cwd: string, limit: number = LIST_LIMIT): Promise<PullsResult> {
-  const listed = await $`${gh} pr list --state open --json number,title,isDraft,headRefOid,headRefName,isCrossRepository --limit ${limit}`.cwd(cwd).quiet().nothrow();
+  const listed = await $`${gh} pr list --state open --json number,title,isDraft,headRefOid,headRefName,isCrossRepository,baseRefName --limit ${limit}`.cwd(cwd).quiet().nothrow();
   if (listed.exitCode !== 0) return classifyFailure(listed.stderr.toString(), listed.exitCode);
 
   let rows: Listed[];
@@ -87,6 +88,7 @@ export async function listOpenPullRequests(gh: string, cwd: string, limit: numbe
       ...(typeof row.headRefOid === "string" ? { headCommit: row.headRefOid } : {}),
       ...(typeof row.headRefName === "string" ? { headBranch: row.headRefName } : {}),
       ...(typeof row.isCrossRepository === "boolean" ? { crossRepository: row.isCrossRepository } : {}),
+      ...(typeof row.baseRefName === "string" ? { baseBranch: row.baseRefName } : {}),
     });
   }
 

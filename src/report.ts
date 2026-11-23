@@ -14,7 +14,7 @@ export const COMPOSITION_TYPE = { id: "footprint.composition", version: "1.0.0" 
 export const LANDING_SCHEMA = JSON.parse(readFileSync(join(import.meta.dir, "../schemas/footprint.landing.schema.json"), "utf8")) as Record<string, unknown>;
 export const LANDING_TYPE = { id: "footprint.landing", version: "1.0.0" } as const;
 export const OVERLAP_SCHEMA = JSON.parse(readFileSync(join(import.meta.dir, "../schemas/footprint.overlap.schema.json"), "utf8")) as Record<string, unknown>;
-export const OVERLAP_TYPE = { id: "footprint.overlap", version: "1.0.0" } as const;
+export const OVERLAP_TYPE = { id: "footprint.overlap", version: "2.0.0" } as const;
 
 export interface Structural {
   readonly available: boolean;

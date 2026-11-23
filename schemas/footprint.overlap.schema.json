@@ -1,75 +1,226 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.overlap/1.0.0",
-  "title": "footprint.overlap 1.0.0",
-  "description": "The fourth result of a footprint run: which open pull requests touch a file this change touches, the conflict graph between the open pull requests, and a proposed merge order as waves. Every figure comes from gh pr list --json and gh pr diff --name-only; when gh cannot answer, available is false and the reason is stated rather than the section being omitted.",
+  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.overlap/2.0.0",
+  "title": "footprint.overlap 2.0.0",
+  "description": "The fourth result of a footprint run: which open pull requests touch a file this change touches, the conflict graph between the open pull requests, and a proposed merge order as waves. Every figure comes from gh pr list --json and gh pr diff --name-only; each shared file of a pair is also compared at the symbol level, from git diff -U0 and graft read outline's jump table at each side's merge base and head (flyingrobots/footprint#33). When gh cannot answer, available is false and the reason is stated rather than the section being omitted.",
   "type": "object",
-  "required": ["event", "t", "seq", "run", "range", "overlap", "digest", "_schema"],
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "range",
+    "overlap",
+    "digest",
+    "_schema"
+  ],
   "properties": {
-    "event": { "const": "result" },
-    "t": { "type": "integer", "minimum": 0 },
-    "seq": { "type": "integer", "minimum": 1 },
-    "run": { "type": "string", "minLength": 1 },
-    "range": { "type": "string", "minLength": 1, "description": "The git range whose files were compared against the open pull requests" },
+    "event": {
+      "const": "result"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1
+    },
+    "range": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The git range whose files were compared against the open pull requests"
+    },
     "overlap": {
       "type": "object",
-      "required": ["available", "summary"],
+      "required": [
+        "available",
+        "summary"
+      ],
       "oneOf": [
         {
-          "properties": { "available": { "const": true } },
-          "required": ["self", "openPullRequests", "limit", "truncated", "overlapping", "conflicts", "waves", "undetermined"]
+          "properties": {
+            "available": {
+              "const": true
+            }
+          },
+          "required": [
+            "self",
+            "openPullRequests",
+            "limit",
+            "truncated",
+            "overlapping",
+            "conflicts",
+            "waves",
+            "undetermined",
+            "symbolAnalysis"
+          ]
         },
         {
-          "properties": { "available": { "const": false } },
-          "required": ["code", "reason"]
+          "properties": {
+            "available": {
+              "const": false
+            }
+          },
+          "required": [
+            "code",
+            "reason"
+          ]
         }
       ],
       "properties": {
-        "available": { "type": "boolean", "description": "False when gh is absent, unauthenticated, rate-limited or unreadable; the section is stated, never omitted" },
-        "code": { "enum": ["gh.not_found", "gh.unauthenticated", "gh.rate_limited", "gh.no_remote", "gh.list_failed", "gh.list_unreadable"], "description": "Why the overlap is unavailable; present only when available is false" },
-        "reason": { "type": "string", "minLength": 1, "description": "gh's own message, or why gh could not be found" },
-        "summary": { "type": "string", "minLength": 1, "description": "The plain statement: the counts, or that there is no overlap, or the limitation. Never an empty section." },
-        "self": { "type": ["integer", "null"], "description": "The pull request under review: the open pull request whose head commit is the range's head commit, or, when no head commit matches, the same-repository pull request whose head branch is the range's head branch. Excluded from overlapping and kept in the waves; always present, null when none matches." },
-        "openPullRequests": { "type": "integer", "minimum": 0, "description": "How many open pull requests gh listed" },
-        "limit": { "type": "integer", "minimum": 1, "description": "The gh pr list --limit used" },
-        "truncated": { "type": "boolean", "description": "True when the list came back at the limit, so there may be more open pull requests than were considered" },
+        "available": {
+          "type": "boolean",
+          "description": "False when gh is absent, unauthenticated, rate-limited or unreadable; the section is stated, never omitted"
+        },
+        "code": {
+          "enum": [
+            "gh.not_found",
+            "gh.unauthenticated",
+            "gh.rate_limited",
+            "gh.no_remote",
+            "gh.list_failed",
+            "gh.list_unreadable"
+          ],
+          "description": "Why the overlap is unavailable; present only when available is false"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "gh's own message, or why gh could not be found"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The plain statement: the counts, or that there is no overlap, or the limitation. Never an empty section."
+        },
+        "self": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "The pull request under review: the open pull request whose head commit is the range's head commit, or, when no head commit matches, the same-repository pull request whose head branch is the range's head branch. Excluded from overlapping and kept in the waves; always present, null when none matches."
+        },
+        "openPullRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many open pull requests gh listed"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The gh pr list --limit used"
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "True when the list came back at the limit, so there may be more open pull requests than were considered"
+        },
         "overlapping": {
           "type": "array",
           "description": "Open pull requests that change a file this change changes, ascending by number",
           "items": {
             "type": "object",
-            "required": ["number", "title", "isDraft", "sharedFiles"],
+            "required": [
+              "number",
+              "title",
+              "isDraft",
+              "sharedFiles",
+              "symbolLevel"
+            ],
             "properties": {
-              "number": { "type": "integer", "minimum": 1 },
-              "title": { "type": "string" },
-              "isDraft": { "type": "boolean", "description": "An observation, not a verdict" },
-              "sharedFiles": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+              "number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "isDraft": {
+                "type": "boolean",
+                "description": "An observation, not a verdict"
+              },
+              "sharedFiles": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "symbolLevel": {
+                "$ref": "#/$defs/symbolLevel",
+                "description": "The shared files at the symbol level; side a is this change, side b this pull request"
+              }
             }
           }
         },
         "conflicts": {
           "type": "array",
-          "description": "One edge per pair of open pull requests that change the same file, with the files named",
+          "description": "One edge per pair of open pull requests that change the same file, with the files named and each compared at the symbol level",
           "items": {
             "type": "object",
-            "required": ["a", "b", "sharedFiles", "reason"],
+            "required": [
+              "a",
+              "b",
+              "sharedFiles",
+              "reason",
+              "symbolLevel"
+            ],
             "properties": {
-              "a": { "type": "integer", "minimum": 1 },
-              "b": { "type": "integer", "minimum": 1 },
-              "sharedFiles": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
-              "reason": { "type": "string", "minLength": 1, "description": "Why the edge exists, in prose" }
+              "a": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "b": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "sharedFiles": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Why the edge exists, in prose"
+              },
+              "symbolLevel": {
+                "$ref": "#/$defs/symbolLevel",
+                "description": "The shared files at the symbol level. A symbol-disjoint edge is reported and does not separate waves; it is not a claim that git will merge the two cleanly"
+              }
             }
           }
         },
         "waves": {
           "type": "array",
-          "description": "The proposed merge order. No two pull requests in a wave share a file; wave N+1 lands after wave N. Greedy first-fit, so a proposal rather than a minimum.",
+          "description": "The proposed merge order. No two pull requests in a wave share a file unless the edge between them is symbol-disjoint; an undetermined or overlapping edge separates them. Wave N+1 lands after wave N. Greedy first-fit, so a proposal rather than a minimum.",
           "items": {
             "type": "object",
-            "required": ["wave", "pullRequests"],
+            "required": [
+              "wave",
+              "pullRequests"
+            ],
             "properties": {
-              "wave": { "type": "integer", "minimum": 1 },
-              "pullRequests": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1 } }
+              "wave": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "pullRequests": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
             }
           }
         },
@@ -78,22 +229,222 @@
           "description": "Open pull requests whose changed files gh would not report. Kept out of the conflict graph and the waves rather than assumed disjoint.",
           "items": {
             "type": "object",
-            "required": ["number", "title", "reason"],
+            "required": [
+              "number",
+              "title",
+              "reason"
+            ],
             "properties": {
-              "number": { "type": "integer", "minimum": 1 },
-              "title": { "type": "string" },
-              "reason": { "type": "string", "minLength": 1 }
+              "number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "symbolAnalysis": {
+          "type": "object",
+          "required": [
+            "outlinesRun",
+            "outlineBudget",
+            "outlineTimeoutMs"
+          ],
+          "additionalProperties": false,
+          "description": "How the symbol level was bounded this run: graft outline calls started, the most a run may start, and the timeout on each. All zero when no analysis was run.",
+          "properties": {
+            "outlinesRun": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "outlineBudget": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "outlineTimeoutMs": {
+              "type": "integer",
+              "minimum": 0
             }
           }
         }
       }
     },
-    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 over the canonical JSON of range and overlap (spec §7.1). Unlike inv, it moves with the live state of the open pull requests." },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 over the canonical JSON of range and overlap (spec §7.1). Unlike inv, it moves with the live state of the open pull requests."
+    },
     "_schema": {
       "type": "object",
-      "required": ["id", "version"],
+      "required": [
+        "id",
+        "version"
+      ],
       "additionalProperties": false,
-      "properties": { "id": { "const": "footprint.overlap" }, "version": { "const": "1.0.0" } }
+      "properties": {
+        "id": {
+          "const": "footprint.overlap"
+        },
+        "version": {
+          "const": "2.0.0"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "touched": {
+      "type": "object",
+      "required": [
+        "symbols",
+        "outside"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "symbols": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "The top-level symbols whose spans hold one of this side's changed lines, at the merge base for removed lines and at the head for added ones, sorted. A rename names both the old and the new symbol."
+        },
+        "outside": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Changed lines outside every top-level symbol (comments, imports, top-level code), counted as git diff --numstat counts them: a modified line is one removed and one added. Whitespace-only lines are not counted."
+        }
+      }
+    },
+    "fileLevel": {
+      "type": "object",
+      "required": [
+        "path",
+        "level"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "level": {
+              "const": "symbol-disjoint"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "properties": {
+            "level": {
+              "const": "symbol-overlapping"
+            }
+          },
+          "required": [
+            "a",
+            "b",
+            "shared"
+          ]
+        },
+        {
+          "properties": {
+            "level": {
+              "const": "undetermined"
+            }
+          },
+          "required": [
+            "code",
+            "reason"
+          ]
+        }
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "level": {
+          "enum": [
+            "symbol-disjoint",
+            "symbol-overlapping",
+            "undetermined"
+          ]
+        },
+        "a": {
+          "$ref": "#/$defs/touched",
+          "description": "Side a: this change in overlapping, the edge's a in conflicts"
+        },
+        "b": {
+          "$ref": "#/$defs/touched",
+          "description": "Side b: the other pull request in overlapping, the edge's b in conflicts"
+        },
+        "shared": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "The symbols both sides change"
+        },
+        "code": {
+          "enum": [
+            "symbols.not_analysed",
+            "graft.not_resolved",
+            "language.unsupported",
+            "graft.outline_failed",
+            "graft.outline_timeout",
+            "graft.outline_refused",
+            "graft.outline_partial",
+            "graft.outline_unreadable",
+            "budget.spent",
+            "gh.head_unknown",
+            "git.head_missing",
+            "git.base_missing",
+            "git.merge_base",
+            "git.diff_failed",
+            "git.show_failed",
+            "git.binary",
+            "symbols.outside"
+          ],
+          "description": "Why the symbol level could not be decided; present only when undetermined"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "symbolLevel": {
+      "type": "object",
+      "required": [
+        "level",
+        "files"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "enum": [
+            "symbol-disjoint",
+            "symbol-overlapping",
+            "undetermined"
+          ],
+          "description": "symbol-overlapping when any shared file is; symbol-disjoint only when every shared file is; otherwise undetermined"
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/fileLevel"
+          }
+        }
+      }
     }
   }
 }

@@ -10,6 +10,7 @@ import { resolveGraft, structuralReview } from "./graft.ts";
 import { landingPlan, readLandingDocs, LANDING_DOCUMENTS } from "./landing.ts";
 import { computeOverlap, underReview, unavailableOverlap, type Overlap, type RangeHead } from "./overlap.ts";
 import { isFailure, listOpenPullRequests, resolveGh } from "./pulls.ts";
+import { analyseSymbols, graftOutliner, type Symbols } from "./symbols.ts";
 import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord, OVERLAP_SCHEMA, OVERLAP_TYPE, overlapRecord } from "./report.ts";
 import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, attachCallSites, exportSurface, rangeBase, rangeEnds, exportsRecord, surfaceSymbols } from "./exports.ts";
 import { unsupportedLanguages } from "./languages.ts";
@@ -128,7 +129,7 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   run.result(exportsRecord(range, surface, unanalysed), BLAST_RADIUS_TYPE, { markdown: blastMarkdown });
 
   // Cross-pull-request overlap: the fourth result in the same run, after the blast radius.
-  const overlap = await crossPullRequest(run, changes.map((c) => c.path), range.split(/\.{2,3}/)[1] || "HEAD");
+  const overlap = await crossPullRequest(run, changes.map((c) => c.path), head, baseRef, graft);
   overlapMarkdown = renderOverlap(overlap, OVERLAP_BUDGET);
   run.result(overlapRecord(range, overlap), OVERLAP_TYPE, { markdown: overlapMarkdown });
 }
@@ -138,7 +139,13 @@ async function footprint(run: Run, args: string[]): Promise<void> {
  * `gh` absent, unauthenticated or rate-limited is a stated limitation and the run still succeeds:
  * an omitted section would read as "nothing overlaps", which is a different claim.
  */
-async function crossPullRequest(run: Run, changed: readonly string[], headRef: string): Promise<Overlap> {
+async function crossPullRequest(
+  run: Run,
+  changed: readonly string[],
+  headRef: string,
+  baseRef: { ok: true; ref: string } | { ok: false; detail: string },
+  graft: string | null,
+): Promise<Overlap> {
   const gh = resolveGh();
   if (gh === null) {
     run.step("cross-pull-request overlap unavailable", "gh is not on PATH; the result states the limitation rather than omitting the section");
@@ -151,7 +158,33 @@ async function crossPullRequest(run: Run, changed: readonly string[], headRef: s
     return unavailableOverlap(pulls.code, pulls.reason);
   }
   const self = underReview(pulls.pullRequests, await rangeHead(headRef));
-  const overlap = computeOverlap(changed, pulls.pullRequests, { self, limit: pulls.limit });
+  const fileLevel = computeOverlap(changed, pulls.pullRequests, { self, limit: pulls.limit });
+  // The symbol level of every shared file (flyingrobots/footprint#33), bounded: only the shared
+  // files of pairs that share one, an outline budget per run and a timeout per graft call.
+  const outliner = graft === null ? null : graftOutliner(graft);
+  let symbols: Symbols | undefined;
+  try {
+    symbols = await analyseSymbols({
+      repo: run.cwd,
+      prs: pulls.pullRequests,
+      conflicts: fileLevel.conflicts,
+      overlapping: fileLevel.overlapping,
+      range: baseRef.ok ? { base: baseRef.ref, head: headRef } : { code: "git.merge_base", reason: `${baseRef.detail}, so this change has no merge base to compare symbols from` },
+      outliner,
+    });
+  } catch (e) {
+    // The symbol level is enrichment: a fault in it leaves every edge undetermined (file-level),
+    // stated as a warning, rather than costing the run its overlap section.
+    run.warning({ code: "symbols.analysis_failed", problem: `the symbol-level comparison of the shared files failed, so every edge is file-level: ${e instanceof Error ? e.message : String(e)}`, remedy: "report it with the range; the file-level overlap is unaffected" });
+  } finally {
+    outliner?.dispose();
+  }
+  const overlap = computeOverlap(changed, pulls.pullRequests, { self, limit: pulls.limit, symbols });
+  const counted = (lv: string) => overlap.conflicts.filter((c) => c.symbolLevel.level === lv).length;
+  if (symbols !== undefined) run.step(
+    `symbol level of ${overlap.conflicts.length} edge${overlap.conflicts.length === 1 ? "" : "s"}: ${counted("symbol-disjoint")} disjoint, ${counted("symbol-overlapping")} overlapping, ${counted("undetermined")} undetermined`,
+    `each side's changed lines from git diff -U0 against its merge base, attributed to the top-level symbols of graft read outline at the merge base and the head; ${symbols.analysis.outlinesRun} of at most ${symbols.analysis.outlineBudget} outline calls, each stopped after ${symbols.analysis.outlineTimeoutMs} ms; a symbol-disjoint edge does not separate waves`,
+  );
   if (self !== null) run.step(`#${self} is the pull request under review`, "its head commit is the range's head commit (or, failing a commit match, its same-repository head branch is the range's head branch), so it is excluded from the overlap rather than listed against itself");
   run.step(`cross-pull-request overlap over ${overlap.openPullRequests} open pull request${overlap.openPullRequests === 1 ? "" : "s"}`, "gh listed the open pull requests and gh pr diff --name-only their files; waves are greedy first-fit over the conflict graph, a proposal rather than a minimum");
   if (overlap.undetermined.length > 0) {

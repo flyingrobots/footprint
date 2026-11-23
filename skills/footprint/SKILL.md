@@ -109,9 +109,13 @@ request or answered in a PR comment that says why it needs nothing. Silence is n
   sites instead of listing them, its own figure says how many carry a mitigation other than `None
   needed`; read those from the `footprint.blast_radius` result (run `fp "$RANGE"` without
   `--human`) and check them the same way.
-- **Overlap.** Each open pull request that shares a file, and the proposed merge order. Tell the
-  authors of overlapping pull requests, and land in the proposed waves unless there is a reason not
-  to, which you state.
+- **Overlap.** Each open pull request that shares a file, what each shared file looks like at the
+  symbol level, and the proposed merge order. Tell the authors of overlapping pull requests,
+  naming the shared symbols when the report gives them. Land in the proposed waves unless there is
+  a reason not to, and state that reason. A `different symbols` file does not separate waves, but
+  git can still conflict on it: rerun footprint after the first of the two merges. An `undetermined`
+  file is file-level overlap, and its reason says why (for example, a head commit that is not
+  local: `git fetch origin pull/<n>/head`).
 - **After merge.** Once the pull request has merged, do each step the report quoted from the
   repository's `RELEASE.md` or `AGENTS.md`, in order. footprint quotes them; it never runs them.
   If it said no steps are declared, it invented none, and neither should you.

@@ -12,6 +12,13 @@
 // on its source — graft's barrel does not export the function, and reaching into its `dist` is
 // exactly the coupling that AGENTS.md forbids. The algorithm is twenty lines; the coupling would
 // outlive it.
+//
+// The symbol level of a shared-file edge (flyingrobots/footprint#33) is computed in
+// `src/symbols.ts` and passed in as data, so this file stays pure. A symbol-disjoint edge is
+// reported and does not separate waves; an overlapping or undetermined one separates them as a
+// file-level edge always did.
+
+import { edgeKey, undeterminedLevel, type SymbolAnalysis, type SymbolLevel, type Symbols } from "./symbols.ts";
 
 /** A pull request as the overlap computation needs it. `files` is null when gh did not report them. */
 export interface PullRequest {
@@ -25,6 +32,8 @@ export interface PullRequest {
   readonly headBranch?: string;
   /** True when the head branch lives in a fork, from `isCrossRepository`. */
   readonly crossRepository?: boolean;
+  /** The branch it merges into, from `baseRefName`; its merge base is taken against this. */
+  readonly baseBranch?: string;
 }
 
 /** What identifies the range's head: its commit id, and its branch name when it has one. */
@@ -59,6 +68,8 @@ export interface SharedWith {
   readonly title: string;
   readonly isDraft: boolean;
   readonly sharedFiles: readonly string[];
+  /** The shared files at the symbol level; side `a` is this change, side `b` this pull request. */
+  readonly symbolLevel: SymbolLevel;
 }
 
 /** One edge of the conflict graph: two open pull requests that change the same files. */
@@ -67,9 +78,14 @@ export interface ConflictEdge {
   readonly b: number;
   readonly sharedFiles: readonly string[];
   readonly reason: string;
+  /** The shared files at the symbol level; sides `a` and `b` are the edge's own. */
+  readonly symbolLevel: SymbolLevel;
 }
 
-/** One wave of the proposed merge order. Within a wave no two pull requests share a file. */
+/**
+ * One wave of the proposed merge order. Within a wave no two pull requests share a file, unless
+ * the edge between them is symbol-disjoint.
+ */
 export interface Wave {
   readonly wave: number;
   readonly pullRequests: readonly number[];
@@ -94,6 +110,8 @@ export interface OverlapAvailable {
   readonly conflicts: readonly ConflictEdge[];
   readonly waves: readonly Wave[];
   readonly undetermined: readonly Undetermined[];
+  /** How the symbol level was bounded this run. */
+  readonly symbolAnalysis: SymbolAnalysis;
   readonly summary: string;
 }
 
@@ -129,7 +147,7 @@ function placeable(prs: readonly PullRequest[]): Array<PullRequest & { files: re
  * Every unordered pair of open pull requests that change the same file, with the files named.
  * These are the edges the merge order has to respect.
  */
-export function conflictGraph(prs: readonly PullRequest[]): ConflictEdge[] {
+export function conflictGraph(prs: readonly PullRequest[], symbols?: Symbols): ConflictEdge[] {
   const known = placeable(prs);
   const edges: ConflictEdge[] = [];
   for (let i = 0; i < known.length; i += 1) {
@@ -137,7 +155,8 @@ export function conflictGraph(prs: readonly PullRequest[]): ConflictEdge[] {
       const a = known[i]!, b = known[j]!;
       const shared = sharedFiles(a.files, b.files);
       if (shared.length === 0) continue;
-      edges.push({ a: a.number, b: b.number, sharedFiles: shared, reason: `#${a.number} and #${b.number} both change ${list(shared)}` });
+      const symbolLevel = symbols?.edges.get(edgeKey(a.number, b.number)) ?? notAnalysed(shared);
+      edges.push({ a: a.number, b: b.number, sharedFiles: shared, reason: edgeReason(a.number, b.number, shared, symbolLevel), symbolLevel });
     }
   }
   return edges;
@@ -149,14 +168,33 @@ export function conflictGraph(prs: readonly PullRequest[]): ConflictEdge[] {
  * proposal, not an optimum — greedy colouring can use more waves than the graph needs — and it is
  * deterministic because the input is sorted by number first.
  */
-export function mergeWaves(prs: readonly PullRequest[]): Wave[] {
+export function mergeWaves(prs: readonly PullRequest[], symbols?: Symbols): Wave[] {
   const groups: Array<Array<PullRequest & { files: readonly string[] }>> = [];
+  // Two pull requests are kept apart when they share a file, unless that edge is symbol-disjoint.
+  const apart = (x: PullRequest & { files: readonly string[] }, y: PullRequest & { files: readonly string[] }): boolean =>
+    sharedFiles(x.files, y.files).length > 0 && symbols?.edges.get(edgeKey(x.number, y.number))?.level !== "symbol-disjoint";
   for (const pr of placeable(prs)) {
-    const fits = groups.find((g) => g.every((other) => sharedFiles(other.files, pr.files).length === 0));
+    const fits = groups.find((g) => g.every((other) => !apart(other, pr)));
     if (fits === undefined) groups.push([pr]);
     else fits.push(pr);
   }
   return groups.map((g, i) => ({ wave: i + 1, pullRequests: g.map((p) => p.number) }));
+}
+
+/** What an edge or an overlap carries when no symbol analysis was given. */
+function notAnalysed(files: readonly string[]): SymbolLevel {
+  return undeterminedLevel(files, "symbols.not_analysed", "symbol-level analysis was not run");
+}
+
+/** Why the edge exists, and what the symbol level says about it, in prose. */
+function edgeReason(a: number, b: number, shared: readonly string[], level: SymbolLevel): string {
+  const base = `#${a} and #${b} both change ${list(shared)}`;
+  if (level.level === "symbol-disjoint") return `${base}, but different symbols in ${shared.length === 1 ? "it" : "each"}, so the edge does not separate waves`;
+  if (level.level === "symbol-overlapping") {
+    const same = level.files.filter((f) => f.level === "symbol-overlapping").map((f) => f.path);
+    return `${base}, and the same symbols in ${list(same)}`;
+  }
+  return `${base}; the symbol level is undetermined, so the edge separates waves as a file-level one does`;
 }
 
 /** Prose for a path list: `a.ts`, `a.ts and b.ts`, `a.ts, b.ts and c.ts`. */
@@ -177,7 +215,7 @@ function plural(n: number, one: string, many: string): string {
 export function computeOverlap(
   changed: readonly string[],
   prs: readonly PullRequest[],
-  opts: { readonly self?: number | null; readonly limit?: number } = {},
+  opts: { readonly self?: number | null; readonly limit?: number; readonly symbols?: Symbols } = {},
 ): OverlapAvailable {
   const self = opts.self ?? null;
   const limit = opts.limit ?? LIST_LIMIT;
@@ -186,7 +224,9 @@ export function computeOverlap(
   const overlapping = placeable(prs).flatMap((p) => {
     if (p.number === self) return [];
     const shared = [...new Set(p.files.filter((f) => mine.has(f)))].sort();
-    return shared.length === 0 ? [] : [{ number: p.number, title: p.title, isDraft: p.isDraft, sharedFiles: shared }];
+    if (shared.length === 0) return [];
+    const symbolLevel = opts.symbols?.overlapping.get(p.number) ?? notAnalysed(shared);
+    return [{ number: p.number, title: p.title, isDraft: p.isDraft, sharedFiles: shared, symbolLevel }];
   });
 
   const undetermined = byNumber(prs).flatMap((p) =>
@@ -200,9 +240,10 @@ export function computeOverlap(
     limit,
     truncated: prs.length >= limit,
     overlapping,
-    conflicts: conflictGraph(prs),
-    waves: mergeWaves(prs),
+    conflicts: conflictGraph(prs, opts.symbols),
+    waves: mergeWaves(prs, opts.symbols),
     undetermined,
+    symbolAnalysis: opts.symbols?.analysis ?? { outlinesRun: 0, outlineBudget: 0, outlineTimeoutMs: 0 },
     summary: summarize(prs.length, overlapping.length, undetermined.length, self !== null && prs.some((p) => p.number === self)),
   };
 }

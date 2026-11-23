@@ -147,7 +147,7 @@ describe("symbol-level overlap through graft", () => {
 
     const one = await fixture({ a: { lib: (s) => alphaBody(header(s)) }, b: { lib: betaBody } });
     const p = await analysed(one.dir, [pull(1, one.heads.a!, ["lib.ts"]), pull(2, one.heads.b!, ["lib.ts"])]);
-    expect(p.conflicts[0]!.symbolLevel.files[0]).toEqual({ path: "lib.ts", level: "symbol-disjoint", a: { symbols: ["alpha"], outside: 1 }, b: { symbols: ["beta"], outside: 0 } });
+    expect(p.conflicts[0]!.symbolLevel.files[0]).toEqual({ path: "lib.ts", level: "symbol-disjoint", a: { symbols: ["alpha"], outside: 2 }, b: { symbols: ["beta"], outside: 0 } });
   }, GRAFT_TIMEOUT);
 
   test("past the outline budget a file is undetermined, and so is a graft call that timed out", async () => {
@@ -289,8 +289,8 @@ describe("symbol-level overlap through the CLI", () => {
     const gh = [
       "#!/bin/sh",
       `D=${JSON.stringify(join(dir, ".git"))}`,
-      'if [ "$1 $2" = "pr list" ]; then cat "$D/fake-gh-list.json"; exit 0; fi',
-      'if [ "$1 $2" = "pr diff" ]; then cat "$D/fake-gh-diff-$3.txt"; exit 0; fi',
+      'if [ "$1 $2" = "pr list" ]; then /bin/cat "$D/fake-gh-list.json"; exit 0; fi',
+      'if [ "$1 $2" = "pr diff" ]; then /bin/cat "$D/fake-gh-diff-$3.txt"; exit 0; fi',
       'echo "unexpected gh $*" >&2; exit 1',
     ].join("\n");
     writeFileSync(join(bin, "gh"), `${gh}\n`);
@@ -314,6 +314,7 @@ describe("symbol-level overlap through the CLI", () => {
     const schema = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.overlap.schema.json"), "utf8")) as Record<string, unknown>;
     const validate = new Ajv2020({ strict: false, allErrors: true }).compile(schema);
     expect(validate(result)).toBe(true);
+    expect(result.overlap).toMatchObject({ available: true });
     expect(result.overlap.self).toBe(1);
     expect(result.overlap.overlapping[0]!.symbolLevel.files[0]).toEqual({ path: "lib.ts", level: "symbol-disjoint", a: { symbols: ["alpha"], outside: 0 }, b: { symbols: ["beta"], outside: 0 } });
     expect(result.overlap.conflicts[0]!.symbolLevel.level).toBe("symbol-disjoint");

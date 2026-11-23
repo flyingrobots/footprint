@@ -36,7 +36,8 @@ A schema version is a **draft** only while the changelog lists it under `Unrelea
 release has shipped it; a draft may still take a change recorded in its own entry (parley spec
 §4.5). Once a release ships it, it is fixed, and any change is a new version. Since 0.3.0 no
 footprint schema is a draft: `footprint.composition` 1.0.0, `footprint.landing` 1.0.0,
-`footprint.blast_radius` 1.1.0 and `footprint.overlap` 1.0.0 have all shipped.
+`footprint.blast_radius` 1.1.0 and `footprint.overlap` 1.0.0 have all shipped. 0.4.0 moves
+`footprint.overlap` to 2.0.0 (flyingrobots/footprint#33).
 
 One result type per message: a second answer in the same run is its own type with its own schema
 and its own version, declared in the command's `emits`, not a field bolted onto an existing one.
