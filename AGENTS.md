@@ -28,6 +28,10 @@ this repository and validates every stream line by line. Do not write to stdout 
 go through the run (`run.result`, `run.step`, `run.warning`, `run.error`). Prose is `--human`
 only. A new field on the result is a schema version bump.
 
+`scripts/` is repository tooling, not the CLI and not shipped: `scripts/manifest-check.ts`, the
+release workflow's manifest check, writes its own JSON Lines with a `kind` on each line and makes
+no claim to the footprint result schemas.
+
 A schema version is a **draft** only while the changelog lists it under `Unreleased` and no
 release has shipped it; a draft may still take a change recorded in its own entry (parley spec
 §4.5). Once a release ships it, it is fixed, and any change is a new version. Since 0.3.0 no
