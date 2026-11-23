@@ -64,14 +64,25 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   const range = spec.includes("..") ? spec : `${spec}...HEAD`;
   run.step(`compare ${range}`, given === undefined ? `no base was given; ${spec} is the first of origin/main, origin/master, main, master that exists` : given.includes("..") ? "the range was given on the command line" : "the base was given on the command line; three dots compare against the merge base");
 
-  const diff = await $`git diff --numstat ${range}`.quiet().nothrow();
+  // Both ends pinned to commit ids before anything is read (flyingrobots/footprint#56): the run
+  // takes minutes of gh calls, and a branch that advances meanwhile must not be read once for the
+  // changed files and again for the symbols. Every section compares the pinned range; `range`, as
+  // written, is what the report shows. A range git cannot resolve stays as written, so the diff
+  // below fails with git's own message.
+  const ends = rangeEnds(range);
+  const commitOf = async (ref: string) => (await $`git rev-parse --verify --quiet ${`${ref}^{commit}`}`.quiet().nothrow()).text().trim() || null;
+  const baseId = await commitOf(ends.base);
+  const headId = await commitOf(ends.head);
+  const pinned = baseId !== null && headId !== null ? `${baseId}${ends.threeDot ? "..." : ".."}${headId}` : range;
+
+  const diff = await $`git diff --numstat ${pinned}`.quiet().nothrow();
   if (diff.exitCode !== 0) {
     run.error({ code: "git.diff_failed", problem: `git diff --numstat ${range} exited ${diff.exitCode}: ${diff.stderr.toString().trim() || "(no message)"}`, remedy: "pass a range git can resolve", remedy_target: range });
     return;
   }
   const changes = parseNumstat(diff.text());
-  const { head } = rangeEnds(range);
-  const baseRef = await rangeBase(run.cwd, range);
+  const head = headId ?? ends.head;
+  const baseRef = await rangeBase(run.cwd, pinned);
 
   const graft = await resolveGraft(process.env.FOOTPRINT_GRAFT);
   run.step(graft === null ? "structural analysis unavailable" : `structural analysis via ${graft}`, graft === null ? "graft could not be resolved through the package or PATH; the report states the limitation rather than omitting the section" : "graft resolved through the package dependency, PATH or FOOTPRINT_GRAFT");
@@ -99,7 +110,7 @@ async function footprint(run: Run, args: string[]): Promise<void> {
 
   // The export surface, the third result in the same run (flyingrobots/footprint#9), and the call
   // sites of every symbol it names (flyingrobots/footprint#10).
-  const graftSurface = await exportSurface(graft, run.cwd, range);
+  const graftSurface = await exportSurface(graft, run.cwd, pinned);
   const surface = await attachCallSites(graftSurface, run.cwd);
   if (surface.available) {
     const scan = surface.surface.callSiteScan;
@@ -129,7 +140,7 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   run.result(exportsRecord(range, surface, unanalysed), BLAST_RADIUS_TYPE, { markdown: blastMarkdown });
 
   // Cross-pull-request overlap: the fourth result in the same run, after the blast radius.
-  const overlap = await crossPullRequest(run, changes.map((c) => c.path), head, baseRef, graft);
+  const overlap = await crossPullRequest(run, changes.map((c) => c.path), { ref: ends.head, commit: headId }, baseRef, graft);
   overlapMarkdown = renderOverlap(overlap, OVERLAP_BUDGET);
   run.result(overlapRecord(range, overlap), OVERLAP_TYPE, { markdown: overlapMarkdown });
 }
@@ -142,7 +153,7 @@ async function footprint(run: Run, args: string[]): Promise<void> {
 async function crossPullRequest(
   run: Run,
   changed: readonly string[],
-  headRef: string,
+  headRef: { readonly ref: string; readonly commit: string | null },
   baseRef: { ok: true; ref: string } | { ok: false; detail: string },
   graft: string | null,
 ): Promise<Overlap> {
@@ -157,7 +168,7 @@ async function crossPullRequest(
     run.warning({ code: pulls.code, problem: `gh could not list the open pull requests: ${pulls.reason}`, remedy: "run gh pr list by hand to see why; the composition result is unaffected", remedy_target: gh });
     return unavailableOverlap(pulls.code, pulls.reason);
   }
-  const self = underReview(pulls.pullRequests, await rangeHead(headRef));
+  const self = underReview(pulls.pullRequests, await rangeHead(headRef.ref, headRef.commit));
   const fileLevel = computeOverlap(changed, pulls.pullRequests, { self, limit: pulls.limit });
   // The symbol level of every shared file (flyingrobots/footprint#33), bounded: only the shared
   // files of pairs that share one, an outline budget per run and a timeout per graft call.
@@ -169,7 +180,7 @@ async function crossPullRequest(
       prs: pulls.pullRequests,
       conflicts: fileLevel.conflicts,
       overlapping: fileLevel.overlapping,
-      range: baseRef.ok ? { base: baseRef.ref, head: headRef } : { code: "git.merge_base", reason: `${baseRef.detail}, so this change has no merge base to compare symbols from` },
+      range: baseRef.ok ? { base: baseRef.ref, head: headRef.commit ?? headRef.ref } : { code: "git.merge_base", reason: `${baseRef.detail}, so this change has no merge base to compare symbols from` },
       outliner,
     });
   } catch (e) {
@@ -177,7 +188,10 @@ async function crossPullRequest(
     // stated as a warning, rather than costing the run its overlap section.
     run.warning({ code: "symbols.analysis_failed", problem: `the symbol-level comparison of the shared files failed, so every edge is file-level: ${e instanceof Error ? e.message : String(e)}`, remedy: "report it with the range; the file-level overlap is unaffected" });
   } finally {
-    outliner?.dispose();
+    // A directory that will not go away is a warning: the levels are already computed, and a
+    // throw here would cost the run its overlap section (flyingrobots/footprint#56).
+    const cleanup = outliner?.dispose() ?? null;
+    if (cleanup !== null) run.warning({ code: cleanup.code, problem: cleanup.reason, remedy: "remove the directory by hand; the overlap result is unaffected" });
   }
   const overlap = computeOverlap(changed, pulls.pullRequests, { self, limit: pulls.limit, symbols });
   const counted = (lv: string) => overlap.conflicts.filter((c) => c.symbolLevel.level === lv).length;
@@ -197,13 +211,12 @@ async function crossPullRequest(
 }
 
 /**
- * The range's head as the pull-request match needs it: the commit id, and the branch name when the
- * head is a branch (HEAD resolves to the checked-out branch; `origin/x` is branch `x`; a commit id
- * or a tag has no branch name).
+ * The range's head as the pull-request match needs it: the commit id pinned at the start of the
+ * run, and the branch name when the head is a branch (HEAD resolves to the checked-out branch;
+ * `origin/x` is branch `x`; a commit id or a tag has no branch name).
  */
-async function rangeHead(ref: string): Promise<RangeHead> {
+async function rangeHead(ref: string, commit: string | null): Promise<RangeHead> {
   const text = async (...cmd: string[]) => (await $`${cmd}`.quiet().nothrow()).text().trim() || null;
-  const commit = await text("git", "rev-parse", "--verify", "--quiet", `${ref}^{commit}`);
   let branch: string | null = null;
   const exists = async (full: string) => (await $`git show-ref --verify --quiet ${full}`.quiet().nothrow()).exitCode === 0;
   if (ref === "HEAD") branch = await text("git", "symbolic-ref", "--short", "--quiet", "HEAD");

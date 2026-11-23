@@ -5,6 +5,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-11-22
+
+### Fixed
+
+- **Symbol-level overlap no longer calls an edge `symbol-disjoint` when the comparison is not
+  exact.** Fourteen review claims on flyingrobots/footprint#54, each reproduced with a failing test
+  or refuted. When the analysis cannot be tied to exact commits or exact content, the file is now
+  `undetermined` with the reason (flyingrobots/footprint#56):
+  - a pull request's merge base is taken against the base commit `gh` reports (`baseRefOid`),
+    never a local branch tip, which on a fork could already hold the head and make the diff empty.
+    An unreported base is `gh.base_unknown`; a base commit that is not local is `git.base_missing`;
+  - `gh pr list` runs again after the file lists, and a pull request whose head commit moved is
+    `gh.head_moved`;
+  - a file listed as changed whose own diff changes no line of it is `symbols.file_unchanged`;
+  - the range's two ends are pinned to commit ids before any section reads them, so a branch that
+    advances during the `gh` calls is not read once for the files and again for the symbols;
+  - the attribution diff reads raw content (`--no-textconv`) and takes the path root-relative and
+    literally (`:(top,literal)`, `--no-relative`), so a textconv driver, a run from a subdirectory
+    or a `[` in a file name cannot empty or merge its hunks;
+  - a whitespace-only line inside a symbol's span is attributed to that symbol;
+  - outlines are cached by blob and path, since graft picks the grammar by the path;
+  - valid JSON of the wrong shape from `graft read outline` is `graft.outline_unreadable`, not a
+    throw that cost every edge its symbol level;
+  - the outline timeout covers reading graft's output, not only its exit;
+  - a pair with one side already undetermined spends no outline call;
+  - a failure to remove the outline directory is a `symbols.cleanup_failed` warning, not an
+    uncaught exception that lost the overlap result.
+- The `docs/topics/overlap` reference describes wave 1 as a plan, not a promise that its pull
+  requests merge in any order.
+- `test/symbols.test.ts` skips its real-graft cases by name when graft does not resolve (and runs
+  them under `FOOTPRINT_REQUIRE_GRAFT=1`, as CI does), removes the directories it makes, and links
+  `git` and `node` into its stand-in PATH instead of wrapping them in a shell script that split a
+  path holding a space.
+- `package-lock.json` names the package version again; it had been left at 0.3.3.
+
+### Changed
+
+- **`footprint.overlap` 2.1.0.** The undetermined `code` enum gains `gh.head_moved`,
+  `gh.base_unknown` and `symbols.file_unchanged`. `gh pr list` also asks for `baseRefOid`.
+  (flyingrobots/footprint#56)
+
 ## [0.4.0] — 2026-11-22
 
 ### Added

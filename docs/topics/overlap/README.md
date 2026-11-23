@@ -14,12 +14,13 @@ It reports. It does not merge anything, does not rebase anything, and is not a g
 
 | Fact | Command |
 | --- | --- |
-| The open pull requests, their head commits and base branches | `gh pr list --state open --json number,title,isDraft,headRefOid,headRefName,isCrossRepository,baseRefName --limit 100` |
+| The open pull requests, their head commits, base branches and base commits | `gh pr list --state open --json number,title,isDraft,headRefOid,headRefName,isCrossRepository,baseRefName,baseRefOid --limit 100` |
 | What each one changes | `gh pr diff <number> --name-only` |
-| Each side's changed lines in a shared file | `git diff -U0 <merge-base> <head> -- <file>`, local and read-only |
+| That each head is still the one the files were listed for | the same `gh pr list`, run again after the file lists |
+| Each side's changed lines in a shared file | `git diff -U0 --no-textconv --no-ext-diff --no-relative <merge-base> <head> -- ':(top,literal)<file>'`, local and read-only |
 | The top-level symbols of that file at each end | `graft read outline <file> --json`, its jump table |
 
-The two `gh` calls are the whole of footprint's contact with GitHub. Everything after them is
+The `gh` calls are the whole of footprint's contact with GitHub. Everything after them is
 computation over `{number, title, isDraft, files}` records, which is why the test suite needs
 neither the network nor an open pull request on this repository.
 
@@ -55,10 +56,15 @@ answer that, because it lists only signature-level changes. On this repository a
 prove nothing. footprint does the attribution itself, from facts that git and graft each report:
 
 1. **Each side's changed lines.** For a pull request this is `git diff -U0` from the merge base of
-   its head commit and its base branch (`origin/<baseRefName>`, else `<baseRefName>`). For this
-   change it is the same diff over the range's own merge base, the one `rangeBase()` gives every
-   other section. Whitespace-only lines are skipped. They are in no symbol, and counting them would
-   leave every added function undetermined because of the blank line before it.
+   its head commit and the base commit `gh` reported (`baseRefOid`). A local branch tip never
+   stands in for it: a fork's `origin/main` can already hold the head, which would make the diff
+   empty. For this change it is the same diff over the range's own merge base, the one
+   `rangeBase()` gives every other section, with both ends pinned to commit ids when the run
+   starts. The diff reads raw content (no textconv, no external driver) and takes the path
+   root-relative and literally, so it describes what graft is given. A whitespace-only line counts
+   for a symbol whose span holds it, since indentation inside a template literal is content. Outside
+   every span it counts toward nothing, so an added function and the blank line before it do not
+   read as an edit outside every symbol.
 2. **The spans of the file's top-level symbols.** These come from the jump table of
    `graft read outline --json` (`graft.cli.read_outline` 3.x), taken at the merge base for removed
    lines and at the head for added ones. The file's content at each end is written to a private
@@ -96,8 +102,11 @@ symbol. Two pull requests that change different methods of one class are reporte
 | `graft.outline_timeout` | a graft call did not answer within the timeout and was stopped |
 | `budget.spent` | the run's outline budget was used up before this file was reached |
 | `gh.head_unknown` | `gh` did not report the pull request's head commit |
+| `gh.head_moved` | the head commit differed, or was missing, when `gh pr list` was asked again after the file lists, so the files and the commit are not one snapshot |
+| `gh.base_unknown` | `gh` did not report the base commit (`baseRefOid`); a local branch tip is not a substitute |
 | `git.head_missing` | the head commit is not in the local repository; `git fetch origin pull/<n>/head` makes it available. A fork's pull request is usually the case |
-| `git.base_missing`, `git.merge_base` | the base branch is not local, or has no common commit with the head |
+| `git.base_missing`, `git.merge_base` | the base commit is not in the local repository (`git fetch origin` makes it available), or has no common commit with the head |
+| `symbols.file_unchanged` | the side is listed as changing the file, but its own diff changes no line of it, so the list and the commits disagree |
 | `git.diff_failed`, `git.show_failed`, `git.binary` | git could not give the lines or the content, or the file is binary |
 | `symbols.outside` | both sides change lines outside every symbol, which no symbol can tell apart |
 | `symbols.not_analysed` | no symbol analysis was run, as in a library call to `computeOverlap` that did not pass one |
@@ -109,12 +118,17 @@ graft can be slow on large files, so the analysis has three limits:
 - **What is analysed.** Only the shared files of pairs that share a file. The overlaps with this
   change come first, then the edges in order of pull-request number.
 - **How many outline calls are made.** At most 24 graft outline calls per run (`OUTLINE_BUDGET` in
-  `src/symbols.ts`). Outlines are cached by blob, so two pull requests cut from the same commit
-  share the merge base's outline at no extra cost.
+  `src/symbols.ts`). Outlines are cached by blob and path, so two pull requests cut from the same
+  commit share the merge base's outline at no extra cost. The path is part of the key because graft
+  picks the grammar, and may refuse a file, by its path. A pair with one side already undetermined
+  (a head that is not local, say) spends no outline call at all.
 - **How long each call may take.** Each call is stopped after 20 seconds (`OUTLINE_TIMEOUT_MS`).
+  The deadline covers reading graft's output as well as waiting for it to exit, so a child process
+  that keeps the pipe open cannot hold the run past it.
 
 Past either limit the file is `undetermined` with the reason. `symbolAnalysis` on the result
-records the calls made, the budget and the timeout.
+records the calls made, the budget and the timeout. If the temporary directory cannot be removed at
+the end, the run carries a `symbols.cleanup_failed` warning and keeps the levels it computed.
 
 ### Decision: a symbol-disjoint edge does not separate waves
 
@@ -131,7 +145,7 @@ append a different function at the end of one file are symbol-disjoint, and git 
 textual conflict between them. Predicting textual conflicts is out of scope.
 
 The waves invariant changed from "no two in a wave share a file" to "... unless the edge is
-symbol-disjoint", so the result's schema moved to a new major version: `footprint.overlap` 2.0.0.
+symbol-disjoint", so the result's schema moved to a new major version: `footprint.overlap` 2.0.0. 2.1.0 adds the undetermined codes `gh.head_moved`, `gh.base_unknown` and `symbols.file_unchanged` (flyingrobots/footprint#56); nothing else in the record changed.
 
 ### On a real pair
 
@@ -151,9 +165,11 @@ top-level definitions, applied to the same `git diff -U0`.
 
 ## Merge waves
 
-Wave 1 is a set of pull requests that can land in any order: no two of them share a file, except
-across a symbol-disjoint edge.
-Wave 2 is the same for what is left, and lands after wave 1. The assignment is **greedy
+Wave 1 is a set of pull requests the planner does not separate: no two of them share a file,
+except across a symbol-disjoint edge. It is a plan, not a guarantee that they merge in any order.
+Two pull requests across a symbol-disjoint edge can still conflict textually when git merges them
+(see the decision above), so check for that before landing them together.
+Wave 2 is the same for what is left, and is planned after wave 1. The assignment is **greedy
 first-fit**: the pull requests are sorted by number, and each goes into the first wave that holds
 nothing it conflicts with.
 
@@ -227,7 +243,7 @@ per message, one ledger for the messages.
 
 ## Reading it
 
-The JSON Lines result is `footprint.overlap` 2.0.0 — fields in
+The JSON Lines result is `footprint.overlap` 2.1.0 — fields in
 [the output reference](../output/README.md#the-overlap-result). `--human` renders the same record
 as an `### Open pull requests` section: the summary, the overlapping pull requests with the files
 they share and a nested line per file at the symbol level, and a collapsed merge order. Each list
