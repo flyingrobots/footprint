@@ -79,6 +79,10 @@ recited at a reader who cannot act on them; the headings they were found under a
 in `after_merge.read`, so nothing is hidden. This is the other known failure mode: reading out
 steps that do not apply teaches a reader to skip the section.
 
+An agent skill is not documentation for this rule: its Markdown classifies as `config` (see
+[Composition](../composition/README.md#categories)), so a change to `skills/<name>/SKILL.md` alone
+reports the declared steps, such as this repository's "reinstall the skill".
+
 ## The guard rule
 
 `before_merge.unguarded` is true when **both** of these hold over the changed-file list:
