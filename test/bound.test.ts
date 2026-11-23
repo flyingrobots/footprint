@@ -38,12 +38,14 @@ interface Shape {
   readonly commonSites: number;
   /** Call sites for a uniquely named symbol, spread over every system. */
   readonly uniqueSites: number;
+  /** How many systems the sites spread over; every one by default. */
+  readonly systems?: number;
 }
 
-function sitesOf(symbol: string, n: number): CallSite[] {
+function sitesOf(symbol: string, n: number, systems = SYSTEMS.length): CallSite[] {
   const out: CallSite[] = [];
   for (let i = 0; i < n; i++) {
-    out.push({ file: `${SYSTEMS[i % SYSTEMS.length]}/dir${i % 7}/${symbol}-${i % 13}.txt`, line: i + 1 });
+    out.push({ file: `${SYSTEMS[i % systems]}/dir${i % 7}/${symbol}-${i % 13}.txt`, line: i + 1 });
   }
   return out;
 }
@@ -62,7 +64,7 @@ function fixture(shape: Shape): Exports {
   });
   const sites = new Map<string, readonly CallSite[]>();
   for (const s of [...names, ...removed.map((r) => r.symbol), ...changed.map((c) => c.symbol)]) {
-    sites.set(s, sitesOf(s, COMMON.includes(s) ? shape.commonSites : shape.uniqueSites));
+    sites.set(s, sitesOf(s, COMMON.includes(s) ? shape.commonSites : shape.uniqueSites, shape.systems));
   }
   const scan: CallSiteScan = { available: true, filesScanned: 99, skipped: { binary: 0, unreadable: 0 }, sites };
   return withCallSites(parsed, scan);
@@ -199,13 +201,17 @@ describe("the --human report is bounded to the comment limit", () => {
 
   // OUT-21m
   test("per-symbol remainder notes are aggregated once there are many, and the count is kept", () => {
-    const e = fixture({ added: 3000, commonSites: 0, uniqueSites: 30 });
-    // 30 sites over six systems is 5 per system: raise it so one system holds more than 20 of each.
-    const one = fixture({ added: 1500, commonSites: 0, uniqueSites: 0 });
-    void one;
+    // 3000 symbols with 30 call sites each, all in one system: none is summarised, each is capped at 20.
+    const e = fixture({ added: 3000, commonSites: 0, uniqueSites: 30, systems: 1 });
     const md = blastRadius(e, [], 40_000);
     expect(md.length).toBeLessThanOrEqual(40_000);
-    expect(md).toMatch(/…and \d+ more for `/);
+    const title = /\*\*`src`\*\* — (\d+) call sites/.exec(md)!;
+    const rows = md.split("\n").filter((l) => /^\| `field_\d+` \| `src\//.test(l)).length;
+    const noted = [...md.matchAll(/…and (\d+) more for `/g)].reduce((n, m) => n + Number(m[1]), 0);
+    const aggregated = [...md.matchAll(/…and (\d+) more call sites for (\d+) more symbols/g)].reduce((n, m) => n + Number(m[1]), 0);
+    const omitted = [...md.matchAll(/(\d+) more call sites? in this system omitted/g)].reduce((n, m) => n + Number(m[1]), 0);
+    expect(aggregated).toBeGreaterThan(0);
+    expect(rows + noted + aggregated + omitted).toBe(Number(title[1]));
   });
 
   // OUT-21n
