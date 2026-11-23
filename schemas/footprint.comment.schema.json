@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.comment/1.0.0",
+  "title": "footprint.comment 1.0.0",
+  "description": "What `footprint comment` did with the pull request's one Footprint comment: which comment it wrote, whether it created, updated or adopted it, and the Changelog row it appended. The comment's body is not repeated here; the comment itself is the record.",
+  "type": "object",
+  "required": ["event", "t", "seq", "run", "pull_request", "action", "adopted", "dry_run", "comment", "head_sha", "row", "changelog", "chars", "limit", "_schema"],
+  "additionalProperties": false,
+  "properties": {
+    "event": { "const": "result" },
+    "t": { "type": "integer", "minimum": 0 },
+    "seq": { "type": "integer", "minimum": 1 },
+    "run": { "type": "string", "minLength": 1 },
+    "pull_request": { "type": "integer", "minimum": 1 },
+    "action": { "enum": ["created", "updated"], "description": "created: no Footprint comment existed and one was posted. updated: an existing one was edited in place. Under --dry-run, what would have been done." },
+    "adopted": { "type": "boolean", "description": "True when the comment updated carried no marker: the most recent comment by the current gh user that opened with '## Footprint', which now carries the marker" },
+    "dry_run": { "type": "boolean", "description": "True under --dry-run: nothing was written" },
+    "comment": {
+      "type": "object",
+      "required": ["id", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": ["integer", "null"], "description": "The comment's id; null only for a dry run that would have created one" },
+        "url": { "type": ["string", "null"], "description": "The comment's html_url as GitHub answered the write; null under --dry-run" }
+      }
+    },
+    "head_sha": { "type": "string", "pattern": "^[0-9a-f]{7}$", "description": "The first 7 characters of the pull request's head commit when the command ran, as gh pr view reported it" },
+    "row": {
+      "type": "object",
+      "description": "The Changelog row appended, before cell escaping",
+      "required": ["timestamp", "sha", "change", "reason", "remarks"],
+      "additionalProperties": false,
+      "properties": {
+        "timestamp": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$", "description": "UTC, ISO-8601, to the second" },
+        "sha": { "type": "string", "pattern": "^[0-9a-f]{7}$" },
+        "change": { "type": "string" },
+        "reason": { "type": "string" },
+        "remarks": { "type": "string", "description": "As given, followed by a statement of adoption when the comment was adopted" }
+      }
+    },
+    "changelog": {
+      "type": "object",
+      "required": ["rows", "carried", "dropped"],
+      "additionalProperties": false,
+      "properties": {
+        "rows": { "type": "integer", "minimum": 1, "description": "Rows the comment carries now, the new one included" },
+        "carried": { "type": "integer", "minimum": 0, "description": "Rows the comment carried before this run" },
+        "dropped": { "type": "integer", "minimum": 0, "description": "Older rows dropped to stay within the limit, this run's and every earlier run's, as the comment states" }
+      }
+    },
+    "chars": { "type": "integer", "minimum": 1, "description": "The length of the comment body written, in characters" },
+    "limit": { "const": 65536, "description": "GitHub's maximum comment body; chars is at most this" },
+    "_schema": {
+      "type": "object",
+      "required": ["id", "version"],
+      "additionalProperties": false,
+      "properties": { "id": { "const": "footprint.comment" }, "version": { "const": "1.0.0" } }
+    }
+  }
+}

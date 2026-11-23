@@ -10,7 +10,9 @@ way you think it is.
 bun src/cli.ts                    # compare the default branch to HEAD; JSON Lines on stdout
 bun src/cli.ts origin/main        # explicit base
 bun src/cli.ts abc123..def456     # explicit range
-bun src/cli.ts --human | gh pr comment 42 --body-file -   # the Markdown comment
+bun src/cli.ts --human > report.md                       # the Markdown comment
+bun src/cli.ts comment 42 --report report.md --change "First report" --reason "Pull request opened"
+                                  # post it as pull request 42's one Footprint comment, updated in place
 bun src/cli.ts --help             # what it emits, as JSON Lines
 ```
 
@@ -25,7 +27,9 @@ footprint speaks the [Parley output protocol](https://github.com/flyingrobots/pa
 the landing plan, the blast radius and the cross-pull-request overlap; errors on stderr as
 structured lines; a receipt per run under `.parley/receipts/` with every
 decision and the file listing. `--human` is the opt-in for prose. See
-[`docs/topics/output/README.md`](docs/topics/output/README.md).
+[`docs/topics/output/README.md`](docs/topics/output/README.md). `footprint comment` keeps one
+Footprint comment per pull request, with a Changelog of its runs:
+[`docs/topics/comment/README.md`](docs/topics/comment/README.md).
 
 ## How it lands
 

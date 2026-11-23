@@ -351,7 +351,7 @@ reports it.
 ## Reading it
 
 ```bash
-footprint origin/main --human | gh pr comment 42 --body-file -   # the Markdown section
+footprint origin/main --human > report.md   # the Markdown section; post it with footprint comment
 footprint origin/main | jq -c 'select(._schema.id == "footprint.blast_radius") | .exports.counts'
 footprint origin/main | jq -c 'select(._schema.id == "footprint.blast_radius") | .unanalysed_languages'
 ```

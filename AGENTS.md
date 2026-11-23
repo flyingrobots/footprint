@@ -22,7 +22,8 @@ shape diffs to satisfy it.
 ## Output
 
 footprint emits through `@flyingrobots/parley-emit`. The results' contracts are
-`schemas/footprint.composition.schema.json` and `schemas/footprint.overlap.schema.json`, one
+`schemas/footprint.composition.schema.json`, `schemas/footprint.overlap.schema.json` and the
+others under `schemas/` (one per result type, `footprint.comment` included), one
 result type per message and each versioned on its own; `test/cli.test.ts` runs the CLI against
 this repository and validates every stream line by line. Do not write to stdout or stderr directly;
 go through the run (`run.result`, `run.step`, `run.warning`, `run.error`). Prose is `--human`
@@ -37,7 +38,12 @@ release has shipped it; a draft may still take a change recorded in its own entr
 §4.5). Once a release ships it, it is fixed, and any change is a new version. Since 0.3.0 no
 footprint schema is a draft: `footprint.composition` 1.0.0, `footprint.landing` 1.0.0,
 `footprint.blast_radius` 1.1.0 and `footprint.overlap` 1.0.0 have all shipped. 0.4.0 moves
-`footprint.overlap` to 2.0.0 (flyingrobots/footprint#33).
+`footprint.overlap` to 2.0.0 (flyingrobots/footprint#33). 0.6.0 adds `footprint.comment` 1.0.0, the
+result of the `comment` command (flyingrobots/footprint#59).
+
+The Impact and Data flow columns (`--impact`) are the one place text footprint did not compute
+reaches its output. They are the posting agent's reading, rendered in `--human` only and labelled
+as such; they never enter a result line, and a row nobody assessed says `not assessed`.
 
 One result type per message: a second answer in the same run is its own type with its own schema
 and its own version, declared in the command's `emits`, not a field bolted onto an existing one.

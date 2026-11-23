@@ -16,15 +16,23 @@ repeat them.
    (flyingrobots/footprint#37). It checks that `node` is on `PATH`, which graft needs.
 2. **Resolves the range** as `origin/<base>...origin/<head>` after `git fetch`, or the fetched
    `pull/<n>/head` for a pull request from a fork.
-3. **Runs footprint with `--human`** from inside the repository under review and posts the output,
-   unedited, with `gh pr comment --body-file`.
-4. **Follows the report**: each Before merge item, each breaking change, each call site outside the
+3. **Runs footprint with `--human --max-chars 57344`** from inside the repository under review and
+   reads the call-site tables.
+4. **Assesses the call sites**: the agent reads the code and writes its Impact and Data flow
+   reading of each call site of a removed or signature-changed symbol outside the declaring file
+   and the tests, per system where the report summarises, to a JSON Lines file for `--impact`.
+5. **Posts the one Footprint comment** with `footprint comment`, which updates the pull request's
+   existing Footprint comment in place, or creates it, and appends a Changelog row whose Change,
+   Reason and Remarks the agent writes ([the pull-request comment](../comment/README.md)). It never
+   uses `gh pr comment`, which would make a second comment.
+6. **Follows the report**: each Before merge item, each breaking change, each call site outside the
    changed file, the overlap and its proposed merge order, and, once merged, each After merge
    step. Each is handled in the pull request or answered in a comment saying why it needs nothing.
-5. **Re-runs after the last push**, because a report on an earlier head describes a different
-   change.
+7. **Re-runs after every push**, because a report on an earlier head describes a different
+   change; the same comment is updated and gains a row.
 
-It never presents the report as a verdict. footprint reports and does not judge
+It never presents the report as a verdict, and never presents its own Impact and Data flow reading
+as footprint's measurement; the comment labels them as the agent's. footprint reports and does not judge
 ([`AGENTS.md`](../../../AGENTS.md)), and a skill that turned it into a gate would teach people to
 shape diffs to satisfy it.
 
@@ -44,6 +52,6 @@ release; [`RELEASE.md`](../../../RELEASE.md) lists that as an after-merge step.
 | --- | --- |
 | Bun | footprint runs on Bun, not Node |
 | Node on `PATH` | graft, the optional structural analysis, runs on Node; without it the report says the structural section is unavailable |
-| `gh`, authenticated | to read the pull request, post the comment, and find overlapping pull requests |
+| `gh`, authenticated | to read the pull request, find, create or edit its Footprint comment, and find overlapping pull requests |
 | bash or zsh | the commands are checked under both ([test plan](test-plan.md)) |
 | A checkout of the repository under review | footprint reads its git history, `RELEASE.md` and `AGENTS.md` |

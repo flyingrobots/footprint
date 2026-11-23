@@ -9,6 +9,8 @@
 | [Overlap](topics/overlap/README.md) | Cross-pull-request overlap: the conflict graph, the merge waves, and what `gh` is asked. Its requirements are OUT-8 in the output test plan |
 | [Output](topics/output/README.md) | What a caller receives: JSON Lines, the receipt, `--human`, errors, discovery, exit status |
 | [Output test plan](topics/output/test-plan.md) | Requirements and evidence for the output contract, including the overlap result and footprint's own landing steps (OUT-17) |
+| [The pull-request comment](topics/comment/README.md) | `footprint comment`: one Footprint comment per pull request, updated in place, with its Changelog; `--max-chars`; the agent's Impact and Data flow columns (`--impact`) |
+| [Pull-request comment test plan](topics/comment/test-plan.md) | Requirements and evidence: find-or-update against a stand-in `gh`, the Changelog's shape and bound, the impact columns |
 | [The agent skill](topics/agent-skill/README.md) | What `skills/footprint/SKILL.md` does on a pull request, what it needs, and how to install it |
 | [Agent skill test plan](topics/agent-skill/test-plan.md) | Requirements and evidence: the skill's commands, run as written under bash and zsh |
 

@@ -9,6 +9,19 @@
 /** GitHub's maximum comment body, in characters. */
 export const REPORT_LIMIT = 65536;
 
+/**
+ * The smallest bound `--max-chars` accepts: the reserved budgets of composition, landing and
+ * overlap (32768 together) and at least 8192 for the blast radius.
+ */
+export const MIN_REPORT_CHARS = 40960;
+
+/**
+ * The bound the skill runs the report at when it is posted with `footprint comment`
+ * (flyingrobots/footprint#59): it leaves the marker and the Changelog 8192 characters of the
+ * comment's 65536.
+ */
+export const COMMENT_REPORT_LIMIT = 57344;
+
 /** What the composition section may take: its Files list is the only part that grows. */
 export const COMPOSITION_BUDGET = 16384;
 
@@ -26,12 +39,14 @@ export const LANDING_BUDGET = 8192;
 const JOIN_SLACK = 16;
 
 /**
- * The room left for the blast-radius section once composition and landing have been rendered.
+ * The room left for the blast-radius section once composition and landing have been rendered,
+ * under `limit` (`--max-chars`, REPORT_LIMIT unless given).
  * Each of the other three sections is clamped to its own budget, so with composition and landing
- * at most COMPOSITION_BUDGET and LANDING_BUDGET this is never below 32752.
+ * at most COMPOSITION_BUDGET and LANDING_BUDGET this is never below 32752 at the default limit,
+ * and never below 8176 at MIN_REPORT_CHARS.
  */
-export function blastBudget(compositionLength: number, landingLength: number): number {
-  return Math.max(0, REPORT_LIMIT - compositionLength - landingLength - OVERLAP_BUDGET - JOIN_SLACK);
+export function blastBudget(compositionLength: number, landingLength: number, limit: number = REPORT_LIMIT): number {
+  return Math.max(0, limit - compositionLength - landingLength - OVERLAP_BUDGET - JOIN_SLACK);
 }
 
 /**
