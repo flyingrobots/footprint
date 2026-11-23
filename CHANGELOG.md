@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Fixed
 
+- **Licence files are docs.** `LICENSE`, `LICENSE.*`, `NOTICE` and `COPYING`, at any depth, fell
+  through to `source`, so a change adding them inflated the source share and reported them as
+  "changed files in unanalysed language: `(none)`". They now classify as `docs`; a composition
+  that includes one shifts accordingly. (flyingrobots/footprint#36)
+
 - **The skill's commands run in zsh.** `skills/footprint/SKILL.md` set `FP="bun …/src/cli.ts"` and
   ran `$FP …`, which zsh, the macOS default shell, does not word-split, so the command failed with
   exit 127. It now defines a shell function, `fp() { bun "$SCRATCH/footprint/src/cli.ts" "$@"; }`
