@@ -35,6 +35,12 @@ because a new category would change the shipped `footprint.composition` schema's
 and rather than `source` because a skill is not code in a language graft could analyse. A skill
 fixture under a test path is still `test`.
 
+A documentation extension (`.md`, `.mdx`, `.rst`, `.adoc`, `.txt`) under `spec/` is `docs`, so a
+specification-first repository's `spec/*.md` is not counted as test (flyingrobots/footprint#42).
+Code and data under `spec/` (`user_spec.rb`, `helpers.ts`, `fixtures/x.json`) stay `test`, and so
+does prose under another test directory (`spec/fixtures/x.md`, `tests/spec/x.md`). A repository
+that keeps Markdown test fixtures directly under `spec/` will see them counted as docs.
+
 Licence and notice texts are `docs` by whole file name, at any depth: `LICENSE`, `LICENSE.<anything>`,
 `NOTICE` and `COPYING`. They have no extension for the other rules to see, and without that rule
 they would count as source and read as code in an unanalysed language. One under a generated or

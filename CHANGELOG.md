@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Fixed
+
+- **Markdown under `spec/` is documentation, not test.** The `spec/` directory rule, meant for
+  RSpec-style test code, classified a specification repository's prose (`spec/parley-v0.2.md`) as
+  `test`. A documentation extension under `spec/` is now `docs`; code and fixtures there stay
+  `test`. No schema changed; compositions of such repositories shift from `test` to `docs`.
+  (flyingrobots/footprint#42)
+
 ## [0.3.1] — 2026-11-22
 
 Fixes found by the first real use of 0.3.0 and the footprint skill. **Publish this, not 0.3.0**:
