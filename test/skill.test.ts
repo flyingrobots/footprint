@@ -2,9 +2,11 @@
 // (flyingrobots/footprint#37). zsh does not word-split an unquoted parameter, so the 0.3.0 snippet
 // `FP="bun …/src/cli.ts"; $FP …` ran the whole string as one command name and exited 127.
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, symlinkSync, writeFileSync, chmodSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { MARKER } from "../src/comment.ts";
+import { COMMENT_REPORT_LIMIT } from "../src/bound.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 const SKILL = readFileSync(join(ROOT, "skills/footprint/SKILL.md"), "utf8");
@@ -28,22 +30,26 @@ function shell(name: "bash" | "zsh"): string {
   return found;
 }
 
-/** A scratch directory laid out the way step 1's clone form expects, and a stub gh. */
+/**
+ * A scratch directory laid out the way step 1's clone form expects, and the stand-in gh of
+ * test/fixtures/fake-gh, holding pull request 4242 with no comment yet. Every other gh call fails,
+ * as an unauthenticated gh would; footprint then states the overlap section unavailable, which is
+ * what it does without gh.
+ */
 function scratch() {
   const dir = mkdtempSync(join(tmpdir(), "footprint-skill-"));
   symlinkSync(ROOT, join(dir, "footprint"));
   const bin = join(dir, "bin");
   Bun.spawnSync(["mkdir", bin]);
-  const log = join(dir, "gh.log");
-  // Records a `gh pr comment` and fails everything else, as an unauthenticated gh would; footprint
-  // then states the overlap section unavailable, which is what it does without gh.
-  writeFileSync(join(bin, "gh"), `#!/bin/sh\nif [ "$1 $2" = "pr comment" ]; then echo "$*" >> "${log}"; exit 0; fi\nexit 1\n`);
-  chmodSync(join(bin, "gh"), 0o755);
-  return { dir, bin, log };
+  symlinkSync(join(ROOT, "test", "fixtures", "fake-gh", "gh"), join(bin, "gh"));
+  const state = join(dir, "gh-state.json");
+  writeFileSync(state, JSON.stringify({ login: "me", head: "0123456789abcdef0123456789abcdef01234567", pr: 4242, comments: [], calls: [] }));
+  const ghState = () => JSON.parse(readFileSync(state, "utf8")) as { comments: { body: string }[]; calls: { args: string[] }[] };
+  return { dir, bin, state, ghState };
 }
 
 function run(sh: "bash" | "zsh", script: string, s: ReturnType<typeof scratch>) {
-  const env = { ...process.env, PATH: `${s.bin}:${process.env.PATH}`, SCRATCH: s.dir };
+  const env = { ...process.env, PATH: `${s.bin}:${process.env.PATH}`, SCRATCH: s.dir, FAKE_GH_STATE: s.state };
   // zsh -f skips the user's startup files (a ~/.zshenv that puts the real gh back in front of the
   // stub); it changes no option, so zsh still does not word-split, which is the behaviour under test.
   const args = sh === "zsh" ? ["-f", "-c", script] : ["-c", script];
@@ -63,19 +69,28 @@ describe("the skill's commands", () => {
     expect(lines).toHaveLength(1);
     return lines[0]!;
   };
-  const step3 = () => {
-    const blocks = BLOCKS.filter((b) => b.includes('fp "$RANGE" --human'));
+  const post = () => {
+    const blocks = BLOCKS.filter((b) => b.includes('fp comment "$PR"'));
     expect(blocks).toHaveLength(1);
     return blocks[0]!;
   };
 
+  // MC-1c
+  test("the report is bounded to leave the Changelog its room", () => {
+    const report = post().split("\n").filter((l) => /^fp "\$RANGE" --human/.test(l));
+    expect(report).toHaveLength(1);
+    expect(report[0]).toContain(`--max-chars ${COMMENT_REPORT_LIMIT}`);
+    expect(report[0]).toContain('--impact "$IMPACT"');
+  });
+
   for (const sh of ["bash", "zsh"] as const) {
-    test(`step 3 runs verbatim and posts the report under ${sh}`, () => {
+    test(`the posting step runs verbatim and creates the one Footprint comment under ${sh}`, () => {
       const s = scratch();
-      const script = `set -e\nPR=4242\nRANGE=HEAD..HEAD\n${cloneDefinition()}\n${step3()}`;
+      writeFileSync(join(s.dir, "impact.jsonl"), "");
+      const script = `set -e\nPR=4242\nRANGE=HEAD..HEAD\nIMPACT="$SCRATCH/impact.jsonl"\nCHANGE="First report"\nREASON="Pull request opened"\nREMARKS="none"\n${cloneDefinition()}\n${post()}`;
       const r = run(sh, script, s);
-      // stderr carries footprint's own --human warning that the stub gh could not list pull
-      // requests; what must never appear is the shell failing to find the command.
+      // stderr carries footprint's own JSON Lines (the stand-in gh cannot list pull requests);
+      // what must never appear is the shell failing to find the command.
       expect(r.stderr).not.toMatch(/command not found|no such file or directory/i);
       expect(r.code).toBe(0);
       const out = join(s.dir, "footprint-4242.md");
@@ -83,8 +98,12 @@ describe("the skill's commands", () => {
       const report = readFileSync(out, "utf8");
       expect(report).toStartWith("No changes in `HEAD..HEAD`.");
       expect(report).toContain("## After merge");
-      expect(existsSync(s.log)).toBe(true);
-      expect(readFileSync(s.log, "utf8").trim()).toBe(`pr comment 4242 --body-file ${out}`);
+      const gh = s.ghState();
+      expect(gh.comments).toHaveLength(1);
+      expect(gh.comments[0]!.body.split("\n")[0]).toBe(MARKER);
+      expect(gh.comments[0]!.body).toContain(report.trimEnd());
+      expect(gh.comments[0]!.body).toContain("| First report | Pull request opened | none |");
+      expect(gh.calls.filter((c) => c.args.includes("--method")).map((c) => c.args[c.args.indexOf("--method") + 1])).toEqual(["POST"]);
     }, 120_000);
   }
 

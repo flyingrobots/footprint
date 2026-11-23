@@ -1,0 +1,59 @@
+#!/usr/bin/env bun
+// A stand-in for `gh`, for the `footprint comment` cases (flyingrobots/footprint#59). It keeps
+// one pull request's comments in the JSON file named by FAKE_GH_STATE and answers exactly the
+// calls `src/comment.ts` makes, recording each one in the state's `calls`:
+//
+//   gh api user --jq .login
+//   gh pr view <n> --json headRefOid --jq .headRefOid
+//   gh api repos/{owner}/{repo}/issues/<n>/comments --paginate --jq <expr>   (one JSON object per line)
+//   gh api --method POST  repos/{owner}/{repo}/issues/<n>/comments --input - --jq <expr>
+//   gh api --method PATCH repos/{owner}/{repo}/issues/comments/<id> --input - --jq <expr>
+//
+// It does not run jq: it prints what the real expression prints. A PATCH of a comment another
+// user wrote is refused with GitHub's 403, so a test can tell the command never attempted one
+// only from the call log, not from a success. Anything else exits 1, as an unexpected call should.
+import { readFileSync, writeFileSync } from "node:fs";
+
+interface Comment { id: number; login: string; body: string; created_at: string }
+interface State { login: string; head: string; pr: number; comments: Comment[]; calls: { args: string[]; stdin?: string }[]; nextId?: number }
+
+const path = process.env.FAKE_GH_STATE;
+if (!path) { process.stderr.write("FAKE_GH_STATE is not set\n"); process.exit(1); }
+const state = JSON.parse(readFileSync(path, "utf8")) as State;
+const args = process.argv.slice(2);
+const stdin = args.includes("--input") ? await new Response(Bun.stdin.stream()).text() : undefined;
+state.calls.push(stdin === undefined ? { args } : { args, stdin });
+const save = () => writeFileSync(path, JSON.stringify(state, null, 2));
+const fail = (msg: string, code = 1): never => { save(); process.stderr.write(`${msg}\n`); process.exit(code); };
+const out = (o: unknown) => process.stdout.write(`${typeof o === "string" ? o : JSON.stringify(o)}\n`);
+const url = (id: number) => `https://github.com/o/r/pull/${state.pr}#issuecomment-${id}`;
+
+const method = args.includes("--method") ? args[args.indexOf("--method") + 1] : "GET";
+const endpoint = args[0] === "api" ? args.find((a, i) => i > 0 && !a.startsWith("-") && args[i - 1] !== "--method" && args[i - 1] !== "--jq" && args[i - 1] !== "--input") : undefined;
+
+if (args[0] === "pr" && args[1] === "view") {
+  if (Number(args[2]) !== state.pr) fail(`no pull requests found for ${args[2]}`);
+  out(state.head);
+} else if (args[0] === "api" && endpoint === "user") {
+  out(state.login);
+} else if (args[0] === "api" && endpoint === `repos/{owner}/{repo}/issues/${state.pr}/comments` && method === "GET") {
+  for (const c of state.comments) out({ id: c.id, login: c.login, body: c.body, created_at: c.created_at });
+} else if (args[0] === "api" && endpoint === `repos/{owner}/{repo}/issues/${state.pr}/comments` && method === "POST") {
+  const id = state.nextId ?? 1000 + state.comments.length;
+  state.nextId = id + 1;
+  const body = (JSON.parse(stdin!) as { body: string }).body;
+  state.comments.push({ id, login: state.login, body, created_at: new Date(Date.UTC(2026, 10, 23, 12, 0, state.comments.length)).toISOString() });
+  save();
+  out({ id, html_url: url(id) });
+} else if (args[0] === "api" && endpoint?.startsWith("repos/{owner}/{repo}/issues/comments/") && method === "PATCH") {
+  const id = Number(endpoint.split("/").at(-1));
+  const c = state.comments.find((x) => x.id === id);
+  if (c === undefined) fail("gh: Not Found (HTTP 404)");
+  if (c!.login !== state.login) fail("gh: Must have admin rights to Repository. (HTTP 403)");
+  c!.body = (JSON.parse(stdin!) as { body: string }).body;
+  save();
+  out({ id, html_url: url(id) });
+} else {
+  fail(`fake gh: unexpected call: ${args.join(" ")}`);
+}
+save();
