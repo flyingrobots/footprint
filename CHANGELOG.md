@@ -5,6 +5,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-11-22
+
+### Added
+
+- **Symbol-level overlap between open pull requests.** A file shared by two open pull requests
+  (or by this change and an open pull request) is now compared symbol by symbol. Each side's
+  changed lines, from `git diff -U0` against its own merge base, are attributed to the top-level
+  symbols in `graft read outline`'s jump table: removed lines at the merge base, added lines at the
+  head. A rename is therefore never read as disjoint from an edit to the old name. The file is
+  reported as `symbol-disjoint` with each side's symbols named, as `symbol-overlapping` with the
+  shared symbols named, or as `undetermined` with a stable code and a reason (graft absent, no
+  grammar, timeout, budget spent, head commit not local, and others). The analysis covers only the
+  shared files of pairs that share a file. It is limited to 24 outline calls per run, cached by
+  blob, with a 20-second timeout on each. `--human` names the symbols in nested lines under each
+  shared file, inside the overlap section's budget. On flyingrobots/taskalisk#21 against #19 it
+  reports `tests/test_taskalisk.py` as different symbols (`CrossRepositoryPRs` against
+  `Mutation`, `Parsing`, `Trust`) and `taskalisk.py` as the same symbols
+  (`collect_frontmatter_dag`, `compile_from_github`). (flyingrobots/footprint#33)
+
+### Changed
+
+- **`footprint.overlap` 2.0.0.** `overlapping[]` and `conflicts[]` carry a required `symbolLevel`,
+  and the result carries `symbolAnalysis`. An edge's `reason` now states its symbol level. A
+  **symbol-disjoint edge no longer separates waves**, so two pull requests in one wave may share a
+  file. That breaks 1.0.0's waves invariant, which is why this is a major version of the message
+  schema. Overlapping and undetermined edges separate waves as before. `gh pr list` also asks for
+  `baseRefName`, the branch each pull request's merge base is taken against.
+  (flyingrobots/footprint#33)
+
 ## [0.3.3] — 2026-11-22
 
 ### Fixed

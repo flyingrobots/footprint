@@ -19,6 +19,7 @@ import { BLAST_LIMITS, LANDING_BUDGET, REPORT_LIMIT, UNBOUNDED_BLAST, blastBudge
 import { compose } from "../src/footprint.ts";
 import type { FileChange } from "../src/footprint.ts";
 import type { Overlap } from "../src/overlap.ts";
+import { undeterminedLevel } from "../src/symbols.ts";
 import type { Landing } from "../src/landing.ts";
 import type { StructuralReview } from "../src/graft.ts";
 import { execFileSync } from "node:child_process";
@@ -166,8 +167,8 @@ describe("the --human report is bounded to the comment limit", () => {
 
   // OUT-21i
   test("the overlap section names how many pull requests it omitted", () => {
-    const overlapping = Array.from({ length: 100 }, (_, i) => ({ number: i + 1, title: `Pull request ${i} ${"x".repeat(80)}`, isDraft: false, sharedFiles: Array.from({ length: 30 }, (_, j) => `dir/file-${i}-${j}.ts`) }));
-    const o: Overlap = { available: true, self: null, openPullRequests: 100, limit: 100, truncated: false, overlapping, conflicts: [], waves: [], undetermined: [], summary: "100 open pull requests overlap" };
+    const overlapping = Array.from({ length: 100 }, (_, i) => ({ number: i + 1, title: `Pull request ${i} ${"x".repeat(80)}`, isDraft: false, sharedFiles: Array.from({ length: 30 }, (_, j) => `dir/file-${i}-${j}.ts`) })).map((p) => ({ ...p, symbolLevel: undeterminedLevel(p.sharedFiles, "symbols.not_analysed", "symbol-level analysis was not run") }));
+    const o: Overlap = { available: true, self: null, openPullRequests: 100, limit: 100, truncated: false, overlapping, conflicts: [], waves: [], undetermined: [], symbolAnalysis: { outlinesRun: 0, outlineBudget: 0, outlineTimeoutMs: 0 }, summary: "100 open pull requests overlap" };
     const md = renderOverlap(o, 8192);
     expect(md.length).toBeLessThanOrEqual(8192);
     const said = /(\d+) more pull requests? omitted/.exec(md);

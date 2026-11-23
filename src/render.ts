@@ -11,6 +11,7 @@ import { surfaceCallSiteRows } from "./exports.ts";
 import { MITIGATION_RULE, NONE_NEEDED, SYSTEM_RULE_DETAIL, groupBySystem, type SystemGroup, type SystemRow } from "./systems.ts";
 import type { UnsupportedLanguage } from "./languages.ts";
 import type { Overlap } from "./overlap.ts";
+import type { SymbolLevel } from "./symbols.ts";
 import { BLAST_LIMITS, COMPOSITION_BUDGET, LANDING_BUDGET, REPORT_LIMIT, clamp, shrinkToFit, type BlastLimits, type Rendered } from "./bound.ts";
 
 export interface GutCheck {
@@ -499,6 +500,31 @@ export function renderOverlap(o: Overlap, budget: number = REPORT_LIMIT): string
 const PULLS_SHOWN = 50;
 /** How many shared files one overlapping pull request lists. */
 const SHARED_FILES_SHOWN = 10;
+/** How many symbols of one side of one shared file the section names. */
+const SYMBOLS_SHOWN = 5;
+
+/**
+ * The symbol level of one overlap or edge, one nested bullet per shared file: the symbols each
+ * side changes when disjoint, the shared ones when overlapping, the reason when undetermined.
+ * Bounded like the file list it sits under, and each cut says how many it left out.
+ */
+function symbolLines(level: SymbolLevel, a: string, b: string, limit: number, indent: string): string[] {
+  const cap = Math.min(limit, SHARED_FILES_SHOWN);
+  const names = (xs: readonly string[]): string => {
+    if (xs.length === 0) return "no symbol";
+    const shown = xs.slice(0, Math.min(limit, SYMBOLS_SHOWN));
+    const left = xs.length - shown.length;
+    return shown.map((x) => `\`${x}\``).join(", ") + (left > 0 ? ` and ${left} more` : "");
+  };
+  const out = level.files.slice(0, cap).map((f) => {
+    if (f.level === "symbol-disjoint") return `${indent}- \`${f.path}\`: different symbols — ${a} ${names(f.a!.symbols)}; ${b} ${names(f.b!.symbols)}`;
+    if (f.level === "symbol-overlapping") return `${indent}- \`${f.path}\`: the same symbols — ${names(f.shared!)}`;
+    return `${indent}- \`${f.path}\`: symbol level undetermined — ${f.reason}`;
+  });
+  const left = level.files.length - Math.min(level.files.length, cap);
+  if (left > 0) out.push(`${indent}- <sub>${left} more shared file${left === 1 ? "" : "s"} at the symbol level omitted; the overlap result line carries every one.</sub>`);
+  return out;
+}
 
 function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
   // The leading blank line keeps the heading off the end of the composition section above it.
@@ -521,6 +547,7 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
   };
   for (const p of o.overlapping.slice(0, limit)) {
     out.push(`- **#${p.number}** ${p.title}${p.isDraft ? " _(draft)_" : ""} — ${files(p.sharedFiles)}`);
+    out.push(...symbolLines(p.symbolLevel, "this change", `#${p.number}`, limit, "  "));
   }
   if (o.overlapping.length > limit) out.push("", omitted(o.overlapping.length - limit, `pull request${o.overlapping.length - limit === 1 ? "" : "s"}`));
   if (o.overlapping.length > 0) out.push("");
@@ -536,16 +563,19 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
       .join("\n\n");
     const edges = o.conflicts.length === 0
       ? "No two open pull requests change the same file, so they can land in any order."
-      : o.conflicts.slice(0, limit).map((c) => `- ${c.reason}`).join("\n");
+      : o.conflicts.slice(0, limit).map((c) => [`- ${c.reason}`, ...symbolLines(c.symbolLevel, `#${c.a}`, `#${c.b}`, limit, "  ")].join("\n")).join("\n");
     const notes = [
       ...(o.waves.length > limit ? [omitted(o.waves.length - limit, `wave${o.waves.length - limit === 1 ? "" : "s"}`)] : []),
       ...(o.conflicts.length > limit ? [omitted(o.conflicts.length - limit, `conflict${o.conflicts.length - limit === 1 ? "" : "s"}`)] : []),
     ];
-    out.push(details(`Proposed merge order (${o.waves.length} wave${o.waves.length === 1 ? "" : "s"})`, [waves, edges, ...notes].filter((x) => x !== "").join("\n\n")), "");
+    const disjoint = o.conflicts.filter((c) => c.symbolLevel.level === "symbol-disjoint").length;
+    const rule = disjoint === 0 ? "" : `<sub>${disjoint} symbol-disjoint edge${disjoint === 1 ? " is" : "s are"} listed but ${disjoint === 1 ? "does" : "do"} not separate waves; that is not a claim git will merge the two cleanly.</sub>`;
+    out.push(details(`Proposed merge order (${o.waves.length} wave${o.waves.length === 1 ? "" : "s"})`, [waves, edges, rule, ...notes].filter((x) => x !== "").join("\n\n")), "");
   }
 
   if (o.truncated) out.push(`<sub>The pull-request list came back at the ${o.limit}-request limit; there may be more.</sub>`, "");
-  out.push("<sub>Pull requests from `gh pr list`; their files from `gh pr diff --name-only`. Merge waves are greedy first-fit over the conflict graph: a proposal, not a minimum, and not a gate.</sub>");
+  out.push("<sub>Pull requests from `gh pr list`; their files from `gh pr diff --name-only`; the symbols of a shared file from `git diff -U0` against each side's merge base and the top-level symbols of `graft read outline` at both ends" +
+    ` (${o.symbolAnalysis.outlinesRun} of at most ${o.symbolAnalysis.outlineBudget} outline calls this run). Merge waves are greedy first-fit over the conflict graph: a proposal, not a minimum, and not a gate.</sub>`);
   const text = out.join("\n");
   return { text, sizes: { pulls: text.length } };
 }
