@@ -1,8 +1,9 @@
 ---
 name: footprint
 description: >-
-  Run footprint on a pull request's range, post its report as a PR comment, and act on what it
-  lists before and after the merge. Use whenever a pull request is open, or is about to be opened,
+  Run footprint on a pull request's range, post its report as the pull request's one Footprint
+  comment (updated in place on every run, with a Changelog row and your Impact and Data flow
+  reading of the call sites), and act on what it lists before and after the merge. Use whenever a pull request is open, or is about to be opened,
   reviewed, updated or merged, and whenever someone asks to "post the footprint", for a footprint
   report, or for what a change touches, its blast radius, its overlap with other pull requests or
   how it lands.
@@ -12,7 +13,8 @@ description: >-
 
 footprint reads a diff and reports what it touches: its composition by file kind, the exported
 symbols that moved and where they are called from, what to check before the merge and do after
-it, and which other open pull requests change the same files. It **reports; it does not judge**.
+it, and which other open pull requests change the same files. The report lives in one comment
+per pull request, updated in place on every run, with a Changelog of the runs at its foot. It **reports; it does not judge**.
 Nothing in its output is a verdict, an approval or a merge gate, and this skill must never present
 it as one.
 
@@ -75,24 +77,119 @@ RANGE="origin/$BASE...origin/pr-$PR"
 Before the pull request exists, use the local branch: `RANGE="origin/main...HEAD"`, after pushing
 it.
 
-## 3. Run it and post the report
+## 3. Run the report and read it
 
 ```bash
 OUT="$SCRATCH/footprint-$PR.md"
-fp "$RANGE" --human > "$OUT"
-gh pr comment "$PR" --body-file "$OUT"
+fp "$RANGE" --human --max-chars 57344 > "$OUT"
 ```
 
 `--human` is the Markdown comment. Without it footprint writes JSON Lines, which is what to parse
-if you need a field rather than the prose. Post the report as footprint wrote it; do not edit,
-trim or summarise it into the comment.
+if you need a field rather than the prose. `--max-chars 57344` holds the report to 57344
+characters, leaving 8192 of GitHub's 65536-character comment limit for the Changelog that step 5
+adds. Always pass it when the report will be posted.
 
-The report is bounded to GitHub's 65536-character comment limit in total, whatever the change, so a large change prints
-summaries and says what it omitted (`N more ... omitted`, or a `Symbols with more than 50 call
-sites` table with a count per system). It is already the whole report that can be posted; the
-rest is in the JSON Lines result lines and the receipt (its `files` field for the file list), which are not bounded.
+The report is bounded, whatever the change, so a large change prints summaries and says what it
+omitted (`N more ... omitted`, or a `Symbols with more than 50 call sites` table with a count per
+system). The rest is in the JSON Lines result lines and the receipt (its `files` field for the
+file list), which are not bounded.
 
-## 4. Follow what it lists
+Read the call-site tables (under **Call sites by system**) now: step 4 is about them.
+
+## 4. Assess the call sites: the Impact and Data flow columns
+
+footprint found the call sites; it cannot see what the change does at them at run time. You can,
+by reading the code. Your reading goes into two columns of the call-site tables, and the comment
+labels them as **your reading, not footprint's measurement**. Never present them as footprint's.
+
+- **Impact**: how run-time behaviour changes at this call site, and downstream of it in that
+  system. What now happens differently when this line runs, and what that changes further along.
+  "None: the name appears in a comment" is an answer.
+- **Data flow**: what reads the value, what writes it, and where the call's arguments come from.
+
+Write one JSON object per line to `$IMPACT`, a fresh file for every run:
+
+```json
+{"symbol": "blastRadius", "system": "src", "impact": "...", "dataFlow": "..."}
+{"symbol": "blastRadius", "system": "src", "file": "src/cli.ts", "impact": "...", "dataFlow": "..."}
+```
+
+<sub>Illustrative: the `...` are where your reading goes.</sub>
+
+`symbol` and `system` are as the tables print them. Without `file` an entry covers every row of
+that symbol in that system; with `file` it covers that symbol's rows in that file and wins over the
+system-wide entry. A row no entry covers says `not assessed`. An empty file is allowed, and then
+every row says `not assessed`.
+
+Be proportionate, and say where you did not look:
+
+- **Assess every row whose mitigation is not `None needed`** (not the declaring file, not a test
+  file) for each **removed** or **signature-changed** symbol. Those are the rows where a caller
+  can break.
+- **Rows the report summarises** (the `Symbols with more than 50 call sites` table, or a table that
+  says it omitted rows): assess per system, one entry without `file` for each system the symbol
+  is called in. Read the omitted rows from the `footprint.blast_radius` result (`fp "$RANGE"`
+  without `--human`).
+- Added symbols, test files and the declaring file: assess when it matters; otherwise leave them
+  to say `not assessed`.
+- When you did not look at a row you were asked to assess, say so and why, rather than leave it
+  to read as an oversight: `"impact": "not assessed: generated file"`.
+- Never carry an earlier run's entries over. Every run is a new head; assess it again. An entry
+  that matches no row of this head is reported as an `impact.unmatched` warning: fix or drop it.
+
+## 5. Post it: the one Footprint comment
+
+A pull request carries **one** Footprint comment. `fp comment` finds it and updates it in place,
+or creates it, and appends one row to the **Changelog** at its foot. Never post the report with
+`gh pr comment`; that makes a second comment.
+
+Set the three cells of the new Changelog row:
+
+```bash
+CHANGE="First report: 4 files, +120/-8; two signature changes"
+REASON="Pull request opened"
+REMARKS="none"
+```
+
+<sub>Illustrative values.</sub>
+
+- **Change**: what moved in the report since the previous row: files and lines, symbols added,
+  removed or re-signed, a new overlap or a cleared one. On the first run, the headline.
+- **Reason**: why footprint was run again: `Pull request opened`, `New commits pushed`, `Review
+  fix`, `Merged main`.
+- **Remarks**: anything a reader of the comment should know: a section that was unavailable and
+  why, call sites you did not assess, a follow-up you opened. `none` when there is nothing.
+
+Then render the report with your assessment and post it, from inside the repository under review
+(`fp comment` reads the pull request's repository from the working directory, as `gh` does):
+
+```bash
+OUT="$SCRATCH/footprint-$PR.md"
+fp "$RANGE" --human --max-chars 57344 --impact "$IMPACT" > "$OUT"
+fp comment "$PR" --report "$OUT" --change "$CHANGE" --reason "$REASON" --remarks "$REMARKS"
+```
+
+Post the report as footprint wrote it; do not edit, trim or summarise it into the comment.
+
+What `fp comment` does, so you can tell the user:
+
+- It looks for the comment whose first line is `<!-- footprint:report -->`, written by the current
+  `gh` user, and edits it in place. With none, it adopts the most recent comment by the current
+  `gh` user that begins `## Footprint` (a report posted before this flow existed) and says so in
+  the row's Remarks. With neither, it creates the comment.
+- It carries every earlier Changelog row over verbatim, oldest first, and appends the new row: the
+  UTC time, the pull request head's 7-character SHA, and your Change, Reason and Remarks.
+- It keeps the whole comment within 65536 characters. If the Changelog grows too long, it keeps
+  the newest rows and says how many older ones were dropped.
+- It **never edits another user's comment**. If the Footprint comment was written by someone else,
+  it stops with `comment.other_author` and writes nothing: tell the user, and do not post a second
+  report another way.
+
+Its result line (`footprint.comment`) names the comment's `url`, whether it was `created` or
+`updated`, and the Changelog's row count. Pass `--dry-run` to see what it would do without
+writing.
+
+## 6. Follow what it lists
 
 Read the posted report and act on every item below. Each one is either handled in the pull
 request or answered in a PR comment that says why it needs nothing. Silence is neither.
@@ -102,7 +199,8 @@ request or answered in a PR comment that says why it needs nothing. Silence is n
   changed and no migration, flag, version or changelog entry), either add what the repository's
   working agreement asks for or say why none applies.
 - **Breaking changes.** Each one graft names, and each removed or signature-changed export on the
-  blast radius: confirm the callers were updated, or the change is versioned as breaking.
+  blast radius: confirm the callers were updated, or the change is versioned as breaking. Your
+  Impact column is where you have already read them.
 - **Call sites outside the changed file.** Every row whose mitigation is not `None needed` names
   a call site in another system, or outside every known system. Check each: updated, unaffected
   (say why), or followed up. Where the report says it omitted call sites, or counted a symbol's
@@ -120,11 +218,12 @@ request or answered in a PR comment that says why it needs nothing. Silence is n
   repository's `RELEASE.md` or `AGENTS.md`, in order. footprint quotes them; it never runs them.
   If it said no steps are declared, it invented none, and neither should you.
 
-## 5. Re-run after the last push
+## 7. Re-run after every push
 
-Every push changes the range. After the last push before merge, run steps 2 and 3 again and
-post the fresh report, then check step 4 against it. A report on an earlier head is a report on a
-different change.
+Every push changes the range. After each push, and always after the last one before merge, run
+steps 2 to 5 again: a fresh report, a fresh assessment, and `fp comment`, which updates the same
+comment and adds a row saying what changed and why. Then check step 6 against it. A report on an
+earlier head is a report on a different change.
 
 ## What never to do
 
@@ -133,4 +232,6 @@ different change.
 - Never reshape a diff only to make the report quieter. The moment the output becomes a gate,
   diffs get shaped to satisfy it and the report stops meaning anything.
 - Never fill in a number or a step the report did not state. Every figure in it is computed;
-  anything added by hand is not.
+  anything added by hand is not. Your Impact and Data flow entries are the one place your own
+  reading goes, and the comment says so.
+- Never post a second Footprint comment, and never edit or delete another user's.

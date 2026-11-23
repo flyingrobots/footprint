@@ -12,6 +12,8 @@ import { MITIGATION_RULE, NONE_NEEDED, SYSTEM_RULE_DETAIL, groupBySystem, type S
 import type { UnsupportedLanguage } from "./languages.ts";
 import type { Overlap } from "./overlap.ts";
 import type { SymbolLevel } from "./symbols.ts";
+import { IMPACT_COLUMNS, IMPACT_NOTE, NOT_ASSESSED, type ImpactIndex } from "./impact.ts";
+import { cellText } from "./cell.ts";
 import { BLAST_LIMITS, COMPOSITION_BUDGET, LANDING_BUDGET, REPORT_LIMIT, clamp, shrinkToFit, type BlastLimits, type Rendered } from "./bound.ts";
 
 export interface GutCheck {
@@ -213,19 +215,24 @@ function landingSection(l: Landing, limit: number): Rendered<"rows"> {
  * The section is held to `budget` characters (flyingrobots/footprint#51): when the full rendering
  * is over it, the larger of the symbols table and the call-site tables is cut in half until it
  * fits, and every cut says how many rows it left out. `limits` is where that starts.
+ *
+ * `impact` is the posting agent's reading of the call sites (`--impact`, flyingrobots/footprint#59):
+ * given, every call-site table gains its two columns and the section says whose reading they are;
+ * not given, the tables are exactly what they were. The columns count against the same budget.
  */
 export function blastRadius(
   exports: Exports,
   unanalysed: readonly UnsupportedLanguage[] = [],
   budget: number = REPORT_LIMIT,
   limits: BlastLimits = BLAST_LIMITS,
+  impact?: ImpactIndex,
 ): string {
   const start = { symbols: limits.symbols, sites: limits.sites };
-  return clamp(shrinkToFit(start, (l) => blastSections(exports, unanalysed, { ...limits, ...l }), budget).text, budget, "the blast-radius section");
+  return clamp(shrinkToFit(start, (l) => blastSections(exports, unanalysed, { ...limits, ...l }, impact), budget).text, budget, "the blast-radius section");
 }
 
 /** One rendering of the section at the given limits, with how much each trimmable part took. */
-function blastSections(exports: Exports, unanalysed: readonly UnsupportedLanguage[], limits: BlastLimits): Rendered<"symbols" | "sites"> {
+function blastSections(exports: Exports, unanalysed: readonly UnsupportedLanguage[], limits: BlastLimits, impact: ImpactIndex | undefined): Rendered<"symbols" | "sites"> {
   const out: string[] = ["## Blast radius", ""];
   const sizes = { symbols: 0, sites: 0 };
   if (!exports.available) {
@@ -290,8 +297,8 @@ function blastSections(exports: Exports, unanalysed: readonly UnsupportedLanguag
     const total = rows.reduce((n, [, x]) => n + (x.callSites?.length ?? 0), 0);
     const heavy = heavySymbols(siteRows, limits.summariseAbove);
     const body = [
-      ...(heavy.length > 0 ? [heavyTable(heavy, limits.summariseAbove, limits.sites)] : []),
-      ...groups.map((g) => systemTable(g, limits.sites, new Set(heavy.map((h) => h.symbol)))),
+      ...(heavy.length > 0 ? [heavyTable(heavy, limits.summariseAbove, limits.sites, impact)] : []),
+      ...groups.map((g) => systemTable(g, limits.sites, new Set(heavy.map((h) => h.symbol)), impact)),
       ...unreferenced(rows.map(([, x]) => x), limits.sites),
     ].join("\n\n");
     const summary =
@@ -300,6 +307,7 @@ function blastSections(exports: Exports, unanalysed: readonly UnsupportedLanguag
     const block = details(summary, body);
     sizes.sites = block.length;
     out.push(block, "");
+    if (impact !== undefined) out.push(IMPACT_NOTE, "");
   }
 
   out.push(FROM_GRAFT);
@@ -353,16 +361,23 @@ function heavySymbols(rows: readonly SystemRow[], above: number): HeavySymbol[] 
  * `type` is a whole-word match in nearly every file, so its sites are not evidence of reach; the
  * count says so, and the result line still carries every site.
  */
-function heavyTable(heavy: readonly HeavySymbol[], above: number, limit: number): string {
+function heavyTable(heavy: readonly HeavySymbol[], above: number, limit: number, impact: ImpactIndex | undefined): string {
   const shown = heavy.slice(0, Math.max(0, limit));
   const rows = shown.map((h) => {
-    const per = [...h.bySystem.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([sys, n]) => `\`${sys}\` ${n}`).join(", ");
-    return `| \`${h.symbol}\` | ${h.total} | ${per} | ${h.needLook} |`;
+    const systems = [...h.bySystem.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const per = systems.map(([sys, n]) => `\`${sys}\` ${n}`).join(", ");
+    // A summarised symbol is assessed per system: one line per system it is called in.
+    const assessed = (pick: "impact" | "dataFlow") =>
+      systems.map(([sys]) => `\`${sys}\`: ${cellText(impact?.forSystem(h.symbol, sys)?.[pick] ?? NOT_ASSESSED)}`).join("<br>");
+    return `| \`${h.symbol}\` | ${h.total} | ${per} | ${h.needLook} |` + (impact === undefined ? "" : ` ${assessed("impact")} | ${assessed("dataFlow")} |`);
   });
   const out = [
     `**Symbols with more than ${above} call sites** — counted by system instead of listed, because a name that common matches whole-word almost anywhere. The result line carries every site.`,
   ];
-  if (rows.length > 0) out.push("", "| Symbol | Call sites | By system | Not `None needed` |\n| --- | ---: | --- | ---: |\n" + rows.join("\n"));
+  const head = impact === undefined
+    ? "| Symbol | Call sites | By system | Not `None needed` |\n| --- | ---: | --- | ---: |"
+    : `| Symbol | Call sites | By system | Not \`None needed\` | ${IMPACT_COLUMNS.impact} | ${IMPACT_COLUMNS.dataFlow} |\n| --- | ---: | --- | ---: | --- | --- |`;
+  if (rows.length > 0) out.push("", `${head}\n${rows.join("\n")}`);
   const left = heavy.length - shown.length;
   if (left > 0) {
     out.push("", `<sub>${left} more symbol${left === 1 ? "" : "s"} with more than ${above} call sites omitted; the blast-radius result line carries every one.</sub>`);
@@ -387,8 +402,10 @@ const NOTES_SHOWN = 10;
  * in `skip` are the summarised ones and have no row here. At most `limit` rows are written; the
  * ones with a mitigation other than `None needed` are kept first, and the rest are counted.
  */
-function systemTable(group: SystemGroup, limit: number, skip: ReadonlySet<string>): string {
-  const head = "| Symbol | Call site | Mitigation |\n| --- | --- | --- |";
+function systemTable(group: SystemGroup, limit: number, skip: ReadonlySet<string>, impact: ImpactIndex | undefined): string {
+  const head = impact === undefined
+    ? "| Symbol | Call site | Mitigation |\n| --- | --- | --- |"
+    : `| Symbol | Call site | Mitigation | ${IMPACT_COLUMNS.impact} | ${IMPACT_COLUMNS.dataFlow} |\n| --- | --- | --- | --- | --- |`;
   const candidates: SystemRow[] = [];
   const elided = new Map<string, number>();
   let symbol: string | null = null;
@@ -408,7 +425,12 @@ function systemTable(group: SystemGroup, limit: number, skip: ReadonlySet<string
     else elided.set(row.symbol, (elided.get(row.symbol) ?? 0) + 1);
   }
   const kept = keepFirst(candidates, limit, (r) => (r.site.mitigation === NONE_NEEDED ? 1 : 0));
-  const body = kept.map((row) => `| \`${row.symbol}\` | \`${row.site.file}:${row.site.line}\` | ${pipes(row.site.mitigation)} |`);
+  const assessed = (row: SystemRow): string => {
+    if (impact === undefined) return "";
+    const a = impact.forRow(row.symbol, row.site.system, row.site.file);
+    return ` ${cellText(a?.impact ?? NOT_ASSESSED)} | ${cellText(a?.dataFlow ?? NOT_ASSESSED)} |`;
+  };
+  const body = kept.map((row) => `| \`${row.symbol}\` | \`${row.site.file}:${row.site.line}\` | ${pipes(row.site.mitigation)} |${assessed(row)}`);
   const title = `**\`${group.system}\`** — ${group.rows.length} call site${group.rows.length === 1 ? "" : "s"}`;
   const notes: string[] = [];
   // One note per capped symbol, up to NOTES_SHOWN of them and never more than the row limit; the

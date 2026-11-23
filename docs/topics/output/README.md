@@ -20,6 +20,15 @@ composition section, **Before merge** and **After merge**, `## Blast radius`, th
 footprint --human | gh pr comment 42 --body-file -
 ```
 
+To keep one Footprint comment per pull request, updated in place with a Changelog row per run,
+post it with `footprint comment` instead ([the pull-request comment](../comment/README.md)).
+
+`--max-chars <n>` (40960 to 65536, default 65536) bounds the `--human` report to `n` characters
+instead of GitHub's 65536, so a caller can put something beside it; the skill uses 57344.
+`--impact <file>` adds the posting agent's Impact and Data flow columns to the call-site tables of
+`--human` only; no result line carries them. Both are described on
+[the pull-request comment](../comment/README.md).
+
 ## The results
 
 Four result lines, in this order and in the same run: the composition, then the landing plan, then
@@ -173,9 +182,11 @@ below the threshold.
 Every line carries the run id. The bootstrap line and the receipt head also carry `inv`, the
 identity of the question: SHA-256 over the tool name and version, the command, and the resolved
 interpretation, which is the range after the default base is applied, **both ends as commit ids**,
-and the `FOOTPRINT_GRAFT` setting. footprint declares no file inputs, because the subject matter
-is the two commits rather than files on disk; the commit ids are its content addresses, so the
-same `inv` means the same comparison of the same trees, and a new commit on either end changes it.
+and the `FOOTPRINT_GRAFT` setting, and `--max-chars` and `--impact` when they are given. footprint
+declares no file input but the `--impact` file, whose bytes then enter `inv` through
+`receipt.inputs`, because the subject matter is the two commits rather than files on disk; the
+commit ids are its content addresses, so the same `inv` means the same comparison of the same
+trees, and a new commit on either end changes it.
 What `inv` does not cover: which graft version answered, so a structural section can differ under
 one `inv` when graft is upgraded; which pull requests were open, so the overlap result can differ
 under one `inv` as pull requests open and land; and the state of the **working tree**, which the
@@ -190,6 +201,8 @@ bootstrap line is written; that is the only work done before it. The derivation 
 | --- | --- | --- |
 | `base.not_found` | No base given and none of `origin/main`, `origin/master`, `main`, `master` exists | 2 |
 | `git.diff_failed` | `git diff --numstat` exited non-zero; `problem` carries git's message | 2 |
+| `args.invalid` | An unknown flag, a flag without its value, more than one range, or `--max-chars` outside 40960 to 65536 | 2 |
+| `impact.invalid` | The `--impact` file could not be read, or a line of it is not an entry; `problem` names the line | 2 |
 | `uncaught.exception` | A defect in footprint; `detail.stack` is in the receipt | 2 |
 
 ### Stated limitations
@@ -223,14 +236,19 @@ and `overlap.code` says which:
 | `symbols.cleanup_failed` | The temporary directory the graft outlines were written to could not be removed; the symbol levels already computed are kept | 0 |
 | `symbols.analysis_failed` | The symbol-level comparison threw. Every edge is file-level, with `symbols.not_analysed` on each shared file. A graft or git failure on one file is not this warning; it is that file's `undetermined` code | 0 |
 | `callsites.scan_failed` | The call-site scan could not list the tracked files; `exports.call_site_scan.available` is false with its reason and no symbol carries `call_sites` | 0 |
+| `impact.unmatched` | An `--impact` entry matches no call-site row of the range: a typo, or an entry written for an earlier head | 0 |
+
+The `comment` command's errors and warnings are listed on [the pull-request comment](../comment/README.md).
 
 ## Discovery
 
 `footprint --help` and `footprint --schema` are runs too: they bootstrap, write a receipt, emit
-one `command` line and the schemas footprint can emit, and close with `end`. `--help` carries
-`footprint.composition` 1.0.0, `footprint.landing` 1.0.0, `footprint.blast_radius` 1.1.0,
-`footprint.overlap` 2.2.0 and `parley.error` 2.0.0, in that order; `--schema` adds every protocol
-schema the writer itself emits.
+`command` lines and the schemas footprint can emit, and close with `end`. `--help` describes the
+default command, `footprint`, and carries `footprint.composition` 1.0.0, `footprint.landing`
+1.0.0, `footprint.blast_radius` 1.1.0, `footprint.overlap` 2.2.0 and `parley.error` 2.0.0, in that
+order. `footprint comment --help` describes the `comment` command and carries
+`footprint.comment` 1.0.0 and `parley.error` 2.0.0. `--schema` describes both commands and adds
+every protocol schema the writer itself emits.
 
 ## Exit status
 

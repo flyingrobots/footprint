@@ -5,6 +5,44 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-11-23
+
+### Added
+
+- **One Footprint comment per pull request** (flyingrobots/footprint#59). `footprint comment <pr>
+  --report <file> --change <text> --reason <text> [--remarks <text>]` posts a `--human` report as
+  the pull request's one Footprint comment:
+  - it finds the comment whose first line is the hidden marker `<!-- footprint:report -->`, written
+    by the current `gh` user, and edits it in place; failing that it adopts the most recent
+    comment by that user beginning `## Footprint`, and says so in the row's Remarks; failing that
+    it creates one;
+  - it never edits another user's comment: a marked comment by someone else is
+    `comment.other_author`, and nothing is written;
+  - every earlier row of the **Changelog** at the comment's foot is carried over verbatim, and one
+    row is appended: UTC timestamp, the head's 7-character SHA, Change, Reason, Remarks, with `|`
+    escaped and newlines as `<br>`;
+  - the comment stays within 65536 characters: when the Changelog does not fit, the newest rows are
+    kept and the comment states how many older rows were dropped, across runs;
+  - a new result type, **`footprint.comment` 1.0.0** (`schemas/footprint.comment.schema.json`);
+    `--dry-run` writes nothing.
+- **`--impact <file>`**: the posting agent's reading of the call sites, one JSON object per line
+  (`{symbol, system, file?, impact, dataFlow}`), rendered as **Impact** and **Data flow** columns
+  in every call-site table of `--human`, `not assessed` where no entry covers a row, and labelled
+  as the agent's reading rather than footprint's measurement. No result line carries it. An
+  invalid file is `impact.invalid`; an entry that matches no row is an `impact.unmatched` warning.
+- **`--max-chars <n>`** (40960 to 65536) bounds `--human` below GitHub's 65536, so the Changelog
+  has room beside the report; the skill uses 57344.
+
+### Changed
+
+- **The skill** (`skills/footprint/SKILL.md`) posts with `footprint comment` instead of `gh pr
+  comment`, runs the report at `--max-chars 57344`, has the agent assess the call sites for
+  `--impact` proportionately, and says what to write in Change, Reason and Remarks. Reinstall it.
+- An unknown flag, a flag without its value, or a second range is now `args.invalid` (exit 2);
+  before, an unknown flag was ignored and a flag's value could be read as the range.
+- `footprint --help` still describes the default command; `footprint comment --help` describes the
+  new one, and `--schema` both.
+
 ## [0.5.0] — 2026-11-23
 
 ### Added

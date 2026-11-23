@@ -13,9 +13,14 @@ import { isFailure, listOpenPullRequests, resolveGh } from "./pulls.ts";
 import { analyseSymbols, graftOutliner, type Symbols } from "./symbols.ts";
 import { ghRemote } from "./remote.ts";
 import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord, OVERLAP_SCHEMA, OVERLAP_TYPE, overlapRecord } from "./report.ts";
-import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, attachCallSites, exportSurface, rangeBase, rangeEnds, exportsRecord, surfaceSymbols } from "./exports.ts";
+import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, attachCallSites, exportSurface, rangeBase, rangeEnds, exportsRecord, surfaceCallSiteRows, surfaceSymbols } from "./exports.ts";
 import { unsupportedLanguages } from "./languages.ts";
-import { COMPOSITION_BUDGET, LANDING_BUDGET, OVERLAP_BUDGET, blastBudget } from "./bound.ts";
+import { BLAST_LIMITS, COMPOSITION_BUDGET, LANDING_BUDGET, MIN_REPORT_CHARS, OVERLAP_BUDGET, REPORT_LIMIT, blastBudget } from "./bound.ts";
+import { parseArgs } from "./args.ts";
+import { impactIndex, parseImpact, unmatchedEntries, type ImpactIndex } from "./impact.ts";
+import { COMMENT_SCHEMA, COMMENT_TYPE, commentCommand, commentProse } from "./comment.ts";
+import { readFileSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 
 let markdown = "";
 let landingMarkdown = "";
@@ -35,6 +40,15 @@ const tool = defineTool({
       secrets: [],
       emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }, { ...LANDING_TYPE, schema: LANDING_SCHEMA }, { ...BLAST_RADIUS_TYPE, schema: BLAST_RADIUS_SCHEMA }, { ...OVERLAP_TYPE, schema: OVERLAP_SCHEMA }],
     },
+    // flyingrobots/footprint#59: the one Footprint comment of a pull request, found and updated in
+    // place or created, with a Changelog row per run. Named first on the command line:
+    // `footprint comment <pr> --report <file> --change <text> --reason <text> [--remarks <text>]`.
+    comment: {
+      intent: "Post a footprint --human report as the pull request's one Footprint comment: find the comment whose first line is <!-- footprint:report --> (or adopt the most recent unmarked '## Footprint' comment by the current gh user), carry its Changelog rows over verbatim, append one row (UTC timestamp, the head's short SHA, --change, --reason, --remarks), and update it in place or create it; never edits another user's comment; at most 65536 characters",
+      effects: { reads: ["<--report>"], writes: ["github:<pr> issue comment (one, created or edited in place)"], network: true, idempotent: false },
+      secrets: [],
+      emits: [{ ...COMMENT_TYPE, schema: COMMENT_SCHEMA }],
+    },
   },
   retention: { count: 50 },
   human: (line) => {
@@ -43,6 +57,7 @@ const tool = defineTool({
     if (id === LANDING_TYPE.id) return landingMarkdown;
     if (id === BLAST_RADIUS_TYPE.id) return blastMarkdown;
     if (id === OVERLAP_TYPE.id) return overlapMarkdown;
+    if (id === COMMENT_TYPE.id) return commentProse(line);
     return markdown;
   },
 });
@@ -54,8 +69,43 @@ async function defaultBase(): Promise<string | null> {
   return null;
 }
 
+const USAGE = "footprint [<range>] [--max-chars <n>] [--impact <file.jsonl>]";
+
 async function footprint(run: Run, args: string[]): Promise<void> {
-  const given = args.find((a) => !a.startsWith("-"));
+  const parsed = parseArgs(args, ["--max-chars", "--impact"]);
+  if (!parsed.ok || parsed.positionals.length > 1) {
+    run.error({ code: "args.invalid", problem: parsed.ok ? `expected at most one range, got ${JSON.stringify(parsed.positionals)}` : parsed.problem, remedy: `usage: ${USAGE}` });
+    return;
+  }
+  // The bound on the --human report (flyingrobots/footprint#59): GitHub's 65536 unless a caller
+  // needs room beside it, as `footprint comment` does for the Changelog.
+  const maxCharsText = parsed.flags["--max-chars"];
+  const maxChars = maxCharsText === undefined ? REPORT_LIMIT : /^[0-9]+$/.test(maxCharsText) ? Number(maxCharsText) : NaN;
+  if (!(maxChars >= MIN_REPORT_CHARS && maxChars <= REPORT_LIMIT)) {
+    run.error({ code: "args.invalid", problem: `--max-chars must be a whole number from ${MIN_REPORT_CHARS} to ${REPORT_LIMIT}, got ${JSON.stringify(maxCharsText)}`, remedy: `usage: ${USAGE}` });
+    return;
+  }
+  // The posting agent's reading of the call sites, rendered in --human only (flyingrobots/footprint#59).
+  let impact: ImpactIndex | undefined;
+  const impactPath = parsed.flags["--impact"];
+  if (impactPath !== undefined) {
+    const at = resolvePath(run.cwd, impactPath);
+    let text: string;
+    try {
+      text = readFileSync(at, "utf8");
+    } catch (e) {
+      run.error({ code: "impact.invalid", problem: `the impact file ${at} could not be read: ${e instanceof Error ? e.message : String(e)}`, remedy: "write one JSON object per line, {symbol, system, file?, impact, dataFlow}; an empty file is allowed", remedy_target: at });
+      return;
+    }
+    const entries = parseImpact(text);
+    if (!entries.ok) {
+      run.error({ code: "impact.invalid", problem: `${at} line ${entries.line}: ${entries.problem}`, remedy: "write one JSON object per line, {symbol, system, file?, impact, dataFlow}", remedy_target: `${at}:${entries.line}` });
+      return;
+    }
+    impact = impactIndex(entries.entries);
+    run.step(`impact columns from ${entries.entries.length} entr${entries.entries.length === 1 ? "y" : "ies"}`, "--impact was given: the posting agent's reading of the call sites, rendered in the --human call-site tables only and labelled as the agent's; no result line carries it");
+  }
+  const given = parsed.positionals[0];
   const spec = given ?? (await defaultBase());
   if (spec === null) {
     run.error({ code: "base.not_found", problem: "No default branch found: none of origin/main, origin/master, main or master exists", remedy: "pass a base explicitly", remedy_target: "<base>" });
@@ -137,7 +187,18 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   const unanalysed = unsupportedLanguages(changes.map((c) => c.path));
   // The report is posted as one GitHub comment, which holds at most REPORT_LIMIT characters
   // (flyingrobots/footprint#51): the blast radius gets what composition and landing left.
-  blastMarkdown = blastRadius(surface, unanalysed, blastBudget(markdown.length, landingMarkdown.length));
+  blastMarkdown = blastRadius(surface, unanalysed, blastBudget(markdown.length, landingMarkdown.length, maxChars), BLAST_LIMITS, impact);
+  if (impact !== undefined) {
+    const rows = surface.available && surface.surface.callSiteScan.available ? surfaceCallSiteRows(surface.surface) : [];
+    const unmatched = unmatchedEntries(impact, rows);
+    if (unmatched.length > 0) {
+      run.warning({
+        code: "impact.unmatched",
+        problem: `${unmatched.length} impact entr${unmatched.length === 1 ? "y matches" : "ies match"} no call-site row of this range: ${unmatched.slice(0, 20).map((e) => `${e.symbol} in ${e.system}${e.file === undefined ? "" : ` at ${e.file}`}`).join("; ")}${unmatched.length > 20 ? `; and ${unmatched.length - 20} more` : ""}`,
+        remedy: "check each entry's symbol, system and file against the call-site tables of this head; an entry for an earlier head is stale",
+      });
+    }
+  }
   run.result(exportsRecord(range, surface, unanalysed), BLAST_RADIUS_TYPE, { markdown: blastMarkdown });
 
   // Cross-pull-request overlap: the fourth result in the same run, after the blast radius.
@@ -233,14 +294,38 @@ async function rangeHead(ref: string, commit: string | null): Promise<RangeHead>
  * content addresses of the subject matter, so inv moves when the compared trees move; without
  * them a footprint run would declare no inputs and its inv would cover the arguments alone.
  */
-async function resolved(args: string[]): Promise<Record<string, unknown>> {
-  const given = args.find((a) => !a.startsWith("-")) ?? null;
+async function resolved(args: string[], command: string): Promise<Record<string, unknown>> {
+  // Never throws: an argument the handler will refuse is still recorded, so the refusal is an
+  // error line with exit 2 rather than a startup failure.
+  const parsed = parseArgs(args, command === "comment" ? ["--report", "--change", "--reason", "--remarks"] : ["--max-chars", "--impact"]);
+  const flags = parsed.ok ? parsed.flags : {};
+  if (command === "comment") {
+    return { command, pull_request: parsed.ok ? parsed.positionals[0] ?? null : null, report: flags["--report"] ?? null, change: flags["--change"] ?? null, reason: flags["--reason"] ?? null, remarks: flags["--remarks"] ?? null };
+  }
+  const given = (parsed.ok ? parsed.positionals[0] : args.find((a) => !a.startsWith("-"))) ?? null;
   const spec = given ?? (await defaultBase());
   const range = spec === null ? null : spec.includes("..") ? spec : `${spec}...HEAD`;
   const ends = range === null ? [null, null] : range.split(/\.{2,3}/);
   const rev = async (ref: string | null) => (ref === null ? null : (await $`git rev-parse --verify --quiet ${ref}`.quiet().nothrow()).text().trim() || null);
-  return { command: "footprint", base: given, default_base: given === null ? spec : null, range, base_commit: await rev(ends[0] ?? null), head_commit: await rev(ends[1] || "HEAD"), graft: process.env.FOOTPRINT_GRAFT ?? null };
+  return {
+    command: "footprint", base: given, default_base: given === null ? spec : null, range, base_commit: await rev(ends[0] ?? null), head_commit: await rev(ends[1] || "HEAD"), graft: process.env.FOOTPRINT_GRAFT ?? null,
+    // Only when given, so a run without them resolves exactly as it did before they existed.
+    ...(flags["--max-chars"] === undefined ? {} : { max_chars: flags["--max-chars"] }),
+    ...(flags["--impact"] === undefined ? {} : { impact: flags["--impact"] }),
+  };
 }
 
-const status = await main(tool, ["footprint", ...process.argv.slice(2)], footprint, { resolved });
+/** The files a run reads besides the repository: the report a comment posts, the impact entries a report renders. */
+function inputs(args: string[], command: string): { path: string }[] {
+  const parsed = parseArgs(args, command === "comment" ? ["--report", "--change", "--reason", "--remarks"] : ["--max-chars", "--impact"]);
+  if (!parsed.ok) return [];
+  const path = command === "comment" ? parsed.flags["--report"] : parsed.flags["--impact"];
+  return path === undefined ? [] : [{ path }];
+}
+
+// `footprint` is the default command: `footprint <range>` names none, so it is named here unless
+// the first positional argument is `comment` (flyingrobots/footprint#59).
+const argv = process.argv.slice(2);
+const named = argv.find((a) => !a.startsWith("-")) === "comment" ? "comment" : "footprint";
+const status = await main(tool, ["footprint", ...(named === "comment" ? argv : ["footprint", ...argv])], (run, args) => (named === "comment" ? commentCommand(run, args) : footprint(run, args)), { resolved, inputs });
 process.exit(status);
