@@ -5,30 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
-### Fixed
+## [0.3.1] — 2026-11-22
 
-- **A change to an agent skill is not documentation only.** Markdown under a `skills/` path
-  component, and any `SKILL.md`, classified as `docs`, so a skill-only change read "Documentation
-  only" and the landing plan set aside the after-merge steps, including this repository's own
-  "reinstall the skill". They now classify as `config`, which changes no schema; compositions of
-  changes to skills shift from `docs` to `config`. (flyingrobots/footprint#34)
-
-- **Licence files are docs.** `LICENSE`, `LICENSE.*`, `NOTICE` and `COPYING`, at any depth, fell
-  through to `source`, so a change adding them inflated the source share and reported them as
-  "changed files in unanalysed language: `(none)`". They now classify as `docs`; a composition
-  that includes one shifts accordingly. (flyingrobots/footprint#36)
-
-- **The skill's commands run in zsh.** `skills/footprint/SKILL.md` set `FP="bun …/src/cli.ts"` and
-  ran `$FP …`, which zsh, the macOS default shell, does not word-split, so the command failed with
-  exit 127. It now defines a shell function, `fp() { bun "$SCRATCH/footprint/src/cli.ts" "$@"; }`
-  (or `bunx` once published), which bash and zsh call the same way; `test/skill.test.ts` runs the
-  skill's step 3 verbatim under both. CI installs `zsh` for it. Reinstall the skill.
-  (flyingrobots/footprint#37)
-
-- **`bin.footprint` survives `npm publish`.** It was written `./src/cli.ts`, a form npm's
-  publish-time normalization removes ("script name src/cli.ts was invalid and removed"), so 0.3.0
-  as tagged would have published with no command and `bunx @flyingrobots/footprint` would have
-  found nothing. It is now `src/cli.ts`. Do not publish 0.3.0. (flyingrobots/footprint#35)
+Fixes found by the first real use of 0.3.0 and the footprint skill. **Publish this, not 0.3.0**:
+0.3.0 as tagged would publish without its `bin`. No schema changed: `footprint.composition` 1.0.0,
+`footprint.landing` 1.0.0, `footprint.blast_radius` 1.1.0 and `footprint.overlap` 1.0.0 are as
+0.3.0 shipped them. Two classification changes move composition shares: licence files and agent
+skills are no longer counted as `source` and `docs` respectively. Reinstall the skill.
 
 ### Added
 
@@ -37,6 +20,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   change any field or `npm publish --dry-run` reports a correction. See
   [`docs/workflows/release/README.md`](docs/workflows/release/README.md#the-manifest-npm-publishes).
   (flyingrobots/footprint#35)
+
+### Fixed
+
+- **A change to an agent skill is not documentation only.** Markdown under a `skills/` path
+  component, and any `SKILL.md`, classified as `docs`, so a skill-only change read "Documentation
+  only" and the landing plan set aside the after-merge steps, including this repository's own
+  "reinstall the skill". They now classify as `config`, which changes no schema; compositions of
+  changes to skills shift from `docs` to `config`. (flyingrobots/footprint#34)
+- **Licence files are docs.** `LICENSE`, `LICENSE.*`, `NOTICE` and `COPYING`, at any depth, fell
+  through to `source`, so a change adding them inflated the source share and reported them as
+  "changed files in unanalysed language: `(none)`". They now classify as `docs`; a composition
+  that includes one shifts accordingly. (flyingrobots/footprint#36)
+- **The skill's commands run in zsh.** `skills/footprint/SKILL.md` set `FP="bun …/src/cli.ts"` and
+  ran `$FP …`, which zsh, the macOS default shell, does not word-split, so the command failed with
+  exit 127. It now defines a shell function, `fp() { bun "$SCRATCH/footprint/src/cli.ts" "$@"; }`
+  (or `bunx` once published), which bash and zsh call the same way; `test/skill.test.ts` runs the
+  skill's step 3 verbatim under both. CI installs `zsh` for it. Reinstall the skill.
+  (flyingrobots/footprint#37)
+- **`bin.footprint` survives `npm publish`.** It was written `./src/cli.ts`, a form npm's
+  publish-time normalization removes ("script name src/cli.ts was invalid and removed"), so 0.3.0
+  as tagged would have published with no command and `bunx @flyingrobots/footprint` would have
+  found nothing. It is now `src/cli.ts`. Do not publish 0.3.0. (flyingrobots/footprint#35)
 
 ## [0.3.0] — 2026-11-22
 
