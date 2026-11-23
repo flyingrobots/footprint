@@ -1,4 +1,4 @@
-// The size bound on the --human report (flyingrobots/footprint#51, OUT-20 in
+// The size bound on the --human report (flyingrobots/footprint#51, OUT-21 in
 // docs/topics/output/test-plan.md).
 //
 // GitHub rejects a comment body over 65536 characters. The fixture below is the shape that broke
@@ -66,7 +66,7 @@ function fixture(shape: Shape): Exports {
 const BIG: Shape = { added: 300, removed: 2, changed: 3, commonSites: 3000, uniqueSites: 40 };
 
 describe("the --human report is bounded to the comment limit", () => {
-  // OUT-20a
+  // OUT-21a
   test("a fixture whose unbounded blast radius exceeds 65536 characters renders at or under it", () => {
     const e = fixture(BIG);
     const unbounded = blastRadius(e, [], Infinity, UNBOUNDED_BLAST);
@@ -76,7 +76,7 @@ describe("the --human report is bounded to the comment limit", () => {
     expect(blastRadius(e, [], 20_000).length).toBeLessThanOrEqual(20_000);
   });
 
-  // OUT-20b
+  // OUT-21b
   test("the symbols table names how many rows it omitted, and the counts add up", () => {
     const e = fixture(BIG);
     const md = blastRadius(e, [], 20_000);
@@ -88,7 +88,7 @@ describe("the --human report is bounded to the comment limit", () => {
     expect(md).toContain("the blast-radius result line carries every one");
   });
 
-  // OUT-20c
+  // OUT-21c
   test("each system's table names how many call sites it omitted, and the counts add up", () => {
     const e = fixture({ ...BIG, commonSites: 0 });
     const md = blastRadius(e, [], 20_000);
@@ -103,7 +103,7 @@ describe("the --human report is bounded to the comment limit", () => {
     }
   });
 
-  // OUT-20d
+  // OUT-21d
   test("a symbol with very many call sites is summarised as a count per system, not listed", () => {
     const e = fixture(BIG);
     const md = blastRadius(e, []);
@@ -120,7 +120,7 @@ describe("the --human report is bounded to the comment limit", () => {
     expect(md).toContain(`more than ${BLAST_LIMITS.summariseAbove} call sites`);
   });
 
-  // OUT-20e
+  // OUT-21e
   test("shrinking keeps the signature-changed and removed rows before the added ones", () => {
     const e = fixture(BIG);
     const md = blastRadius(e, [], 12_000);
@@ -128,13 +128,13 @@ describe("the --human report is bounded to the comment limit", () => {
     expect(md).toContain("| removed | `gone_0`");
   });
 
-  // OUT-20f
+  // OUT-21f
   test("the same input and budget render the same text", () => {
     const e = fixture(BIG);
     expect(blastRadius(e, [], 15_000)).toBe(blastRadius(e, [], 15_000));
   });
 
-  // OUT-20g
+  // OUT-21g
   test("a surface under the bound renders with no omission statement and no summary", () => {
     const e = fixture({ added: 2, commonSites: 5, uniqueSites: 3 });
     const md = blastRadius(e, []);
@@ -143,7 +143,7 @@ describe("the --human report is bounded to the comment limit", () => {
     expect(surfaceCallSiteRows((e as Extract<Exports, { available: true }>).surface).length).toBe(8 * 5 + 2 * 3);
   });
 
-  // OUT-20h
+  // OUT-21h
   test("the Files list names how many files it omitted", () => {
     const changes: FileChange[] = Array.from({ length: 4000 }, (_, i) => ({ path: `data/part-${i}/file-${i}.json`, added: 1, removed: 0, binary: false }));
     const c = compose(changes);
@@ -156,7 +156,7 @@ describe("the --human report is bounded to the comment limit", () => {
     expect(md).toContain("the composition result line carries every one");
   });
 
-  // OUT-20i
+  // OUT-21i
   test("the overlap section names how many pull requests it omitted", () => {
     const overlapping = Array.from({ length: 100 }, (_, i) => ({ number: i + 1, title: `Pull request ${i} ${"x".repeat(80)}`, isDraft: false, sharedFiles: Array.from({ length: 30 }, (_, j) => `dir/file-${i}-${j}.ts`) }));
     const o: Overlap = { available: true, self: null, openPullRequests: 100, limit: 100, truncated: false, overlapping, conflicts: [], waves: [], undetermined: [], summary: "100 open pull requests overlap" };
@@ -168,7 +168,7 @@ describe("the --human report is bounded to the comment limit", () => {
     expect(listed + Number(said![1])).toBe(100);
   });
 
-  // OUT-20j
+  // OUT-21j
   test("the blast-radius budget is what the other three sections leave of the limit", () => {
     const budget = blastBudget(1000, 2000);
     expect(budget).toBeLessThan(REPORT_LIMIT - 3000);

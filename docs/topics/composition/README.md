@@ -60,6 +60,12 @@ unrelated commits on the default branch are excluded.
 
 ## Structural signal
 
+For a three-dot range (`origin/main...HEAD`, the default) graft is given the **merge base** and the
+head, the same base the composition and the exports use, so symbols the default branch gained after
+the branch was cut are not reported as removed by it. A two-dot range is compared end to end, as
+written. A three-dot range with no merge base leaves the section unavailable, with a
+`graft.review_failed` warning naming why. (OUT-20a, OUT-20b)
+
 When graft resolves, the report adds a line path-based classification cannot produce:
 
 ```text
