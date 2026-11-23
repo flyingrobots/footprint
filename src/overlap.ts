@@ -32,8 +32,15 @@ export interface PullRequest {
   readonly headBranch?: string;
   /** True when the head branch lives in a fork, from `isCrossRepository`. */
   readonly crossRepository?: boolean;
-  /** The branch it merges into, from `baseRefName`; its merge base is taken against this. */
+  /** The branch it merges into, from `baseRefName`; named in reasons only. */
   readonly baseBranch?: string;
+  /** The base branch's commit as `gh` reported it, from `baseRefOid`; the merge base is taken against this. */
+  readonly baseCommit?: string;
+  /**
+   * True when `gh pr list`, asked again after the files were listed, reported a different head
+   * commit or none: the files and `headCommit` are then not one snapshot.
+   */
+  readonly headMoved?: boolean;
 }
 
 /** What identifies the range's head: its commit id, and its branch name when it has one. */

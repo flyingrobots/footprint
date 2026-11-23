@@ -2,10 +2,16 @@
 // shells out, and everything it returns is a plain `{number, title, isDraft, files}` record for
 // `src/overlap.ts` to compute over.
 //
-// Two `gh` calls per run plus one per pull request, all read-only:
+// Three `gh` calls per run plus one per pull request, all read-only:
 //
-//   gh pr list --state open --json number,title,isDraft,headRefOid,headRefName,isCrossRepository,baseRefName --limit <n>
+//   gh pr list --state open --json number,title,isDraft,headRefOid,headRefName,isCrossRepository,baseRefName,baseRefOid --limit <n>
 //   gh pr diff <number> --name-only
+//   gh pr list ... (the same listing again)
+//
+// The second listing binds each file list to a head commit (flyingrobots/footprint#56): `gh pr
+// diff` answers for whatever the head is when it runs, so a pull request whose head commit differs
+// between the two listings, or is missing from the second, is marked `headMoved` and its symbol
+// level is undetermined rather than computed from a commit its file list may not describe.
 //
 // `gh` missing, unauthenticated or rate-limited is a stated limitation, never an omitted section:
 // an absent signal that reads as a clean signal is worse than no signal.
@@ -58,6 +64,21 @@ interface Listed {
   headRefName?: unknown;
   isCrossRepository?: unknown;
   baseRefName?: unknown;
+  baseRefOid?: unknown;
+}
+
+const FIELDS = "number,title,isDraft,headRefOid,headRefName,isCrossRepository,baseRefName,baseRefOid";
+
+async function list(gh: string, cwd: string, limit: number): Promise<Listed[] | PullsFailure> {
+  const listed = await $`${gh} pr list --state open --json ${FIELDS} --limit ${limit}`.cwd(cwd).quiet().nothrow();
+  if (listed.exitCode !== 0) return classifyFailure(listed.stderr.toString(), listed.exitCode);
+  try {
+    const parsed = JSON.parse(listed.text()) as unknown;
+    if (!Array.isArray(parsed)) throw new TypeError("gh pr list did not return an array");
+    return parsed as Listed[];
+  } catch (e) {
+    return { code: "gh.list_unreadable", reason: `gh pr list --json returned output footprint could not read: ${e instanceof Error ? e.message : String(e)}` };
+  }
 }
 
 /**
@@ -65,22 +86,13 @@ interface Listed {
  * `null`, which the computation reports as undetermined rather than treating as disjoint.
  */
 export async function listOpenPullRequests(gh: string, cwd: string, limit: number = LIST_LIMIT): Promise<PullsResult> {
-  const listed = await $`${gh} pr list --state open --json number,title,isDraft,headRefOid,headRefName,isCrossRepository,baseRefName --limit ${limit}`.cwd(cwd).quiet().nothrow();
-  if (listed.exitCode !== 0) return classifyFailure(listed.stderr.toString(), listed.exitCode);
+  const rows = await list(gh, cwd, limit);
+  if (!Array.isArray(rows)) return rows;
 
-  let rows: Listed[];
-  try {
-    const parsed = JSON.parse(listed.text()) as unknown;
-    if (!Array.isArray(parsed)) throw new TypeError("gh pr list did not return an array");
-    rows = parsed as Listed[];
-  } catch (e) {
-    return { code: "gh.list_unreadable", reason: `gh pr list --json returned output footprint could not read: ${e instanceof Error ? e.message : String(e)}` };
-  }
-
-  const pullRequests: PullRequest[] = [];
+  const listedFirst: PullRequest[] = [];
   for (const row of rows) {
     if (typeof row.number !== "number") continue;
-    pullRequests.push({
+    listedFirst.push({
       number: row.number,
       title: typeof row.title === "string" ? row.title : "",
       isDraft: row.isDraft === true,
@@ -89,9 +101,18 @@ export async function listOpenPullRequests(gh: string, cwd: string, limit: numbe
       ...(typeof row.headRefName === "string" ? { headBranch: row.headRefName } : {}),
       ...(typeof row.isCrossRepository === "boolean" ? { crossRepository: row.isCrossRepository } : {}),
       ...(typeof row.baseRefName === "string" ? { baseBranch: row.baseRefName } : {}),
+      ...(typeof row.baseRefOid === "string" ? { baseCommit: row.baseRefOid } : {}),
     });
   }
 
+  // Listed again, after the files: a head that is not the same commit both times did not
+  // necessarily produce the file list. A second listing that fails confirms nothing, so every head
+  // counts as moved; the file-level overlap is unaffected.
+  const again = await list(gh, cwd, limit);
+  const heads = new Map<number, unknown>(Array.isArray(again) ? again.map((r) => [r.number as number, r.headRefOid]) : []);
+  const pullRequests = listedFirst.map((p) =>
+    p.headCommit !== undefined && heads.get(p.number) === p.headCommit ? p : { ...p, headMoved: true },
+  );
   return { pullRequests, limit };
 }
 

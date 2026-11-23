@@ -48,13 +48,14 @@ const LIB = [
 type Edit = (lib: string) => string;
 
 /** `main` holds lib.ts and README.md; each branch applies its edit to lib.ts (and README.md when asked). */
-async function fixture(branches: Record<string, { lib?: Edit; readme?: boolean }>): Promise<{ dir: string; heads: Record<string, string> }> {
+async function fixture(branches: Record<string, { lib?: Edit; readme?: boolean }>): Promise<{ dir: string; heads: Record<string, string>; main: string }> {
   const dir = mkdtempSync(join(tmpdir(), "footprint-sym-repo-"));
   await git(dir, "init", "-q", "-b", "main");
   writeFileSync(join(dir, "lib.ts"), LIB);
   writeFileSync(join(dir, "README.md"), "# fixture\n");
   await git(dir, "add", ".");
   await git(dir, "commit", "-q", "-m", "base");
+  const main = await git(dir, "rev-parse", "HEAD");
   const heads: Record<string, string> = {};
   for (const [name, edit] of Object.entries(branches)) {
     await git(dir, "checkout", "-q", "-b", name, "main");
@@ -64,11 +65,12 @@ async function fixture(branches: Record<string, { lib?: Edit; readme?: boolean }
     heads[name] = await git(dir, "rev-parse", "HEAD");
   }
   await git(dir, "checkout", "-q", "main");
-  return { dir, heads };
+  return { dir, heads, main };
 }
 
-function pull(number: number, head: string, files: readonly string[]): PullRequest {
-  return { number, title: `pull request ${number}`, isDraft: false, files, headCommit: head, baseBranch: "main" };
+/** Every fixture's pull requests merge into `main` at its first commit, as `gh` reports in `baseRefOid`. */
+function pull(number: number, head: string, files: readonly string[], base: string): PullRequest {
+  return { number, title: `pull request ${number}`, isDraft: false, files, headCommit: head, baseBranch: "main", baseCommit: base };
 }
 
 /** File-level overlap, then the symbol analysis over its edges, then the overlap again with the levels. */
@@ -94,8 +96,8 @@ const renameAlpha: Edit = (s) => s.replace("export function alpha()", "export fu
 
 describe("symbol-level overlap through graft", () => {
   test("golden: two pull requests changing different functions of one file are symbol-disjoint, with the symbols named", async () => {
-    const { dir, heads } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
-    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"]), pull(2, heads.b!, ["lib.ts"])]);
+    const { dir, heads, main } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
+    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)]);
     expect(o.conflicts).toHaveLength(1);
     const level = o.conflicts[0]!.symbolLevel;
     expect(level.level).toBe("symbol-disjoint");
@@ -104,8 +106,8 @@ describe("symbol-level overlap through graft", () => {
   }, GRAFT_TIMEOUT);
 
   test("two pull requests changing the same function are symbol-overlapping, naming it", async () => {
-    const { dir, heads } = await fixture({ a: { lib: alphaBody }, b: { lib: alphaBodyAgain } });
-    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"]), pull(2, heads.b!, ["lib.ts"])]);
+    const { dir, heads, main } = await fixture({ a: { lib: alphaBody }, b: { lib: alphaBodyAgain } });
+    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)]);
     const file = o.conflicts[0]!.symbolLevel.files[0]!;
     expect(file.level).toBe("symbol-overlapping");
     expect(file.shared).toEqual(["alpha"]);
@@ -113,8 +115,8 @@ describe("symbol-level overlap through graft", () => {
   }, GRAFT_TIMEOUT);
 
   test("a rename read as a removal plus an addition is never reported disjoint from an edit to the old name", async () => {
-    const { dir, heads } = await fixture({ a: { lib: renameAlpha }, b: { lib: alphaBody } });
-    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"]), pull(2, heads.b!, ["lib.ts"])]);
+    const { dir, heads, main } = await fixture({ a: { lib: renameAlpha }, b: { lib: alphaBody } });
+    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)]);
     const file = o.conflicts[0]!.symbolLevel.files[0]!;
     expect(file.level).not.toBe("symbol-disjoint");
     expect(file.level).toBe("symbol-overlapping");
@@ -123,8 +125,8 @@ describe("symbol-level overlap through graft", () => {
   }, GRAFT_TIMEOUT);
 
   test("graft absent leaves every shared file undetermined, and the edge separates waves as file-level does", async () => {
-    const { dir, heads } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
-    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"]), pull(2, heads.b!, ["lib.ts"])], { graft: null });
+    const { dir, heads, main } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
+    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)], { graft: null });
     const file = o.conflicts[0]!.symbolLevel.files[0]!;
     expect(file).toMatchObject({ path: "lib.ts", level: "undetermined", code: "graft.not_resolved" });
     expect(file.reason).toContain("graft");
@@ -132,10 +134,10 @@ describe("symbol-level overlap through graft", () => {
   }, GRAFT_TIMEOUT);
 
   test("a non-code shared file is undetermined without spending a graft call", async () => {
-    const { dir, heads } = await fixture({ a: { readme: true }, b: { readme: true } });
+    const { dir, heads, main } = await fixture({ a: { readme: true }, b: { readme: true } });
     let calls = 0;
     const counting: Outliner = async () => { calls += 1; return { code: "never", reason: "never" }; };
-    const o = await analysed(dir, [pull(1, heads.a!, ["README.md"]), pull(2, heads.b!, ["README.md"])], { outliner: counting });
+    const o = await analysed(dir, [pull(1, heads.a!, ["README.md"], main), pull(2, heads.b!, ["README.md"], main)], { outliner: counting });
     expect(o.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ path: "README.md", level: "undetermined", code: "language.unsupported" });
     expect(calls).toBe(0);
   }, GRAFT_TIMEOUT);
@@ -144,18 +146,18 @@ describe("symbol-level overlap through graft", () => {
     const header: Edit = (s) => s.replace("// header comment", "// header comment, edited");
     const between: Edit = (s) => s.replace("// a comment between", "// a comment between, edited");
     const both = await fixture({ a: { lib: header }, b: { lib: between } });
-    const o = await analysed(both.dir, [pull(1, both.heads.a!, ["lib.ts"]), pull(2, both.heads.b!, ["lib.ts"])]);
+    const o = await analysed(both.dir, [pull(1, both.heads.a!, ["lib.ts"], both.main), pull(2, both.heads.b!, ["lib.ts"], both.main)]);
     expect(o.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "undetermined", code: "symbols.outside" });
 
     const one = await fixture({ a: { lib: (s) => alphaBody(header(s)) }, b: { lib: betaBody } });
-    const p = await analysed(one.dir, [pull(1, one.heads.a!, ["lib.ts"]), pull(2, one.heads.b!, ["lib.ts"])]);
+    const p = await analysed(one.dir, [pull(1, one.heads.a!, ["lib.ts"], one.main), pull(2, one.heads.b!, ["lib.ts"], one.main)]);
     expect(p.conflicts[0]!.symbolLevel.files[0]).toEqual({ path: "lib.ts", level: "symbol-disjoint", a: { symbols: ["alpha"], outside: 2 }, b: { symbols: ["beta"], outside: 0 } });
   }, GRAFT_TIMEOUT);
 
   test("past the outline budget a file is undetermined, and so is a graft call that timed out", async () => {
-    const { dir, heads } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
+    const { dir, heads, main } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
     const graft = await resolveGraft();
-    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"]), pull(2, heads.b!, ["lib.ts"])], { outliner: graftOutliner(graft!), budget: 1 });
+    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)], { outliner: graftOutliner(graft!), budget: 1 });
     expect(o.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "undetermined", code: "budget.spent" });
     expect(o.symbolAnalysis.outlinesRun).toBe(1);
 
@@ -165,14 +167,14 @@ describe("symbol-level overlap through graft", () => {
     writeFileSync(slow, "#!/bin/sh\nsleep 30\n");
     chmodSync(slow, 0o755);
     const started = Date.now();
-    const t = await analysed(dir, [pull(1, heads.a!, ["lib.ts"]), pull(2, heads.b!, ["lib.ts"])], { outliner: graftOutliner(slow, { timeoutMs: 300 }) });
+    const t = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, heads.b!, ["lib.ts"], main)], { outliner: graftOutliner(slow, { timeoutMs: 300 }) });
     expect(t.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "undetermined", code: "graft.outline_timeout" });
     expect(Date.now() - started).toBeLessThan(20_000);
   }, GRAFT_TIMEOUT);
 
   test("a pull request whose head commit is not in the local repository is undetermined, naming git fetch", async () => {
-    const { dir, heads } = await fixture({ a: { lib: alphaBody } });
-    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"]), pull(2, "0123456789abcdef0123456789abcdef01234567", ["lib.ts"])]);
+    const { dir, heads, main } = await fixture({ a: { lib: alphaBody } });
+    const o = await analysed(dir, [pull(1, heads.a!, ["lib.ts"], main), pull(2, "0123456789abcdef0123456789abcdef01234567", ["lib.ts"], main)]);
     const file = o.conflicts[0]!.symbolLevel.files[0]!;
     expect(file).toMatchObject({ level: "undetermined", code: "git.head_missing" });
     expect(file.reason).toContain("git fetch");
@@ -180,7 +182,7 @@ describe("symbol-level overlap through graft", () => {
 });
 
 describe("symbol-level overlap, computed", () => {
-  test("changed lines skip whitespace-only lines and read both sides of a hunk", () => {
+  test("changed lines keep whitespace-only lines, listed apart, and read both sides of a hunk", () => {
     const diff = [
       "diff --git a/x.ts b/x.ts",
       "--- a/x.ts",
@@ -192,12 +194,14 @@ describe("symbol-level overlap, computed", () => {
       "@@ -9,0 +11,1 @@",
       "+export const z = 1;",
     ].join("\n");
-    expect(changedLines(diff)).toEqual({ binary: false, old: [3], new: [3, 11] });
+    expect(changedLines(diff)).toEqual({ binary: false, hunks: 2, old: [3], new: [3, 4, 11], blank: { old: [], new: [4] } });
   });
 
   test("attribution names every symbol whose span holds a line, and counts the rest", () => {
     const spans = [{ symbol: "alpha", start: 2, end: 4 }, { symbol: "beta", start: 6, end: 8 }];
     expect(attribute([3, 7, 10], spans)).toEqual({ symbols: ["alpha", "beta"], outside: 1 });
+    // A whitespace-only line counts for a span that holds it, and toward nothing outside every span.
+    expect(attribute([3, 10], spans, [3, 10])).toEqual({ symbols: ["alpha"], outside: 0 });
   });
 
   test("an outline that is partial, refused, or of another contract is a failure, not an empty jump table", () => {
@@ -279,13 +283,14 @@ describe("the overlap section with symbol levels", () => {
 describe("symbol-level overlap through the CLI", () => {
   // A stand-in `gh` that answers the two read-only calls footprint makes, so the end-to-end run
   // needs no network; `git` and `node` are the real ones, and graft is the installed one.
-  async function fakeGh(dir: string, prs: Array<{ number: number; head: string; branch: string; files: string[] }>): Promise<string> {
+  async function fakeGh(dir: string, base: string, prs: Array<{ number: number; head: string; branch: string; files: string[] }>): Promise<string> {
     const bin = mkdtempSync(join(tmpdir(), "footprint-sym-bin-"));
     for (const exe of ["git", "node"]) {
       const found = Bun.which(exe);
-      if (found !== null) writeFileSync(join(bin, exe), `#!/bin/sh\nexec ${found} "$@"\n`), chmodSync(join(bin, exe), 0o755);
+      // A symlink, not a shell wrapper: a wrapper would split a path holding a space (flyingrobots/footprint#56).
+      if (found !== null) symlinkSync(found, join(bin, exe));
     }
-    const list = JSON.stringify(prs.map((p) => ({ number: p.number, title: `pull request ${p.number}`, isDraft: false, headRefOid: p.head, headRefName: p.branch, isCrossRepository: false, baseRefName: "main" })));
+    const list = JSON.stringify(prs.map((p) => ({ number: p.number, title: `pull request ${p.number}`, isDraft: false, headRefOid: p.head, headRefName: p.branch, isCrossRepository: false, baseRefName: "main", baseRefOid: base })));
     writeFileSync(join(dir, ".git", "fake-gh-list.json"), list);
     for (const p of prs) writeFileSync(join(dir, ".git", `fake-gh-diff-${p.number}.txt`), `${p.files.join("\n")}\n`);
     const gh = [
@@ -301,8 +306,8 @@ describe("symbol-level overlap through the CLI", () => {
   }
 
   test("golden end to end: the overlap result names the other pull request's symbols and validates as 2.0.0", async () => {
-    const { dir, heads } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
-    const bin = await fakeGh(dir, [{ number: 1, head: heads.a!, branch: "a", files: ["lib.ts"] }, { number: 2, head: heads.b!, branch: "b", files: ["lib.ts"] }]);
+    const { dir, heads, main } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
+    const bin = await fakeGh(dir, main, [{ number: 1, head: heads.a!, branch: "a", files: ["lib.ts"] }, { number: 2, head: heads.b!, branch: "b", files: ["lib.ts"] }]);
     const env = { ...process.env, PATH: bin, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-sym-state-")) };
     const run = async (args: string[]) => {
       const proc = Bun.spawn([process.execPath, join(ROOT, "src/cli.ts"), ...args], { cwd: dir, env, stdout: "pipe", stderr: "pipe" });
