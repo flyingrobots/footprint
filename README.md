@@ -116,10 +116,11 @@ than quietly omitting it. A degraded run should never read as a clean one.
 
 ## Status
 
-**v0.5.0** — composition, the landing plan, the export-surface diff with the call sites of each
+**v0.6.1** — composition, the landing plan, the export-surface diff with the call sites of each
 changed symbol grouped by system, the unanalysed languages, and the cross-pull-request overlap
-down to the symbol level, all as JSON Lines through the Parley output protocol. Released on GitHub
-when its tag is pushed; on npm as `@flyingrobots/footprint` once its first publish is done (see
+down to the symbol level, and the one Footprint comment per pull request, all as JSON Lines through
+the Parley output protocol. Released on GitHub when its tag is pushed, and staged on npm as
+`@flyingrobots/footprint` for the owner to approve (see
 [the release workflow](docs/workflows/release/README.md)).
 
 Documentation: [`docs/README.md`](docs/README.md). Working agreement: [`AGENTS.md`](AGENTS.md).

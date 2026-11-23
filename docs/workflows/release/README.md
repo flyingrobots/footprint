@@ -28,12 +28,25 @@ The tag starts [`.github/workflows/release.yml`](../../../.github/workflows/rele
 | --- | --- |
 | `sanity` | Refuses a tag whose version differs from `package.json`, a version with no dated `## [X.Y.Z] — YYYY-MM-DD` heading in `CHANGELOG.md`, and a tagged commit that is not on `main`; checks the manifest's publishing fields (`bin`, `files`, `engines`, `publishConfig.access: public` among them); runs `bun test` with the same environment as CI; dry-runs the pack; and fails if npm would publish a different manifest than the one tagged (below) |
 | `release` | Creates the GitHub release named after the tag, with that version's changelog section as notes and the tarball plus `SHA256SUMS` attached |
-| `publish` | In the GitHub environment `npm`, publishes with OIDC provenance through npm trusted publishing; no token lives in the repository |
+| `publish` | In the GitHub environment `npm`, stages the version with `npm stage publish` and OIDC provenance through npm trusted publishing; no token lives in the repository. Nothing is installable yet |
+
+**A release ends with the owner's approval.** The trusted publisher is allowed to stage and
+nothing else, so a workflow cannot put code in front of users on its own. The owner lists what is
+waiting and approves it with their one-time password, or does the same on the package's **Staged
+Packages** tab on npmjs.com:
+
+```bash
+npm stage list @flyingrobots/footprint
+npm stage approve <stage-id>
+```
+
+`npm stage view <stage-id>` and `npm stage download <stage-id>` show what would be published;
+`npm stage reject <stage-id>` discards it. These commands need an interactive login and cannot be
+run from CI.
 
 The tarball on the GitHub release and the one on npm hold the same files, but not necessarily the
-same bytes. The `release` job packs with the runner's npm, the `publish` job publishes with
-`npx -y npm@latest`, and the first publish is made by hand from the owner's machine, so up to three
-npm versions can pack one tagged tree. The same files gzipped by different npm or zlib versions
+same bytes. The `release` job packs with the runner's npm and the `publish` job stages with
+`npx -y npm@latest`, so two npm versions can pack one tagged tree. The same files gzipped by different npm or zlib versions
 give different `.tgz` bytes, so the `SHA256SUMS` digest on the release matches an npm tarball only
 when the same npm packed it. What is guaranteed is the contents; what is not is the archive digest.
 To check a tarball, compare its files and their digests, not the digest of the archive
@@ -98,18 +111,8 @@ why `test/manifest.test.ts` exercises it on throwaway packages instead (OUT-18).
 
 ## One-time setup
 
-**The first publish of a new package is manual.** npm trusted publishing is configured on the
-package's settings page, and a package that does not exist yet has none. The owner publishes the
-first version by hand, from the tagged commit, with their one-time password:
-
-```bash
-git checkout vX.Y.Z
-bun install --frozen-lockfile
-npm publish --access public
-```
-
-Then, on npmjs.com, under the package's **Settings → Trusted publishing**, add a GitHub Actions
-publisher with exactly these values:
+On npmjs.com, under the package's **Settings → Trusted Publisher**, add a GitHub Actions publisher
+with exactly these values:
 
 | Field | Value |
 | --- | --- |
@@ -117,8 +120,15 @@ publisher with exactly these values:
 | Repository | `footprint` |
 | Workflow filename | `release.yml` |
 | Environment name | `npm` |
+| Allow `npm publish` | unchecked |
+| Allow `npm dist-tag` | unchecked |
+
+With both boxes unchecked the publisher may run `npm stage publish` and nothing else. A workflow
+that runs `npm publish` against it is refused with `OIDC permission denied for this action`.
 
 The repository also needs a GitHub environment named `npm` (**Settings → Environments**). Until
-both exist, the `publish` job fails with an authentication error and nothing is published; the
-GitHub release from the `release` job still exists, and the version can be published by hand as
-above.
+both exist, the `publish` job fails and nothing is staged; the GitHub release from the `release`
+job still exists.
+
+The settings page exists only once the package name does. Staging a package npm has never seen claims the name with a public
+placeholder version, `0.0.0-stage`; the staged contents stay private until approved.

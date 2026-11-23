@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-11-23
+
+### Changed
+
+- **Releases are staged, then approved by the owner** (flyingrobots/footprint#61). The release
+  workflow's `publish` job runs `npm stage publish` in place of `npm publish`: the npm trusted
+  publisher is allowed to stage and nothing else, and a version becomes installable only when the
+  owner approves it with two-factor authentication. `RELEASE.md` and the release workflow page say
+  how. No behaviour or schema of footprint changed. No earlier version is on npm.
+
 ## [0.6.0] — 2026-11-23
 
 ### Added
