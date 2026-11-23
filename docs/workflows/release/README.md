@@ -30,9 +30,50 @@ The tag starts [`.github/workflows/release.yml`](../../../.github/workflows/rele
 | `release` | Creates the GitHub release named after the tag, with that version's changelog section as notes and the tarball plus `SHA256SUMS` attached |
 | `publish` | In the GitHub environment `npm`, publishes with OIDC provenance through npm trusted publishing; no token lives in the repository |
 
-The tarball on the GitHub release and the one on npm are the same bytes; compare the digest when
-in doubt. The tag check is also made locally: `test/release.test.ts` (OUT-17b) fails when the
-manifest version has no dated changelog heading.
+The tarball on the GitHub release and the one on npm hold the same files, but not necessarily the
+same bytes. The `release` job packs with the runner's npm, the `publish` job publishes with
+`npx -y npm@latest`, and the first publish is made by hand from the owner's machine, so up to three
+npm versions can pack one tagged tree. The same files gzipped by different npm or zlib versions
+give different `.tgz` bytes, so the `SHA256SUMS` digest on the release matches an npm tarball only
+when the same npm packed it. What is guaranteed is the contents; what is not is the archive digest.
+To check a tarball, compare its files and their digests, not the digest of the archive
+([below](#verifying-a-tarballs-contents)). The tag check is also made locally:
+`test/release.test.ts` (OUT-17b) fails when the manifest version has no dated changelog heading.
+
+## Verifying a tarball's contents
+
+Unpack both tarballs and compare the sorted list of files with a SHA-256 of each:
+
+```bash
+mkdir -p a b npm
+tar -xzf flyingrobots-footprint-X.Y.Z.tgz -C a        # the GitHub release asset
+npm pack @flyingrobots/footprint@X.Y.Z --pack-destination npm
+tar -xzf npm/flyingrobots-footprint-X.Y.Z.tgz -C b     # the npm tarball
+for d in a b; do (cd "$d/package" && find . -type f | sort | xargs shasum -a 256 | shasum -a 256); done
+diff -r a b && echo CONTENTS-IDENTICAL
+```
+
+Two identical digest lines, or an empty `diff -r`, mean the same files with the same contents. The
+npm tarball goes in its own directory because both tarballs are named
+`flyingrobots-footprint-X.Y.Z.tgz`.
+
+**Captured example, 2026-11-22.** This is a real run, not an illustration. The release asset is
+`flyingrobots-footprint-0.3.1.tgz` from the `v0.3.1` GitHub release. The other tarball is
+`npm pack` of the same tagged tree (`git archive v0.3.1`) with npm 11.20.0 on macOS; 0.3.1 was not
+yet on npm, so this stands in for the npm tarball. The archive digests differ:
+
+```text
+46f614f3bea511c5d8651c0932bf0efbf7cfedcf855bf0d82296b47d250512d1  release asset (SHA256SUMS)
+8c91dd6de9d6643de8e6d0ab99f67a4f0e76bcb98880bb994646624e82a69714  npm pack, npm 11.20.0
+```
+
+and the contents do not (`diff -r a b` printed nothing; the digest of the sorted per-file digests
+is the same for both):
+
+```text
+9631373b9ba9f71351e1c5e3dddc1db3a41ac325a22d602621d1040b6115c7e2  -
+9631373b9ba9f71351e1c5e3dddc1db3a41ac325a22d602621d1040b6115c7e2  -
+```
 
 ## The manifest npm publishes
 

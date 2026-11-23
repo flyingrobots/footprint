@@ -13,6 +13,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   `test`. No schema changed; compositions of such repositories shift from `test` to `docs`.
   (flyingrobots/footprint#42)
 
+- **The release page no longer says the npm and GitHub tarballs are the same bytes.** They hold
+  the same files, but different npm versions gzip them differently: for `v0.3.1` the release
+  asset's SHA-256 is `46f614f3...` and `npm pack` of the same tree under npm 11.20.0 gives
+  `8c91dd6d...`, with `diff -r` of the unpacked contents empty. The page now says what is
+  guaranteed and how to verify contents by comparing a file list and per-file digests, with the
+  captured comparison. (flyingrobots/footprint#47)
+
 ## [0.3.1] — 2026-11-22
 
 Fixes found by the first real use of 0.3.0 and the footprint skill. **Publish this, not 0.3.0**:
