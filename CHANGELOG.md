@@ -14,7 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   graft's; the line now reads "as `graft struct review` reads it", says "labelled `formatting`",
   and lists each such file beneath it with a note that the label is graft's and that a changed
   value inside an existing symbol can carry it. The wording is the only change; no schema moved.
-  (flyingrobots/footprint#44)
+  graft's side is flyingrobots/graft#276. (flyingrobots/footprint#44)
 
 ## [0.3.1] — 2026-11-22
 
