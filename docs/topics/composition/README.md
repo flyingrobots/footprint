@@ -57,12 +57,16 @@ unrelated commits on the default branch are excluded.
 When graft resolves, the report adds a line path-based classification cannot produce:
 
 ```text
-**Structural:** 1 file changed shape (+2/-0/~0 symbols), 1 formatting-only.
+**Structural**, as `graft struct review` reads it: 1 file changed shape (+2/-0/~0 symbols), 1 labelled `formatting`.
 ```
 
 Graft classifies a changed file by what happened to its **symbols**, so a source file whose diff
-adds, removes and changes nothing is reported as *formatting*, not as a behavior change. Breaking
-changes are surfaced in the gut check.
+adds, removes and changes nothing is labelled `formatting` **by graft**, and the line says so: it
+names `graft struct review` as the reader, and lists each file so labelled beneath it as graft's
+label, not footprint's claim. The label is not a finding of "no behavior change": on
+flyingrobots/footprint#43 graft's own JSON labelled `src/classify.ts` `formatting` for a change
+whose only edit was a new entry in the `RULES` array, a changed value inside an existing symbol
+(flyingrobots/footprint#44). Breaking changes are surfaced in the gut check.
 
 The two views are complementary and both are shown: composition answers "what kind of files", the
 structural signal answers "did anything's shape actually move".

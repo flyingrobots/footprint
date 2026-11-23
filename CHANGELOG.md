@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Structural line names graft as the source of its `formatting` reading.** It read "1
+  formatting-only" for a change whose only edit was a new entry in a rule table, as if footprint
+  had judged the change cosmetic. graft's own `struct review --json` labels such a file
+  `formatting` (reproduced on flyingrobots/footprint#43's range with graft 0.14.0), so the label is
+  graft's; the line now reads "as `graft struct review` reads it", says "labelled `formatting`",
+  and lists each such file beneath it with a note that the label is graft's and that a changed
+  value inside an existing symbol can carry it. The wording is the only change; no schema moved.
+  (flyingrobots/footprint#44)
+
 ## [0.3.1] — 2026-11-22
 
 Fixes found by the first real use of 0.3.0 and the footprint skill. **Publish this, not 0.3.0**:
