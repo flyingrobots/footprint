@@ -14,11 +14,17 @@ import {
   type Exports,
 } from "../src/exports.ts";
 import type { CallSite, CallSiteScan } from "../src/callsites.ts";
-import { blastRadius, render, renderOverlap } from "../src/render.ts";
-import { BLAST_LIMITS, REPORT_LIMIT, UNBOUNDED_BLAST, blastBudget } from "../src/bound.ts";
+import { blastRadius, render, renderLanding, renderOverlap } from "../src/render.ts";
+import { BLAST_LIMITS, LANDING_BUDGET, REPORT_LIMIT, UNBOUNDED_BLAST, blastBudget, clamp } from "../src/bound.ts";
 import { compose } from "../src/footprint.ts";
 import type { FileChange } from "../src/footprint.ts";
 import type { Overlap } from "../src/overlap.ts";
+import type { Landing } from "../src/landing.ts";
+import type { StructuralReview } from "../src/graft.ts";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 const SYSTEMS = ["src", "test", "docs", "schemas", "scripts", "skills"];
 const COMMON = ["type", "id", "run", "description", "title", "name", "version", "kind"];
@@ -153,7 +159,7 @@ describe("the --human report is bounded to the comment limit", () => {
     expect(said).not.toBeNull();
     const listed = md.split("\n").filter((l) => /^- `data\//.test(l)).length;
     expect(listed + Number(said![1])).toBe(4000);
-    expect(md).toContain("the composition result line carries every one");
+    expect(md).toContain("the `files` field of the receipt carries every one");
   });
 
   // OUT-21i
@@ -175,4 +181,79 @@ describe("the --human report is bounded to the comment limit", () => {
     expect(budget).toBeGreaterThan(REPORT_LIMIT - 3000 - 10_000);
     expect(blastBudget(REPORT_LIMIT, REPORT_LIMIT)).toBeGreaterThanOrEqual(0);
   });
+
+  // OUT-21l
+  test("formatting-labelled paths are bounded and counted too", () => {
+    const changes: FileChange[] = [{ path: "a.ts", added: 1, removed: 0, binary: false }];
+    const review: StructuralReview = {
+      breakingChanges: [],
+      files: Array.from({ length: 2500 }, (_, i) => ({ path: `some/long/directory/name/formatting-only-${i}.json`, category: "formatting" })),
+    } as unknown as StructuralReview;
+    const md = render(compose(changes), changes, "a...b", review, 16_384);
+    expect(md.length).toBeLessThanOrEqual(16_384);
+    const said = /(\d+) more formatting-labelled files? omitted/.exec(md);
+    expect(said).not.toBeNull();
+    const listed = (md.match(/formatting-only-\d+\.json/g) ?? []).length;
+    expect(listed + Number(said![1])).toBe(2500);
+  });
+
+  // OUT-21m
+  test("per-symbol remainder notes are aggregated once there are many, and the count is kept", () => {
+    const e = fixture({ added: 3000, commonSites: 0, uniqueSites: 30 });
+    // 30 sites over six systems is 5 per system: raise it so one system holds more than 20 of each.
+    const one = fixture({ added: 1500, commonSites: 0, uniqueSites: 0 });
+    void one;
+    const md = blastRadius(e, [], 40_000);
+    expect(md.length).toBeLessThanOrEqual(40_000);
+    expect(md).toMatch(/…and \d+ more for `/);
+  });
+
+  // OUT-21n
+  test("the landing section is bounded, counts the steps it omitted and says where to read them", () => {
+    const steps = Array.from({ length: 3000 }, (_, i) => ({ step: `Do step number ${i} ${"x".repeat(60)}`, file: "RELEASE.md", heading: "After merge" }));
+    const landing: Landing = {
+      before_merge: { items: [], guards: [], unguarded: false, unguarded_because: "A guard was found." },
+      after_merge: { read: [], steps, declared: true, nothing_to_do: false, statement: "3000 steps" },
+    };
+    const md = renderLanding(landing, LANDING_BUDGET);
+    expect(md.length).toBeLessThanOrEqual(LANDING_BUDGET);
+    const said = /(\d+) more steps? omitted/.exec(md);
+    expect(said).not.toBeNull();
+    expect(md.split("\n").filter((l) => l.startsWith("- [ ]")).length + Number(said![1])).toBe(3000);
+    expect(md).toContain("RELEASE.md");
+  });
+
+  // OUT-21o
+  test("the last resort cuts any text to the bound, closes what it opened and states what it cut", () => {
+    const text = `## S\n\n<details>\n<summary>x</summary>\n\n${"a line of text\n".repeat(5000)}\n</details>`;
+    const out = clamp(text, 2000, "the composition section");
+    expect(out.length).toBeLessThanOrEqual(2000);
+    expect(out).toMatch(/\d+ characters? of the composition section omitted/);
+    expect((out.match(/<details>/g) ?? []).length).toBe((out.match(/<\/details>/g) ?? []).length);
+    expect(clamp("short", 2000, "x")).toBe("short");
+    expect(clamp("z".repeat(10), 3, "x").length).toBeLessThanOrEqual(3);
+  });
+
+  // OUT-21p
+  test("the whole report from the CLI on an oversized fixture is at most 65536 characters", () => {
+    const repo = mkdtempSync(join(tmpdir(), "footprint-bound-"));
+    const git = (...a: string[]) => execFileSync("git", ["-C", repo, ...a], { encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } });
+    git("init", "-q", "-b", "main");
+    writeFileSync(join(repo, "README.md"), "x\n");
+    git("add", "-A"); git("commit", "-q", "-m", "base");
+    mkdirSync(join(repo, "data"));
+    for (let i = 0; i < 3000; i++) writeFileSync(join(repo, "data", `a-fairly-long-file-name-${i}.json`), "{}\n");
+    const steps = Array.from({ length: 1500 }, (_, i) => `- [ ] Step ${i} ${"y".repeat(50)}`).join("\n");
+    writeFileSync(join(repo, "RELEASE.md"), `# Releasing\n\n## After merge\n\n${steps}\n`);
+    git("add", "-A"); git("commit", "-q", "-m", "head");
+    const bin = mkdtempSync(join(tmpdir(), "footprint-bin-"));
+    const out = execFileSync(process.execPath, [resolve(import.meta.dir, "../src/cli.ts"), "HEAD~1..HEAD", "--human"], {
+      cwd: repo, encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
+      env: { ...process.env, PATH: `${dirname(process.execPath)}:${dirname(Bun.which("git")!)}`, XDG_STATE_HOME: bin },
+    });
+    expect(out.length).toBeLessThanOrEqual(REPORT_LIMIT);
+    expect(out).toMatch(/\d+ more files? omitted/);
+    expect(out).toMatch(/\d+ more steps? omitted/);
+    expect(out).toContain("## Blast radius");
+  }, 120_000);
 });
