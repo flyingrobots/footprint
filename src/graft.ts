@@ -68,9 +68,13 @@ export async function structuralReview(
     .quiet()
     .nothrow();
   if (run.exitCode !== 0) return null;
+  return parseStructuralReview(run.text());
+}
 
+/** Parse `graft struct review --json` output; null when it is not JSON. Pure, so a captured answer can be tested. */
+export function parseStructuralReview(text: string): StructuralReview | null {
   try {
-    const parsed = JSON.parse(run.text()) as {
+    const parsed = JSON.parse(text) as {
       files?: Array<{ path: string; category: string; structuralChanges?: { added: number; removed: number; changed: number } }>;
       breakingChanges?: unknown[];
     };

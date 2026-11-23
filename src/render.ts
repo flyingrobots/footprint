@@ -78,11 +78,20 @@ export function render(
     const s = structuralSummary(review);
     const symbols = s.symbolsAdded + s.symbolsRemoved + s.symbolsChanged;
     out.push(
-      `**Structural:** ${s.structural} file${s.structural === 1 ? "" : "s"} changed shape` +
+      `**Structural**, as \`graft struct review\` reads it: ${s.structural} file${s.structural === 1 ? "" : "s"} changed shape` +
         ` (+${s.symbolsAdded}/-${s.symbolsRemoved}/~${s.symbolsChanged} symbols), ` +
-        `${s.formatting} formatting-only.`,
+        `${s.formatting} labelled \`formatting\`.`,
       "",
     );
+    const formatting = review.files.filter((f) => f.category === "formatting");
+    if (formatting.length > 0) {
+      out.push(
+        `- graft's label, not footprint's claim: it saw no symbol added, removed or changed in ` +
+          `${formatting.map((f) => `\`${f.path}\``).join(", ")}. A changed value inside an existing symbol ` +
+          `(a rule table, a constant) can carry that label, so read the diff.`,
+        "",
+      );
+    }
     if (review.breakingChanges.length > 0) {
       out.push(`- **${review.breakingChanges.length} breaking change(s)**, as \`graft struct review\` lists them.`, "");
     }

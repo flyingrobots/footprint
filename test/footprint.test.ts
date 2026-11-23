@@ -2,7 +2,7 @@ import { expect, test, describe } from "bun:test";
 import { classify } from "../src/classify.ts";
 import { compose, parseNumstat, mermaidPie } from "../src/footprint.ts";
 import { blastRadius, gutCheck, render } from "../src/render.ts";
-import { structuralSummary } from "../src/graft.ts";
+import { parseStructuralReview, structuralSummary } from "../src/graft.ts";
 import { unsupportedLanguages } from "../src/languages.ts";
 
 describe("classify", () => {
@@ -227,5 +227,22 @@ describe("each severity statement names the graft command it comes from (flyingr
     const blast = blastRadius(surface);
     expect(blast).toContain("graft struct exports");
     expect(blast).toContain("**minor**");
+  });
+});
+
+describe("the Structural line names graft as the source of its formatting reading (flyingrobots/footprint#44)", () => {
+  test("an initializer-only change is graft's \"formatting\", stated as graft's, not footprint's claim", async () => {
+    const text = await Bun.file(new URL("./fixtures/graft.struct_review.initializer_only.json", import.meta.url)).text();
+    // The reading is graft's own: its JSON labels the file "formatting".
+    expect(JSON.parse(text).files.find((f: { path: string }) => f.path === "src/classify.ts").category).toBe("formatting");
+    const review = parseStructuralReview(text);
+    expect(review).not.toBeNull();
+    const changes = [{ path: "src/classify.ts", added: 1, removed: 0, binary: false }];
+    const md = render(compose(changes), changes, "a...b", review);
+    const line = md.split("\n").find((l) => l.startsWith("**Structural"))!;
+    expect(line).toContain("graft struct review");
+    expect(md).not.toContain("formatting-only");
+    expect(md).toContain("`src/classify.ts`");
+    expect(md).toMatch(/graft's (reading|label)/);
   });
 });
