@@ -20,6 +20,9 @@ const RULES: ReadonlyArray<readonly [Category, RegExp]> = [
   ["test", /(^|\/)(tests?|__tests__|spec|fixtures?|testdata)\//],
   ["test", /\.(test|spec)\.[cm]?[jt]sx?$/],
   ["test", /_test\.(go|py|rs)$/],
+  // Licence and notice texts, by whole file name: extensionless, so without this they fall through
+  // to source and read as code in an unanalysed language (flyingrobots/footprint#36).
+  ["docs", /(^|\/)(LICENSE(\.[^/]+)?|NOTICE|COPYING)$/],
   ["docs", /(^|\/)docs?\//],
   ["docs", /\.(md|mdx|rst|adoc|txt)$/i],
   ["assets", /\.(png|jpe?g|gif|svg|webp|avif|ico|woff2?|ttf|otf|mp4|webm|pdf)$/i],

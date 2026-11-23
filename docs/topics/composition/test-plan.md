@@ -9,6 +9,7 @@ Evidence lives in `test/footprint.test.ts`.
 | CO-3 | Binary files are counted without producing `NaN` line counts |
 | CO-4 | A change with no line edits does not divide by zero |
 | CO-5 | Unrecognised files classify as `source` rather than being dropped |
+| CO-7 | A licence or notice file — `LICENSE`, `LICENSE.<anything>`, `NOTICE`, `COPYING`, at any depth — is `docs`, so it neither inflates the source share nor reads as code in an unanalysed language (flyingrobots/footprint#36) |
 
 | ID | Case | Oracle | Evidence | Status |
 | --- | --- | --- | --- | --- |
@@ -20,6 +21,10 @@ Evidence lives in `test/footprint.test.ts`.
 | CO-4a | Zero-line change has share 0 | no `NaN` | `compose > a change with no line edits does not divide by zero` | implemented |
 | CO-5a | Unknown extension is source | `classify("weird/thing.xyz") === "source"` | `classify > anything unrecognised is source, never silently dropped` | implemented |
 | CO-6a | End-to-end against a real range | the result's category rows sum to its totals; every line validates | `the CLI speaks the Parley output protocol > a real range validates line by line and closes with end` (`test/cli.test.ts`) | implemented |
+| CO-7a | `packages/parley-emit-py/LICENSE`, `NOTICE`, `LICENSE`, `LICENSE.APACHE`, `COPYING`, `a/b/NOTICE` | each `classify()` is `docs` | `classify > licence and notice files are docs, at any depth` | implemented |
+| CO-7b | `node_modules/x/LICENSE`, `test/fixtures/repo/LICENSE` | `generated` and `test`: the earlier, more specific rules still win | `classify > a licence file under a generated or test path keeps that category` | implemented |
+| CO-7c | `src/NOTICES`, `COPYINGX`, `MYLICENSE` | `source` each: the rule names whole file names and nothing that merely contains them | `classify > only the named licence files are docs, not names that merely contain them` | implemented |
+| CO-7d | `unsupportedLanguages` over `packages/parley-emit-py/LICENSE` and `packages/parley-emit-py/NOTICE` (the flyingrobots/parley#89 case) | no unanalysed language reported | `classify > licence files are not reported as an unanalysed language` | implemented |
 
 ## Known gaps
 

@@ -27,6 +27,11 @@ Flags are observations, not verdicts. A large change is not automatically risky.
 list in `src/classify.ts`, first match wins, and the order matters: a test fixture classifies as
 `test` before extension rules apply, and a lockfile as `generated` before the JSON rule claims it.
 
+Licence and notice texts are `docs` by whole file name, at any depth: `LICENSE`, `LICENSE.<anything>`,
+`NOTICE` and `COPYING`. They have no extension for the other rules to see, and without that rule
+they would count as source and read as code in an unanalysed language. One under a generated or
+test path keeps that category, because those rules come first.
+
 Unrecognised files fall through to `source` on purpose — an unknown file should look like code that
 needs review rather than disappear.
 

@@ -3,6 +3,7 @@ import { classify } from "../src/classify.ts";
 import { compose, parseNumstat, mermaidPie } from "../src/footprint.ts";
 import { blastRadius, render } from "../src/render.ts";
 import { structuralSummary } from "../src/graft.ts";
+import { unsupportedLanguages } from "../src/languages.ts";
 
 describe("classify", () => {
   test("orders rules so a test fixture is a test, not a source file", () => {
@@ -30,6 +31,26 @@ describe("classify", () => {
 
   test("anything unrecognised is source, never silently dropped", () => {
     expect(classify("weird/thing.xyz")).toBe("source");
+  });
+
+  // flyingrobots/footprint#36: extensionless licence files fell through to source.
+  test("licence and notice files are docs, at any depth", () => {
+    for (const p of ["packages/parley-emit-py/LICENSE", "NOTICE", "LICENSE", "LICENSE.APACHE", "COPYING", "a/b/NOTICE"]) {
+      expect([p, classify(p)]).toEqual([p, "docs"]);
+    }
+  });
+
+  test("a licence file under a generated or test path keeps that category", () => {
+    expect(classify("node_modules/x/LICENSE")).toBe("generated");
+    expect(classify("test/fixtures/repo/LICENSE")).toBe("test");
+  });
+
+  test("only the named licence files are docs, not names that merely contain them", () => {
+    for (const p of ["src/NOTICES", "COPYINGX", "MYLICENSE"]) expect([p, classify(p)]).toEqual([p, "source"]);
+  });
+
+  test("licence files are not reported as an unanalysed language", () => {
+    expect(unsupportedLanguages(["packages/parley-emit-py/LICENSE", "packages/parley-emit-py/NOTICE"])).toEqual([]);
   });
 });
 
