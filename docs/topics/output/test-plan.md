@@ -163,11 +163,13 @@ git repository under `$TMPDIR` so a deleted file and a binary file are real rath
   string or the declaration itself, because the scan cannot: that is the stated limitation, not a
   gap in the evidence. Dynamic dispatch and a re-export under another name are invisible to it and
   no test claims otherwise.
-- Whether the live blast-radius branch is exercised at all depends on the machine. The same suite
-  reports 754 `expect()` calls locally, where graft answers, and 438 on CI, where it does not,
-  though it installs there: the graft-dependent assertions take their stated-limitation branch.
-  OUT-13r accepts both branches deliberately, so CI being green does not by itself mean a call
-  site was ever looked up in CI.
+- OUT-13r and OUT-14j accept both branches of the live blast radius, graft answering or not, so
+  they cannot tell on their own whether a call site was ever looked up. On CI that question is
+  settled by `test/require-graft.test.ts` (flyingrobots/footprint#25), which the workflow runs
+  with `FOOTPRINT_REQUIRE_GRAFT=1` and which fails unless graft answered: on this branch CI
+  reported 137 pass and 1,381 `expect()` calls, against 136 pass, 1 skip and 1,379 locally, so the
+  graft-dependent branches run in both places. A local run skips that guard by name, so a local
+  green alone still does not prove graft answered.
 - No test asserts that graft's live output still matches the fixtures. A graft release that changed
   the shape under the same `_schema` version would be caught only by OUT-10a's `counts` invariant.
 - OUT-12h (graft's language module missing, or missing the exports the drift test depends on) is
