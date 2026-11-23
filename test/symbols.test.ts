@@ -5,12 +5,14 @@
 // installed graft, so the golden case is a real `graft read outline` answer rather than a mock:
 // a fixture standing in for graft would pass while graft's jump table drifted underneath it.
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { $ } from "bun";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import { computeOverlap, type PullRequest } from "../src/overlap.ts";
-import { analyseSymbols, attribute, changedLines, classifyFile, graftOutliner, parseOutline, type Outliner, type SideResult } from "../src/symbols.ts";
+import { analyseSymbols, attribute, changedLines, classifyFile, graftOutliner, parseOutline, type Outliner, type SideResult, type Span } from "../src/symbols.ts";
+import { isFailure, listOpenPullRequests } from "../src/pulls.ts";
 import { resolveGraft } from "../src/graft.ts";
 import { renderOverlap } from "../src/render.ts";
 import { OVERLAP_BUDGET } from "../src/bound.ts";
@@ -323,5 +325,252 @@ describe("symbol-level overlap through the CLI", () => {
     const human = await run(["main...a", "--human"]);
     expect(human).toContain("`alpha`");
     expect(human).toContain("`beta`");
+  }, GRAFT_TIMEOUT);
+});
+
+// Review follow-ups on the symbol level (flyingrobots/footprint#56). Each case is a way the
+// analysis could call two pull requests that change the same symbol `symbol-disjoint`, or lose
+// what it found. They run on a stand-in outliner, not graft, so they hold with graft absent: the
+// stand-in's spans are each `export function NAME` line through the next line that starts with `}`.
+describe("symbol-level overlap, review follow-ups (flyingrobots/footprint#56)", () => {
+  function spansOf(content: string): Span[] {
+    const lines = content.split("\n");
+    const spans: Span[] = [];
+    lines.forEach((l, i) => {
+      const m = /^export function (\w+)/.exec(l);
+      if (m === null) return;
+      let end = i;
+      while (end < lines.length - 1 && !lines[end]!.startsWith("}")) end += 1;
+      spans.push({ symbol: m[1]!, start: i + 1, end: end + 1 });
+    });
+    return spans;
+  }
+  const standIn: Outliner = async (content) => spansOf(content);
+
+  /** `main` holds `base`; each branch starts from `from` (default `main`) and writes its files. */
+  async function repo(base: Record<string, string>, branches: Record<string, { from?: string; files: Record<string, string> }>) {
+    const dir = mkdtempSync(join(tmpdir(), "footprint-sym-repo-"));
+    await git(dir, "init", "-q", "-b", "main");
+    for (const [p, c] of Object.entries(base)) { mkdirSync(join(dir, p, ".."), { recursive: true }); writeFileSync(join(dir, p), c); }
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-q", "-m", "base");
+    const main = await git(dir, "rev-parse", "HEAD");
+    const heads: Record<string, string> = {};
+    for (const [name, b] of Object.entries(branches)) {
+      await git(dir, "checkout", "-q", "-b", name, b.from ?? "main");
+      for (const [p, c] of Object.entries(b.files)) { mkdirSync(join(dir, p, ".."), { recursive: true }); writeFileSync(join(dir, p), c); }
+      await git(dir, "add", ".");
+      await git(dir, "commit", "-q", "-m", name);
+      heads[name] = await git(dir, "rev-parse", "HEAD");
+    }
+    await git(dir, "checkout", "-q", "main");
+    return { dir, heads, main };
+  }
+
+  function pr(number: number, head: string, files: readonly string[], baseCommit: string | undefined, extra: Partial<PullRequest> = {}): PullRequest {
+    return { number, title: `pull request ${number}`, isDraft: false, files, headCommit: head, baseBranch: "main", ...(baseCommit === undefined ? {} : { baseCommit }), ...extra } as PullRequest;
+  }
+
+  async function levels(repoDir: string, prs: PullRequest[], opts: { outliner?: Outliner; budget?: number } = {}) {
+    const fileLevel = computeOverlap([], prs);
+    const symbols = await analyseSymbols({ repo: repoDir, prs, conflicts: fileLevel.conflicts, overlapping: [], range: null, outliner: opts.outliner ?? standIn, ...(opts.budget === undefined ? {} : { outlineBudget: opts.budget }) });
+    return { overlap: computeOverlap([], prs, { symbols }), symbols };
+  }
+
+  test("a whitespace-only line inside a symbol is attributed to it; one outside every symbol counts toward nothing", async () => {
+    const r = await repo({ "lib.ts": LIB }, {
+      a: { files: { "lib.ts": LIB.replace("  return 1;\n", "  return 1;\n    \n") } },
+      b: { files: { "lib.ts": alphaBody(LIB) } },
+      c: { files: { "lib.ts": LIB.replace("}\n\nexport function beta", "}\n\n\nexport function beta") } },
+      d: { files: { "lib.ts": LIB.replace("// header comment", "// header comment, edited") } },
+    });
+    const inside = await levels(r.dir, [pr(1, r.heads.a!, ["lib.ts"], r.main), pr(2, r.heads.b!, ["lib.ts"], r.main)]);
+    expect(inside.overlap.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "symbol-overlapping", shared: ["alpha"] });
+    const outside = await levels(r.dir, [pr(3, r.heads.c!, ["lib.ts"], r.main), pr(4, r.heads.d!, ["lib.ts"], r.main)]);
+    expect(outside.overlap.conflicts[0]!.symbolLevel.files[0]).toEqual({ path: "lib.ts", level: "symbol-disjoint", a: { symbols: [], outside: 0 }, b: { symbols: [], outside: 2 } });
+  });
+
+  test("an outline that is valid JSON of the wrong shape is unreadable, not a throw", () => {
+    expect(parseOutline("null")).toMatchObject({ code: "graft.outline_unreadable" });
+    expect(parseOutline("42")).toMatchObject({ code: "graft.outline_unreadable" });
+    expect(parseOutline('{"_schema":{"id":"graft.cli.read_outline","version":"3.0.0"},"jumpTable":[null],"outline":[],"path":"x.ts"}')).toMatchObject({ code: "graft.outline_unreadable" });
+  });
+
+  test("the outline deadline covers reading the pipes, not only the process exit", async () => {
+    const bin = mkdtempSync(join(tmpdir(), "footprint-sym-pipe-"));
+    const held = join(bin, "graft");
+    // Exits at once, but a background child keeps stdout and stderr open for 20 seconds.
+    writeFileSync(held, "#!/bin/sh\n(sleep 20) &\necho '{}'\nexit 0\n");
+    chmodSync(held, 0o755);
+    const outliner = graftOutliner(held, { timeoutMs: 500 });
+    const started = Date.now();
+    try {
+      const r = await outliner(LIB, "lib.ts");
+      expect(r).toMatchObject({ code: "graft.outline_timeout" });
+      expect(Date.now() - started).toBeLessThan(10_000);
+    } finally {
+      outliner.dispose();
+    }
+  }, 30_000);
+
+  test("one blob at two paths is outlined once per path, never answered with the other path's outline", async () => {
+    const r = await repo({ "a.ts": LIB, "a.tsx": LIB }, {
+      a: { files: { "a.ts": alphaBody(LIB), "a.tsx": alphaBody(LIB) } },
+      b: { files: { "a.ts": betaBody(LIB), "a.tsx": betaBody(LIB) } },
+    });
+    const refusesTsx: Outliner = async (content, path) => (path.endsWith(".tsx") ? { code: "graft.outline_refused", reason: "stand-in refuses .tsx" } : spansOf(content));
+    const { overlap } = await levels(r.dir, [pr(1, r.heads.a!, ["a.ts", "a.tsx"], r.main), pr(2, r.heads.b!, ["a.ts", "a.tsx"], r.main)], { outliner: refusesTsx });
+    const files = overlap.conflicts[0]!.symbolLevel.files;
+    expect(files.find((f) => f.path === "a.ts")).toMatchObject({ level: "symbol-disjoint" });
+    expect(files.find((f) => f.path === "a.tsx")).toMatchObject({ level: "undetermined", code: "graft.outline_refused" });
+  });
+
+  test("a configured textconv driver does not shape the attribution diff", async () => {
+    const r = await repo({ "lib.ts": LIB }, { a: { files: { "lib.ts": alphaBody(LIB) } }, b: { files: { "lib.ts": alphaBodyAgain(LIB) } } });
+    // A driver that shows only signatures: body edits vanish from a textconv'd diff.
+    writeFileSync(join(r.dir, ".git", "info", "attributes"), "*.ts diff=sig\n");
+    await git(r.dir, "config", "diff.sig.textconv", "grep '^export function'");
+    const { overlap } = await levels(r.dir, [pr(1, r.heads.a!, ["lib.ts"], r.main), pr(2, r.heads.b!, ["lib.ts"], r.main)]);
+    expect(overlap.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "symbol-overlapping", shared: ["alpha"] });
+  });
+
+  test("paths are read root-relative and literally: from a subdirectory, and with glob characters in the name", async () => {
+    const r = await repo({ "src/lib.ts": LIB, "src/page[1].ts": LIB, "src/page1.ts": `${LIB}// another file\n` }, {
+      a: { files: { "src/lib.ts": alphaBody(LIB), "src/page[1].ts": betaBody(LIB), "src/page1.ts": alphaBody(`${LIB}// another file\n`) } },
+      b: { files: { "src/lib.ts": alphaBodyAgain(LIB), "src/page[1].ts": alphaBody(LIB) } },
+    });
+    const prs = [pr(1, r.heads.a!, ["src/lib.ts", "src/page[1].ts", "src/page1.ts"], r.main), pr(2, r.heads.b!, ["src/lib.ts", "src/page[1].ts"], r.main)];
+    for (const from of [r.dir, join(r.dir, "src")]) {
+      const { overlap } = await levels(from, prs);
+      const files = overlap.conflicts[0]!.symbolLevel.files;
+      expect(files.find((f) => f.path === "src/lib.ts")).toMatchObject({ level: "symbol-overlapping", shared: ["alpha"] });
+      expect(files.find((f) => f.path === "src/page[1].ts")).toEqual({ path: "src/page[1].ts", level: "symbol-disjoint", a: { symbols: ["beta"], outside: 0 }, b: { symbols: ["alpha"], outside: 0 } });
+    }
+  });
+
+  test("no outline call is spent on a pair already known to be undetermined", async () => {
+    const other = `${LIB}// other\n`;
+    const r = await repo({ "lib.ts": LIB, "other.ts": other }, {
+      a: { files: { "lib.ts": alphaBody(LIB) } },
+      c: { files: { "other.ts": alphaBody(other) } },
+      d: { files: { "other.ts": betaBody(other) } },
+    });
+    const missing = "0123456789abcdef0123456789abcdef01234567";
+    const { overlap, symbols } = await levels(r.dir, [pr(1, r.heads.a!, ["lib.ts"], r.main), pr(2, missing, ["lib.ts"], r.main), pr(3, r.heads.c!, ["other.ts"], r.main), pr(4, r.heads.d!, ["other.ts"], r.main)], { budget: 3 });
+    expect(overlap.conflicts.find((c) => c.a === 1)!.symbolLevel.files[0]).toMatchObject({ level: "undetermined", code: "git.head_missing" });
+    expect(overlap.conflicts.find((c) => c.a === 3)!.symbolLevel.level).toBe("symbol-disjoint");
+    expect(symbols.analysis.outlinesRun).toBe(3);
+  });
+
+  test("the merge base is taken against the pull request's own base commit, never a local branch tip", async () => {
+    const r = await repo({ "lib.ts": LIB }, { a: { files: { "lib.ts": alphaBody(LIB) } }, b: { files: { "lib.ts": alphaBodyAgain(LIB) } } });
+    // The local main has already taken a's head, as a fork's main can; GitHub's base has not.
+    await git(r.dir, "merge", "-q", "--ff-only", "a");
+    const taken = await levels(r.dir, [pr(1, r.heads.a!, ["lib.ts"], r.main), pr(2, r.heads.b!, ["lib.ts"], r.main)]);
+    expect(taken.overlap.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "symbol-overlapping", shared: ["alpha"] });
+    const unknown = await levels(r.dir, [pr(1, r.heads.a!, ["lib.ts"], undefined), pr(2, r.heads.b!, ["lib.ts"], r.main)]);
+    expect(unknown.overlap.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "undetermined", code: "gh.base_unknown" });
+    const absent = await levels(r.dir, [pr(1, r.heads.a!, ["lib.ts"], "fedcba9876543210fedcba9876543210fedcba98"), pr(2, r.heads.b!, ["lib.ts"], r.main)]);
+    expect(absent.overlap.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "undetermined", code: "git.base_missing" });
+  });
+
+  test("a side listed as changing a file its own diff does not change is undetermined, not an empty side", async () => {
+    const r = await repo({ "lib.ts": LIB, "README.md": "# r\n" }, { a: { files: { "README.md": "# r\n\na\n" } }, b: { files: { "lib.ts": alphaBody(LIB) } } });
+    const { overlap } = await levels(r.dir, [pr(1, r.heads.a!, ["lib.ts", "README.md"], r.main), pr(2, r.heads.b!, ["lib.ts"], r.main)]);
+    expect(overlap.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ path: "lib.ts", level: "undetermined", code: "symbols.file_unchanged" });
+  });
+
+  test("a head that moved while the files were listed leaves that pull request's files undetermined", async () => {
+    const r = await repo({ "lib.ts": LIB }, { a: { files: { "lib.ts": alphaBody(LIB) } }, b: { files: { "lib.ts": betaBody(LIB) } }, b2: { from: "b", files: { "lib.ts": alphaBodyAgain(betaBody(LIB)) } } });
+    const bin = mkdtempSync(join(tmpdir(), "footprint-sym-gh-"));
+    const row = (n: number, head: string) => ({ number: n, title: `${n}`, isDraft: false, headRefOid: head, headRefName: `h${n}`, isCrossRepository: false, baseRefName: "main", baseRefOid: r.main });
+    writeFileSync(join(bin, "list1.json"), JSON.stringify([row(1, r.heads.a!), row(2, r.heads.b!)]));
+    writeFileSync(join(bin, "list2.json"), JSON.stringify([row(1, r.heads.a!), row(2, r.heads.b2!)]));
+    const gh = join(bin, "gh");
+    writeFileSync(gh, [
+      "#!/bin/sh",
+      `D=${JSON.stringify(bin)}`,
+      'if [ "$1 $2" = "pr list" ]; then if [ -f "$D/listed" ]; then /bin/cat "$D/list2.json"; else : > "$D/listed"; /bin/cat "$D/list1.json"; fi; exit 0; fi',
+      'if [ "$1 $2" = "pr diff" ]; then echo lib.ts; exit 0; fi',
+      "exit 1",
+    ].join("\n"));
+    chmodSync(gh, 0o755);
+    const pulls = await listOpenPullRequests(gh, r.dir);
+    if (isFailure(pulls)) throw new Error(pulls.reason);
+    const { overlap } = await levels(r.dir, [...pulls.pullRequests]);
+    expect(overlap.conflicts[0]!.symbolLevel.files[0]).toMatchObject({ level: "undetermined", code: "gh.head_moved" });
+  });
+
+  /** A stand-in graft for the CLI: answers `read outline` with the stand-in spans, fails everything else. */
+  function fakeGraft(bin: string): string {
+    const path = join(bin, "fake-graft");
+    writeFileSync(path, [
+      `#!${process.execPath}`,
+      'import { chmodSync, readFileSync } from "node:fs";',
+      'import { join } from "node:path";',
+      "const a = process.argv.slice(2);",
+      'const cwd = a[a.indexOf("--cwd") + 1];',
+      'if (a.includes("read") && a.includes("outline")) {',
+      '  const name = a[a.indexOf("outline") + 1];',
+      '  const lines = readFileSync(join(cwd, name), "utf8").split("\\n");',
+      "  const jumpTable = [];",
+      "  lines.forEach((l, i) => { const m = /^export function (\\w+)/.exec(l); if (!m) return; let e = i; while (e < lines.length - 1 && !lines[e].startsWith(\"}\")) e += 1; jumpTable.push({ symbol: m[1], kind: \"function\", start: i + 1, end: e + 1 }); });",
+      '  if (process.env.FAKE_GRAFT_LOCK === "1") chmodSync(cwd, 0o500);',
+      '  console.log(JSON.stringify({ _schema: { id: "graft.cli.read_outline", version: "3.0.0" }, path: name, outline: [], jumpTable }));',
+      "  process.exit(0);",
+      "}",
+      'process.stderr.write("fake graft answers read outline only\\n");',
+      "process.exit(1);",
+    ].join("\n"));
+    chmodSync(path, 0o755);
+    return path;
+  }
+
+  async function cliIn(dir: string, gh: string[], args: string[], env: Record<string, string> = {}) {
+    const bin = mkdtempSync(join(tmpdir(), "footprint-sym-bin-"));
+    for (const exe of ["git", "node"]) { const found = Bun.which(exe); if (found !== null) symlinkSync(found, join(bin, exe)); }
+    writeFileSync(join(bin, "gh"), `${gh.join("\n")}\n`);
+    chmodSync(join(bin, "gh"), 0o755);
+    const proc = Bun.spawn([process.execPath, join(ROOT, "src/cli.ts"), ...args], { cwd: dir, env: { ...process.env, PATH: bin, FOOTPRINT_GRAFT: fakeGraft(bin), XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-sym-state-")), ...env }, stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, status] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+    const lines = `${stdout}${stderr}`.split("\n").filter((l) => l !== "").map((l) => JSON.parse(l) as Record<string, unknown> & { _schema: { id: string } });
+    return { status, lines, overlap: (lines.find((l) => l.event === "result" && l._schema.id === "footprint.overlap") as { overlap: ReturnType<typeof computeOverlap> } | undefined)?.overlap };
+  }
+
+  function listingGh(dir: string, rows: object[], files: Record<number, string[]>, onFirstList = ""): string[] {
+    writeFileSync(join(dir, ".git", "fake-gh-list.json"), JSON.stringify(rows));
+    for (const [n, f] of Object.entries(files)) writeFileSync(join(dir, ".git", `fake-gh-diff-${n}.txt`), `${f.join("\n")}\n`);
+    return [
+      "#!/bin/sh",
+      `D=${JSON.stringify(join(dir, ".git"))}`,
+      `if [ "$1 $2" = "pr list" ]; then if [ ! -f "$D/fake-gh-listed" ]; then : > "$D/fake-gh-listed"; ${onFirstList || ":"}; fi; /bin/cat "$D/fake-gh-list.json"; exit 0; fi`,
+      'if [ "$1 $2" = "pr diff" ]; then /bin/cat "$D/fake-gh-diff-$3.txt"; exit 0; fi',
+      'echo "unexpected gh $*" >&2; exit 1',
+    ];
+  }
+
+  test("the range's head is pinned before the pull requests are listed, so a branch that advances mid-run is not read twice", async () => {
+    const r = await repo({ "lib.ts": LIB }, { a: { files: { "lib.ts": alphaBody(LIB) } }, a2: { files: { "lib.ts": betaBody(LIB) } }, b: { files: { "lib.ts": alphaBodyAgain(LIB) } } });
+    const row = (n: number, head: string, branch: string) => ({ number: n, title: `${n}`, isDraft: false, headRefOid: head, headRefName: branch, isCrossRepository: false, baseRefName: "main", baseRefOid: r.main });
+    const gh = listingGh(r.dir, [row(1, r.heads.a!, "a"), row(2, r.heads.b!, "b")], { 1: ["lib.ts"], 2: ["lib.ts"] }, `git -C ${JSON.stringify(r.dir)} update-ref refs/heads/a ${r.heads.a2}`);
+    const run = await cliIn(r.dir, gh, ["main...a"]);
+    expect(run.status).toBe(0);
+    expect(run.overlap!.self).toBe(1);
+    expect(run.overlap!.overlapping[0]!.symbolLevel.files[0]).toMatchObject({ level: "symbol-overlapping", shared: ["alpha"] });
+  }, GRAFT_TIMEOUT);
+
+  test("a failure to remove the outline directory is a warning; the symbol levels survive it", async () => {
+    const r = await repo({ "lib.ts": LIB }, { a: { files: { "lib.ts": alphaBody(LIB) } }, b: { files: { "lib.ts": betaBody(LIB) } } });
+    const row = (n: number, head: string, branch: string) => ({ number: n, title: `${n}`, isDraft: false, headRefOid: head, headRefName: branch, isCrossRepository: false, baseRefName: "main", baseRefOid: r.main });
+    const gh = listingGh(r.dir, [row(1, r.heads.a!, "a"), row(2, r.heads.b!, "b")], { 1: ["lib.ts"], 2: ["lib.ts"] });
+    const tmp = mkdtempSync(join(tmpdir(), "footprint-sym-tmp-"));
+    try {
+      const run = await cliIn(r.dir, gh, ["main...a"], { TMPDIR: tmp, FAKE_GRAFT_LOCK: "1" });
+      expect(run.status).toBe(0);
+      expect(run.overlap!.overlapping[0]!.symbolLevel.level).toBe("symbol-disjoint");
+      expect(run.lines.some((l) => l.code === "symbols.cleanup_failed")).toBe(true);
+    } finally {
+      await $`chmod -R u+rwx ${tmp}`.quiet().nothrow();
+    }
   }, GRAFT_TIMEOUT);
 });
