@@ -5,7 +5,7 @@
 // repository whose pull-request heads are then made absent, as a fork's are in CI. The outliner is
 // the stand-in one (each `export function NAME` through the next `}`), so they hold without graft.
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
