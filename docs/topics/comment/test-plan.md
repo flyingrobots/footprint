@@ -48,3 +48,12 @@ the CLI cases, which run against this repository.
 | MC-1a | The oversized repository of OUT-21p with `--max-chars 40960` | the report is at most 40960 characters | `the impact columns through the CLI > --max-chars bounds the whole report` | implemented |
 | MC-1b | `--max-chars 100`, `--max-chars 70000`, `--max-chars x` | error `args.invalid`, exit 2 | `the impact columns through the CLI > --max-chars outside 40960..65536 is an error` | implemented |
 | MC-1c | The skill's report command | passes `--max-chars` equal to `COMMENT_REPORT_LIMIT` | `the skill's commands > the report is bounded to leave the Changelog its room` (`test/skill.test.ts`) | implemented |
+
+## Known gaps
+
+- The stand-in `gh` prints what the real `--jq` expressions print; it does not run them. The real
+  expressions were exercised by hand on flyingrobots/footprint#60, whose Footprint comment was
+  created and then updated in place by this command.
+- The row's SHA is the pull request's head when `footprint comment` runs, not when the report was
+  computed. A push between the two puts the newer SHA beside the older report; no test covers it,
+  and the skill runs the two back to back.
