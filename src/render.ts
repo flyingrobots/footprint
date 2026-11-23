@@ -8,9 +8,10 @@ import { structuralSummary, type StructuralReview } from "./graft.ts";
 import type { BeforeMergeKind, Landing } from "./landing.ts";
 import type { Exports, ExportedSymbol } from "./exports.ts";
 import { surfaceCallSiteRows } from "./exports.ts";
-import { MITIGATION_RULE, SYSTEM_RULE_DETAIL, groupBySystem, type SystemGroup } from "./systems.ts";
+import { MITIGATION_RULE, NONE_NEEDED, SYSTEM_RULE_DETAIL, groupBySystem, type SystemGroup, type SystemRow } from "./systems.ts";
 import type { UnsupportedLanguage } from "./languages.ts";
 import type { Overlap } from "./overlap.ts";
+import { BLAST_LIMITS, COMPOSITION_BUDGET, REPORT_LIMIT, shrinkToFit, type BlastLimits, type Rendered } from "./bound.ts";
 
 export interface GutCheck {
   readonly headline: string;
@@ -68,10 +69,23 @@ export function render(
   changes: readonly FileChange[],
   range: string,
   review?: StructuralReview | null,
+  budget: number = COMPOSITION_BUDGET,
 ): string {
+  return shrinkToFit({ files: FILES_SHOWN }, (l) => renderComposition(c, changes, range, review, l.files), budget).text;
+}
+
+/** How many files the Files list names before it counts the rest. */
+const FILES_SHOWN = 200;
+
+function renderComposition(
+  c: Composition,
+  changes: readonly FileChange[],
+  range: string,
+  review: StructuralReview | null | undefined,
+  filesLimit: number,
+): Rendered<"files"> {
   const gut = gutCheck(c);
   const out: string[] = ["## Footprint", "", `**${gut.headline}** · \`${range}\``, ""];
-
   if (gut.flags.length > 0) out.push(...gut.flags.map((f) => `- ${f}`), "");
 
   if (review != null) {
@@ -110,13 +124,26 @@ export function render(
     const k = classify(f.path);
     byCategory.set(k, [...(byCategory.get(k) ?? []), f]);
   }
-  const listing = [...byCategory.entries()]
-    .map(([k, fs]) => `**${k}**\n\n${fs.map((f) => `- \`${f.path}\` ${f.binary ? "(binary)" : `+${f.added}/-${f.removed}`}`).join("\n")}`)
-    .join("\n\n");
-  if (listing !== "") out.push(details(`Files (${c.files})`, listing), "");
+  // The list is cut at `filesLimit` files, in the order it would be printed, and the cut is
+  // stated with its count: a reviewer must not read a short list as the whole change.
+  let room = filesLimit;
+  const groups: string[] = [];
+  for (const [k, fs] of byCategory.entries()) {
+    const shown = fs.slice(0, Math.max(0, room));
+    room -= shown.length;
+    if (shown.length === 0) continue;
+    groups.push(`**${k}**\n\n${shown.map((f) => `- \`${f.path}\` ${f.binary ? "(binary)" : `+${f.added}/-${f.removed}`}`).join("\n")}`);
+  }
+  const omitted = Math.max(0, changes.length - filesLimit);
+  if (omitted > 0) {
+    groups.push(`<sub>${omitted} more file${omitted === 1 ? "" : "s"} omitted to keep the comment under GitHub's ${REPORT_LIMIT}-character limit; the composition result line carries every one.</sub>`);
+  }
+  const listing = groups.join("\n\n");
+  const listed = listing === "" ? "" : details(`Files (${c.files})`, listing);
+  if (listed !== "") out.push(listed, "");
 
   out.push("<sub>Figures computed from `git diff --numstat`. Composition is a sanity check, not a verdict.</sub>");
-  return out.join("\n");
+  return { text: out.join("\n"), sizes: { files: listed.length } };
 }
 
 const BEFORE_MERGE_LABEL: Record<BeforeMergeKind, string> = {
@@ -155,9 +182,25 @@ export function renderLanding(l: Landing): string {
  * The export-surface section of the comment. One section whatever the outcome: a list when
  * symbols moved, a sentence when none did, and the stated reason when graft could not answer —
  * an absent section would read like a clean one.
+ *
+ * The section is held to `budget` characters (flyingrobots/footprint#51): when the full rendering
+ * is over it, the larger of the symbols table and the call-site tables is cut in half until it
+ * fits, and every cut says how many rows it left out. `limits` is where that starts.
  */
-export function blastRadius(exports: Exports, unanalysed: readonly UnsupportedLanguage[] = []): string {
+export function blastRadius(
+  exports: Exports,
+  unanalysed: readonly UnsupportedLanguage[] = [],
+  budget: number = REPORT_LIMIT,
+  limits: BlastLimits = BLAST_LIMITS,
+): string {
+  const start = { symbols: limits.symbols, sites: limits.sites };
+  return shrinkToFit(start, (l) => blastSections(exports, unanalysed, { ...limits, ...l }), budget).text;
+}
+
+/** One rendering of the section at the given limits, with how much each trimmable part took. */
+function blastSections(exports: Exports, unanalysed: readonly UnsupportedLanguage[], limits: BlastLimits): Rendered<"symbols" | "sites"> {
   const out: string[] = ["## Blast radius", ""];
+  const sizes = { symbols: 0, sites: 0 };
   if (!exports.available) {
     out.push(
       `<sub>Export-surface diff unavailable (\`${exports.reason.code}\`): ${exports.reason.detail}.</sub>`,
@@ -166,7 +209,7 @@ export function blastRadius(exports: Exports, unanalysed: readonly UnsupportedLa
       "",
       unanalysedSection(unanalysed),
     );
-    return out.join("\n");
+    return { text: out.join("\n"), sizes };
   }
 
   const s = exports.surface;
@@ -188,12 +231,25 @@ export function blastRadius(exports: Exports, unanalysed: readonly UnsupportedLa
     const head = scan.available
       ? "| Change | Symbol | File | Kind | Call sites | Signature |\n| --- | --- | --- | --- | ---: | --- |"
       : "| Change | Symbol | File | Kind | Signature |\n| --- | --- | --- | --- | --- |";
-    const body = rows.map(([change, x]) =>
+    // Past the limit the table keeps the symbols whose change matters most -- signature-changed,
+    // then removed, then added -- and prints them in the order the full table would.
+    const kept = keepFirst(rows, limits.symbols, ([change]) => (change === "signature-changed" ? 0 : change === "removed" ? 1 : 2));
+    const body = kept.map(([change, x]) =>
       `| ${change} | \`${x.symbol}\` | \`${x.file}\` | ${x.kind ?? ""} | ` +
       (scan.available ? `${x.callSites === undefined ? "—" : x.callSites.length} | ` : "") +
       `${cell(x.previousSignature === undefined ? x.signature : `${x.previousSignature} → ${x.signature ?? ""}`)} |`,
     );
-    out.push(details(`Exported symbols (${rows.length})`, [head, ...body].join("\n")), "");
+    const left = rows.length - kept.length;
+    const parts = [...(body.length > 0 ? [[head, ...body].join("\n")] : [])];
+    if (left > 0) {
+      parts.push(
+        `<sub>${left} more exported symbol${left === 1 ? "" : "s"} omitted (${kept.length} of ${rows.length} shown, signature-changed and removed first) ` +
+          `to keep the comment under GitHub's ${REPORT_LIMIT}-character limit; the blast-radius result line carries every one.</sub>`,
+      );
+    }
+    const block = details(`Exported symbols (${rows.length})`, parts.join("\n\n"));
+    sizes.symbols = block.length;
+    out.push(block, "");
   }
 
   // The call sites themselves, grouped by system: one table per system
@@ -202,21 +258,88 @@ export function blastRadius(exports: Exports, unanalysed: readonly UnsupportedLa
   if (!scan.available) {
     out.push(`<sub>Call sites not listed (\`${scan.reason.code}\`): ${scan.reason.detail}.</sub>`, "");
   } else if (rows.length > 0) {
-    const groups = groupBySystem(surfaceCallSiteRows(s));
+    const siteRows = surfaceCallSiteRows(s);
+    const groups = groupBySystem(siteRows);
     const total = rows.reduce((n, [, x]) => n + (x.callSites?.length ?? 0), 0);
+    const heavy = heavySymbols(siteRows, limits.summariseAbove);
     const body = [
-      ...groups.map(systemTable),
-      ...unreferenced(rows.map(([, x]) => x)),
+      ...(heavy.length > 0 ? [heavyTable(heavy, limits.summariseAbove, limits.sites)] : []),
+      ...groups.map((g) => systemTable(g, limits.sites, new Set(heavy.map((h) => h.symbol)))),
+      ...unreferenced(rows.map(([, x]) => x), limits.sites),
     ].join("\n\n");
     const summary =
       `Call sites by system (${total} across ${groups.length} system${groups.length === 1 ? "" : "s"}, ` +
       `${scan.filesScanned} scanned file${scan.filesScanned === 1 ? "" : "s"})`;
-    out.push(details(summary, body), "");
+    const block = details(summary, body);
+    sizes.sites = block.length;
+    out.push(block, "");
   }
 
   out.push(FROM_GRAFT);
   if (scan.available) out.push("", FROM_SCAN, "", FROM_GROUPING);
   out.push("", unanalysedSection(unanalysed));
+  return { text: out.join("\n"), sizes };
+}
+
+/**
+ * The first `limit` items by `priority` (lower first, ties by position), returned in their
+ * original order, so a cut table reads like the full one with rows missing rather than reordered.
+ */
+function keepFirst<T>(items: readonly T[], limit: number, priority: (item: T) => number): T[] {
+  if (items.length <= limit) return [...items];
+  const chosen = items
+    .map((item, index) => ({ index, p: priority(item) }))
+    .sort((a, b) => a.p - b.p || a.index - b.index)
+    .slice(0, Math.max(0, limit))
+    .map((x) => x.index)
+    .sort((a, b) => a - b);
+  return chosen.map((i) => items[i]!);
+}
+
+/** A symbol with more call sites than the summarising threshold, and what it comes to per system. */
+interface HeavySymbol {
+  readonly symbol: string;
+  readonly total: number;
+  readonly bySystem: ReadonlyMap<string, number>;
+  /** Call sites whose mitigation is not `None needed`: the ones the skill asks a reader to check. */
+  readonly needLook: number;
+}
+
+function heavySymbols(rows: readonly SystemRow[], above: number): HeavySymbol[] {
+  if (!Number.isFinite(above)) return [];
+  const by = new Map<string, { total: number; bySystem: Map<string, number>; needLook: number }>();
+  for (const r of rows) {
+    const e = by.get(r.symbol) ?? { total: 0, bySystem: new Map<string, number>(), needLook: 0 };
+    e.total += 1;
+    e.bySystem.set(r.site.system, (e.bySystem.get(r.site.system) ?? 0) + 1);
+    if (r.site.mitigation !== NONE_NEEDED) e.needLook += 1;
+    by.set(r.symbol, e);
+  }
+  return [...by.entries()]
+    .filter(([, e]) => e.total > above)
+    .map(([symbol, e]) => ({ symbol, ...e }))
+    .sort((a, b) => b.total - a.total || a.symbol.localeCompare(b.symbol));
+}
+
+/**
+ * The symbols too widely matched to list: one row each, with the count per system. A name such as
+ * `type` is a whole-word match in nearly every file, so its sites are not evidence of reach; the
+ * count says so, and the result line still carries every site.
+ */
+function heavyTable(heavy: readonly HeavySymbol[], above: number, limit: number): string {
+  const shown = heavy.slice(0, Math.max(0, limit));
+  const rows = shown.map((h) => {
+    const per = [...h.bySystem.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([sys, n]) => `\`${sys}\` ${n}`).join(", ");
+    return `| \`${h.symbol}\` | ${h.total} | ${per} | ${h.needLook} |`;
+  });
+  const out = [
+    `**Symbols with more than ${above} call sites** — counted by system instead of listed, because a name that common matches whole-word almost anywhere. The result line carries every site.`,
+  ];
+  if (rows.length > 0) out.push("", "| Symbol | Call sites | By system | Not `None needed` |\n| --- | ---: | --- | ---: |\n" + rows.join("\n"));
+  const left = heavy.length - shown.length;
+  if (left > 0) {
+    out.push("", `<sub>${left} more symbol${left === 1 ? "" : "s"} with more than ${above} call sites omitted; the blast-radius result line carries every one.</sub>`);
+  }
   return out.join("\n");
 }
 
@@ -229,29 +352,47 @@ export function blastRadius(exports: Exports, unanalysed: readonly UnsupportedLa
  */
 const CALL_SITES_SHOWN = 20;
 
-/** One system, one table: a row per call site, each with the mitigation its basis derived. */
-function systemTable(group: SystemGroup): string {
+/**
+ * One system, one table: a row per call site, each with the mitigation its basis derived. Symbols
+ * in `skip` are the summarised ones and have no row here. At most `limit` rows are written; the
+ * ones with a mitigation other than `None needed` are kept first, and the rest are counted.
+ */
+function systemTable(group: SystemGroup, limit: number, skip: ReadonlySet<string>): string {
   const head = "| Symbol | Call site | Mitigation |\n| --- | --- | --- |";
-  const body: string[] = [];
+  const candidates: SystemRow[] = [];
   const elided = new Map<string, number>();
   let symbol: string | null = null;
   let shown = 0;
+  let summarised = 0;
   for (const row of group.rows) {
+    if (skip.has(row.symbol)) {
+      summarised += 1;
+      continue;
+    }
     if (row.symbol !== symbol) {
       symbol = row.symbol;
       shown = 0;
     }
     shown += 1;
-    if (shown <= CALL_SITES_SHOWN) {
-      body.push(`| \`${row.symbol}\` | \`${row.site.file}:${row.site.line}\` | ${pipes(row.site.mitigation)} |`);
-    } else {
-      elided.set(row.symbol, (elided.get(row.symbol) ?? 0) + 1);
-    }
+    if (shown <= CALL_SITES_SHOWN) candidates.push(row);
+    else elided.set(row.symbol, (elided.get(row.symbol) ?? 0) + 1);
   }
+  const kept = keepFirst(candidates, limit, (r) => (r.site.mitigation === NONE_NEEDED ? 1 : 0));
+  const body = kept.map((row) => `| \`${row.symbol}\` | \`${row.site.file}:${row.site.line}\` | ${pipes(row.site.mitigation)} |`);
   const title = `**\`${group.system}\`** — ${group.rows.length} call site${group.rows.length === 1 ? "" : "s"}`;
+  const notes: string[] = [];
   const rest = [...elided.entries()].map(([sym, n]) => `…and ${n} more for \`${sym}\``);
-  const tail = rest.length === 0 ? [] : ["", `<sub>${rest.join(", ")}; the result line carries every one.</sub>`];
-  return [title, "", head, ...body, ...tail].join("\n");
+  if (rest.length > 0) notes.push(`${rest.join(", ")}; the result line carries every one.`);
+  if (summarised > 0) notes.push(`${summarised} call site${summarised === 1 ? "" : "s"} here belong to the symbols counted above rather than listed.`);
+  const left = candidates.length - kept.length;
+  if (left > 0) {
+    const look = candidates.filter((r) => r.site.mitigation !== NONE_NEEDED).length - kept.filter((r) => r.site.mitigation !== NONE_NEEDED).length;
+    notes.push(
+      `${left} more call site${left === 1 ? "" : "s"} in this system omitted (${look} of them with a mitigation other than \`${NONE_NEEDED}\`) ` +
+        `to keep the comment under GitHub's ${REPORT_LIMIT}-character limit; the blast-radius result line carries every one.`,
+    );
+  }
+  return [title, "", ...(body.length > 0 ? [head, ...body] : []), ...(notes.length === 0 ? [] : ["", `<sub>${notes.join(" ")}</sub>`])].join("\n");
 }
 
 /**
@@ -259,12 +400,18 @@ function systemTable(group: SystemGroup): string {
  * leaving them out would read as a symbol that was never looked up — which is a different claim
  * from one nothing references.
  */
-function unreferenced(symbols: readonly ExportedSymbol[]): string[] {
+function unreferenced(symbols: readonly ExportedSymbol[], limit: number): string[] {
   const none = symbols.filter((x) => x.callSites !== undefined && x.callSites.length === 0).map((x) => `\`${x.symbol}\``);
   const missing = symbols.filter((x) => x.callSites === undefined).map((x) => `\`${x.symbol}\``);
+  const names = (all: readonly string[]): string => {
+    const shown = all.slice(0, Math.max(0, limit));
+    const left = all.length - shown.length;
+    if (left === 0) return shown.join(", ");
+    return `${shown.length > 0 ? `${shown.join(", ")} and ` : ""}${left} more omitted (the blast-radius result line names every one)`;
+  };
   const out: string[] = [];
-  if (none.length > 0) out.push(`<sub>No call site found in the tracked files for ${none.join(", ")}.</sub>`);
-  if (missing.length > 0) out.push(`<sub>Not scanned, and so in no system: ${missing.join(", ")}. The scan carries no entry for them.</sub>`);
+  if (none.length > 0) out.push(`<sub>No call site found in the tracked files for ${names(none)}.</sub>`);
+  if (missing.length > 0) out.push(`<sub>Not scanned, and so in no system: ${names(missing)}. The scan carries no entry for them.</sub>`);
   return out;
 }
 
@@ -306,36 +453,61 @@ function cell(signature: string | undefined): string {
  * `footprint.overlap` result carries. It is its own section with its own provenance note, so the
  * composition section above stays exactly what it was.
  */
-export function renderOverlap(o: Overlap): string {
+export function renderOverlap(o: Overlap, budget: number = REPORT_LIMIT): string {
+  return shrinkToFit({ pulls: PULLS_SHOWN }, (l) => overlapSection(o, l.pulls), budget).text;
+}
+
+/** How many pull requests, conflicts and waves the overlap section names before it counts the rest. */
+const PULLS_SHOWN = 50;
+/** How many shared files one overlapping pull request lists. */
+const SHARED_FILES_SHOWN = 10;
+
+function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
   // The leading blank line keeps the heading off the end of the composition section above it.
   const out: string[] = ["", "### Open pull requests", ""];
+  const omitted = (n: number, what: string): string =>
+    `<sub>${n} more ${what} omitted to keep the comment under GitHub's ${REPORT_LIMIT}-character limit; the overlap result line carries every one.</sub>`;
 
   if (!o.available) {
     out.push(`<sub>${o.summary}</sub>`);
-    return out.join("\n");
+    const text = out.join("\n");
+    return { text, sizes: { pulls: 0 } };
   }
 
   out.push(`**${o.summary}**`, "");
 
-  for (const p of o.overlapping) {
-    out.push(`- **#${p.number}** ${p.title}${p.isDraft ? " _(draft)_" : ""} — ${p.sharedFiles.map((f) => `\`${f}\``).join(", ")}`);
+  const files = (fs: readonly string[]): string => {
+    const shown = fs.slice(0, Math.min(limit, SHARED_FILES_SHOWN));
+    const left = fs.length - shown.length;
+    return shown.map((f) => `\`${f}\``).join(", ") + (left > 0 ? ` and ${left} more file${left === 1 ? "" : "s"}` : "");
+  };
+  for (const p of o.overlapping.slice(0, limit)) {
+    out.push(`- **#${p.number}** ${p.title}${p.isDraft ? " _(draft)_" : ""} — ${files(p.sharedFiles)}`);
   }
+  if (o.overlapping.length > limit) out.push("", omitted(o.overlapping.length - limit, `pull request${o.overlapping.length - limit === 1 ? "" : "s"}`));
   if (o.overlapping.length > 0) out.push("");
 
-  for (const u of o.undetermined) out.push(`- **#${u.number}** ${u.title} — files unknown: ${u.reason}`);
+  for (const u of o.undetermined.slice(0, limit)) out.push(`- **#${u.number}** ${u.title} — files unknown: ${u.reason}`);
+  if (o.undetermined.length > limit) out.push("", omitted(o.undetermined.length - limit, `pull requests whose files are unknown`));
   if (o.undetermined.length > 0) out.push("");
 
   if (o.waves.length > 0) {
     const waves = o.waves
+      .slice(0, limit)
       .map((w) => `**Wave ${w.wave}** — ${w.pullRequests.map((n) => `#${n}`).join(", ")}${w.wave === 1 ? "" : `, after wave ${w.wave - 1}`}`)
       .join("\n\n");
     const edges = o.conflicts.length === 0
       ? "No two open pull requests change the same file, so they can land in any order."
-      : o.conflicts.map((c) => `- ${c.reason}`).join("\n");
-    out.push(details(`Proposed merge order (${o.waves.length} wave${o.waves.length === 1 ? "" : "s"})`, `${waves}\n\n${edges}`), "");
+      : o.conflicts.slice(0, limit).map((c) => `- ${c.reason}`).join("\n");
+    const notes = [
+      ...(o.waves.length > limit ? [omitted(o.waves.length - limit, `wave${o.waves.length - limit === 1 ? "" : "s"}`)] : []),
+      ...(o.conflicts.length > limit ? [omitted(o.conflicts.length - limit, `conflict${o.conflicts.length - limit === 1 ? "" : "s"}`)] : []),
+    ];
+    out.push(details(`Proposed merge order (${o.waves.length} wave${o.waves.length === 1 ? "" : "s"})`, [waves, edges, ...notes].filter((x) => x !== "").join("\n\n")), "");
   }
 
   if (o.truncated) out.push(`<sub>The pull-request list came back at the ${o.limit}-request limit; there may be more.</sub>`, "");
   out.push("<sub>Pull requests from `gh pr list`; their files from `gh pr diff --name-only`. Merge waves are greedy first-fit over the conflict graph: a proposal, not a minimum, and not a gate.</sub>");
-  return out.join("\n");
+  const text = out.join("\n");
+  return { text, sizes: { pulls: text.length } };
 }

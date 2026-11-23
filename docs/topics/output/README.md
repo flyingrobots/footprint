@@ -134,6 +134,40 @@ overlap, and the `digest` is what moves when they do.
 **Before merge** and **After merge**, then `## Blast radius`, then `### Open pull requests`, so one
 run is one comment.
 
+### The size of the `--human` report
+
+GitHub rejects a comment body over **65536 characters**, and the report is one comment, so
+`--human` is bounded to that in total (flyingrobots/footprint#51). The JSON Lines records and the
+receipt are not bounded and carry every row; only the Markdown is cut, and every cut says how much
+it left out. Nothing is dropped silently.
+
+| Section | What is cut | How |
+| --- | --- | --- |
+| Composition | The `Files` list | 200 files, then `N more files omitted`; at most 16384 characters for the section |
+| Blast radius, `Exported symbols` | Table rows | 100 rows, signature-changed and removed before added, then `N more exported symbols omitted` |
+| Blast radius, `Call sites by system` | Rows of each system's table, the summary table, and the names of symbols with no call site | 100 rows per system, rows whose mitigation is not `None needed` first, then `N more call sites in this system omitted (K of them with a mitigation other than None needed)` |
+| Overlap | Pull requests, conflicts, waves, and the files one pull request shares | 50 of each and 10 shared files, then `N more pull requests omitted`, `and N more files`; at most 8192 characters for the section |
+| Before merge, After merge | Nothing | They are read from the repository's own documents and are short; they are counted against the limit |
+
+Past those starting limits the blast radius is held to what the other sections leave of 65536:
+while it is over, the larger of its two tables has its limit halved and it is rendered again. The
+same input gives the same text. The overlap section's 8192 characters are reserved, not measured,
+because it is rendered after the blast radius; a report with no overlapping pull request leaves
+most of that unused.
+
+**Summarised, not listed.** A symbol with more than **50** call sites in all systems together is
+not given a row per site. One `Symbols with more than 50 call sites` table gives its total, its
+count in each system, and how many of its sites carry a mitigation other than `None needed`. The
+reason is the names: a field of a JSON Schema file, or of any config file graft parses, is an
+exported symbol called `type` or `id`, and the whole-word scan finds it in every file that uses the
+word. footprint still scans for those names and still records every site; it reports and does not
+judge which names are worth scanning. The per-symbol cap of 20 rows in one system still applies
+below the threshold.
+
+If every list has been cut to nothing and the report is still over the limit, footprint emits the
+warning `report.over_limit` with the measured length. That cannot happen from list growth alone;
+it would take sections that are not lists.
+
 ## Identity
 
 Every line carries the run id. The bootstrap line and the receipt head also carry `inv`, the
@@ -186,6 +220,7 @@ and `overlap.code` says which:
 | `gh.unauthenticated`, `gh.rate_limited`, `gh.no_remote`, `gh.list_failed`, `gh.list_unreadable` | `gh` resolved but could not list the open pull requests; `overlap.available` is false. No warning when `gh` is simply absent — that is not a failure of anything footprint ran | 0 |
 | `gh.diff_failed` | `gh pr diff --name-only` would not report some pull request's files; they are in `overlap.undetermined` | 0 |
 | `gh.list_truncated` | The pull-request list came back at the limit, so there may be more than were considered | 0 |
+| `report.over_limit` | The `--human` report is over 65536 characters after every list was cut to nothing; carries `measured` and `limit`. The JSON Lines are unaffected | 0 |
 | `callsites.scan_failed` | The call-site scan could not list the tracked files; `exports.call_site_scan.available` is false with its reason and no symbol carries `call_sites` | 0 |
 
 ## Discovery

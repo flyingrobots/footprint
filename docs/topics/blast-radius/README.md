@@ -184,13 +184,23 @@ add itself to its own oracle.
 `mitigation_basis` rides every call site beside the sentence, so the derivation is checkable from
 the record without re-deriving it.
 
+### How much of it `--human` prints
+
+The call-site tables are the longest part of the comment, so they are bounded: a symbol with more
+than 50 call sites is summarised as a count per system, and rows past a per-section limit are
+counted rather than printed, the whole comment staying under GitHub's 65536 characters. What is
+cut and how is in [Output](../output/README.md#the-size-of-the---human-report). The result line
+always carries every site.
+
 ### The run it was built on, captured
 
 **Captured output**, not illustrative: this is the `--human` blast-radius section of
 `footprint 543477a~1..543477a --human` run against this repository on 2026-11-22 — the Definition
 of Done of flyingrobots/footprint#11, the same real signature change (`render` gaining
 `review?: StructuralReview | null`) that the call-site work of flyingrobots/footprint#10 used. Four
-systems, 168 call sites, 70 scanned files. It is **abridged**: the `docs` and `(unassigned)` tables
+systems, 168 call sites, 70 scanned files. It was captured **before** the bound above existed:
+today `render`, with 82 call sites, would be one summary row rather than rows in each table, and
+the `…and 62 more for \`render\`` line would not appear. It is **abridged**: the `docs` and `(unassigned)` tables
 are complete, `src` keeps five of its 28 rows and `test` is reduced to its last line, and the
 elisions are marked. Line numbers are of the working tree as checked out, so they move.
 

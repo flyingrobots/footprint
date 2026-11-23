@@ -1,0 +1,92 @@
+// The size bound on the --human report (flyingrobots/footprint#51).
+//
+// GitHub rejects a comment body longer than 65536 characters, and the report is posted as one
+// comment. The four sections the CLI prints (composition, landing, blast radius, overlap) share
+// that limit. Landing is read from the repository's own release documents and is not trimmed; the
+// other three each get a budget and trim their lists to it, *stating* every omission with its
+// count. The JSON Lines records are never trimmed: they carry every row the Markdown leaves out.
+
+/** GitHub's maximum comment body, in characters. */
+export const REPORT_LIMIT = 65536;
+
+/** What the composition section may take: its Files list is the only part that grows. */
+export const COMPOSITION_BUDGET = 16384;
+
+/**
+ * What the overlap section is held to. It is rendered last, after the blast radius has already
+ * been written, so its room is reserved rather than measured. A report with no overlapping pull
+ * request wastes most of it; that is the price of not reordering the run.
+ */
+export const OVERLAP_BUDGET = 8192;
+
+/** Newlines the output protocol puts between the four sections, with margin. */
+const JOIN_SLACK = 16;
+
+/**
+ * The room left for the blast-radius section once composition and landing have been rendered.
+ * Never negative: when the other two have already used everything the section is trimmed as far
+ * as it can go and the CLI says the bound could not hold.
+ */
+export function blastBudget(compositionLength: number, landingLength: number): number {
+  return Math.max(0, REPORT_LIMIT - compositionLength - landingLength - OVERLAP_BUDGET - JOIN_SLACK);
+}
+
+/**
+ * How much of the blast radius is written out before the remainder is counted instead.
+ *
+ * - `symbols`: rows of the exported-symbols table. Signature-changed and removed symbols are kept
+ *   before added ones.
+ * - `sites`: rows of each system's call-site table, and of the summary table, and names in the
+ *   lists of symbols with no call site. Rows whose mitigation is not `None needed` are kept first.
+ * - `summariseAbove`: a symbol with more call sites than this, in all systems together, is
+ *   summarised as a count per system instead of being listed. A name like `type` or `id`, which
+ *   a data file's field gives a symbol, matches tens of thousands of whole-word sites; listing
+ *   them tells a reviewer nothing a count does not. The scan still counts them all, and the
+ *   record still carries each one.
+ *
+ * `symbols` and `sites` are the starting point: the CLI halves the larger section until the
+ * report fits. `summariseAbove` is never shrunk.
+ */
+export interface BlastLimits {
+  readonly symbols: number;
+  readonly sites: number;
+  readonly summariseAbove: number;
+}
+
+export const BLAST_LIMITS: BlastLimits = { symbols: 100, sites: 100, summariseAbove: 50 };
+
+/** No trimming at all: what the section was before the bound, and what the tests measure against. */
+export const UNBOUNDED_BLAST: BlastLimits = { symbols: Infinity, sites: Infinity, summariseAbove: Infinity };
+
+/** A rendering and how many characters each of its trimmable sections took. */
+export interface Rendered<K extends string> {
+  readonly text: string;
+  readonly sizes: Readonly<Record<K, number>>;
+}
+
+/**
+ * Render with `start` limits; while the text is over `budget`, halve the limit of the section that
+ * took the most characters (ties by key order) and render again. Deterministic: the same input and
+ * budget give the same text. Stops when every limit is zero, returning that rendering, which may
+ * still be over the budget when what is left is not trimmable; the caller says so.
+ */
+export function shrinkToFit<K extends string>(
+  start: Readonly<Record<K, number>>,
+  build: (limits: Readonly<Record<K, number>>) => Rendered<K>,
+  budget: number,
+): Rendered<K> {
+  let limits = { ...start };
+  let out = build(limits);
+  const keys = Object.keys(start) as K[];
+  while (out.text.length > budget) {
+    const open = keys.filter((k) => limits[k] > 0);
+    if (open.length === 0) break;
+    const largest = open.reduce((a, b) => (out.sizes[b] > out.sizes[a] ? b : a));
+    const current = limits[largest];
+    // An unlimited section is first cut to what it actually printed, so halving means something.
+    const next = Number.isFinite(current) ? Math.floor(current / 2) : Math.max(0, Math.floor(out.sizes[largest] / 2));
+    limits = { ...limits, [largest]: next };
+    out = build(limits);
+  }
+  return out;
+}

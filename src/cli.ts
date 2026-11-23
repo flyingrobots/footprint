@@ -13,6 +13,7 @@ import { isFailure, listOpenPullRequests, resolveGh } from "./pulls.ts";
 import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord, OVERLAP_SCHEMA, OVERLAP_TYPE, overlapRecord } from "./report.ts";
 import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, attachCallSites, exportSurface, exportsRecord, surfaceSymbols } from "./exports.ts";
 import { unsupportedLanguages } from "./languages.ts";
+import { COMPOSITION_BUDGET, OVERLAP_BUDGET, REPORT_LIMIT, blastBudget } from "./bound.ts";
 
 let markdown = "";
 let landingMarkdown = "";
@@ -79,7 +80,7 @@ async function footprint(run: Run, args: string[]): Promise<void> {
 
   const composition = compose(changes);
   const gut = gutCheck(composition);
-  markdown = changes.length === 0 ? `No changes in \`${range}\`.` : render(composition, changes, range, review);
+  markdown = changes.length === 0 ? `No changes in \`${range}\`.` : render(composition, changes, range, review, COMPOSITION_BUDGET);
   run.result(compositionRecord(range, composition, gut, review), COMPOSITION_TYPE, { files: changes, markdown });
 
   // The landing plan is a second result in the same run: what the diff puts in front of a reviewer
@@ -120,12 +121,18 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   // Changed files in languages graft's grammars cannot parse at all -- independent of whether
   // graft ran or what it returned (flyingrobots/footprint#12).
   const unanalysed = unsupportedLanguages(changes.map((c) => c.path));
-  blastMarkdown = blastRadius(surface, unanalysed);
+  // The report is posted as one GitHub comment, which holds at most REPORT_LIMIT characters
+  // (flyingrobots/footprint#51): the blast radius gets what composition and landing left.
+  blastMarkdown = blastRadius(surface, unanalysed, blastBudget(markdown.length, landingMarkdown.length));
   run.result(exportsRecord(range, surface, unanalysed), BLAST_RADIUS_TYPE, { markdown: blastMarkdown });
 
   // Cross-pull-request overlap: the fourth result in the same run, after the blast radius.
   const overlap = await crossPullRequest(run, changes.map((c) => c.path), range.split(/\.{2,3}/)[1] || "HEAD");
-  overlapMarkdown = renderOverlap(overlap);
+  overlapMarkdown = renderOverlap(overlap, OVERLAP_BUDGET);
+  const reportLength = [markdown, landingMarkdown, blastMarkdown, overlapMarkdown].reduce((n, m) => n + m.length, 0);
+  if (reportLength > REPORT_LIMIT) {
+    run.warning({ code: "report.over_limit", problem: `the --human report is ${reportLength} characters, over GitHub's ${REPORT_LIMIT}-character comment limit, with every list already cut to nothing; what is left is not a list footprint can trim`, measured: reportLength, limit: REPORT_LIMIT, remedy: "post the report in parts, or read the JSON Lines result lines" });
+  }
   run.result(overlapRecord(range, overlap), OVERLAP_TYPE, { markdown: overlapMarkdown });
 }
 
