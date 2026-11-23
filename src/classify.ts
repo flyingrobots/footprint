@@ -17,7 +17,10 @@ const RULES: ReadonlyArray<readonly [Category, RegExp]> = [
   ["generated", /\.(min\.js|min\.css|map)$/],
   ["ci", /(^|\/)\.github\//],
   ["ci", /(^|\/)(Dockerfile|compose\.ya?ml|docker-compose\.ya?ml|\.dockerignore)$/],
-  ["test", /(^|\/)(tests?|__tests__|spec|fixtures?|testdata)\//],
+  ["test", /(^|\/)(tests?|__tests__|fixtures?|testdata)\//],
+  // `spec/` holds RSpec-style test code, and also a specification-first repository's prose
+  // (flyingrobots/footprint#42): a documentation extension there falls through to the docs rules.
+  ["test", /(^|\/)spec\/(?!.*\.(md|mdx|rst|adoc|txt)$)/i],
   ["test", /\.(test|spec)\.[cm]?[jt]sx?$/],
   ["test", /_test\.(go|py|rs)$/],
   // Agent skills are instructions an agent executes, not documentation: Markdown under a `skills/`

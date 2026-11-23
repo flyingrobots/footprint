@@ -12,6 +12,25 @@ describe("classify", () => {
     expect(classify("src/footprint.test.ts")).toBe("test");
   });
 
+  test("Markdown under spec/ is docs, not test", () => {
+    for (const f of ["spec/parley-v0.2.md", "spec/x.mdx", "spec/notes.txt", "spec/a/b.rst", "docs/spec/x.md"]) {
+      expect(classify(f)).toBe("docs");
+    }
+  });
+
+  test("code and fixtures under spec/ stay test", () => {
+    for (const f of [
+      "spec/models/user_spec.rb",
+      "spec/foo.spec.ts",
+      "spec/helpers.ts",
+      "spec/fixtures/x.json",
+      "spec/fixtures/x.md",
+      "tests/spec/x.md",
+    ]) {
+      expect(classify(f)).toBe("test");
+    }
+  });
+
   test("a lockfile is generated, not config, even though it is JSON", () => {
     expect(classify("package-lock.json")).toBe("generated");
     expect(classify("bun.lock")).toBe("generated");

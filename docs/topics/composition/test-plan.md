@@ -29,6 +29,8 @@ Evidence lives in `test/footprint.test.ts`.
 | CO-8a | `skills/footprint/SKILL.md`, `skills/footprint/reference.md`, `packages/a/skills/b/notes.mdx`, `.claude/skills/x/SKILL.md`, `SKILL.md`, `docs/agents/SKILL.md` | each `classify()` is `config` | `classify > an agent skill's Markdown is config, not docs` | implemented |
 | CO-8b | `test/fixtures/skills/x/SKILL.md`, `docs/skills.md`, `myskills/x.md`, `skills/x/run.ts`, `skills/x/logo.png` | `test`, `docs`, `docs`, `source`, `assets`: only Markdown under a whole `skills` component moves, and the test rule still wins | `classify > only Markdown under a skills/ component, or SKILL.md, moves out of docs` | implemented |
 | CO-8c | `compose` and `gutCheck` over a change to `skills/footprint/SKILL.md` alone; `unsupportedLanguages` over it | one `config` row, no "Documentation only" flag; no unanalysed language (why `config` and not `source`) | `classify > a skill-only change is not flagged documentation only, nor an unanalysed language` | implemented |
+| CO-9a | `spec/parley-v0.2.md`, `spec/x.mdx`, `spec/notes.txt`, `spec/a/b.rst`, `docs/spec/x.md` | each `classify()` is `docs`: a specification directory's prose is documentation | `classify > Markdown under spec/ is docs, not test` | implemented |
+| CO-9b | `spec/models/user_spec.rb`, `spec/foo.spec.ts`, `spec/helpers.ts`, `spec/fixtures/x.json`, `spec/fixtures/x.md`, `tests/spec/x.md` | each `classify()` is `test`: code and data under `spec/`, and prose under another test directory, stay test | `classify > code and fixtures under spec/ stay test` | implemented |
 
 ## Known gaps
 
