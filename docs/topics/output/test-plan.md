@@ -20,6 +20,12 @@ graft (flyingrobots/footprint#21): it reads `src/languages.ts`'s extension list 
 the installed `@flyingrobots/graft`'s own `dist/parser/lang.js` from disk, so it needs graft
 installed and fails loudly, naming the path, rather than skipping, if either is missing.
 
+`test/systems.test.ts` holds the grouping cases (flyingrobots/footprint#11). The system of a call
+site and the mitigation of a row are pure functions over paths, so every case but one needs
+neither git nor graft; the exception is OUT-14e, which scans this repository live for the symbols
+of the real signature change at 543477a and holds every mitigation it produces to an allowlist of
+forms the test declares for itself.
+
 `test/callsites.test.ts` holds the call-site cases. The matching is a pure function over one file's
 text, so most of them need neither git nor graft; the golden case is live against this repository
 and compares footprint's answer with an independent `grep` oracle, and the edges build a throwaway
@@ -41,6 +47,7 @@ git repository under `$TMPDIR` so a deleted file and a binary file are real rath
 | OUT-12 | The blast-radius result (`footprint.blast_radius` 1.1.0) names the changed files, by file extension with a count, in languages footprint does not recognise as one graft's grammars can parse; the list is present and empty when every changed file was in a supported language; a parse failure in a *supported* language is never counted here, because detection is extension-only and never looks at whether graft ran or what it answered |
 | OUT-12g | The extension list behind OUT-12 is checked against the *installed* graft, not just against fixtures: a grammar graft adds or drops cannot change footprint's `unanalysed_languages` output without a test turning red (flyingrobots/footprint#21) |
 | OUT-13 | Every exported symbol on the blast radius carries its call sites with file and line, found by footprint's own conservative whole-word identifier scan of the tracked files of the working tree; a symbol nothing references carries an empty list rather than being dropped, and a scan that could not run is stated rather than read as an empty one. The additive fields ride the same unreleased `footprint.blast_radius` 1.1.0 draft as OUT-12's |
+| OUT-14 | Every call site on the blast radius names the **system** that contains it, under a rule stated on the record: the first path segment of its repository-relative path, and `(unassigned)` for a file at the repository root, which is grouped rather than dropped. Every call site carries a `mitigation` that is either the literal `None needed` or one stated fact about that call site's own path, derived from two reported facts and nothing else — never a judgement and never padding. `exports.call_site_systems` names the rule, the mitigation derivation and every system with its call-site count, and those counts sum to `counts.call_sites`; `--human` renders one Markdown table per system. The additive fields ride the same unreleased `footprint.blast_radius` 1.1.0 draft as OUT-12's and OUT-13's |
 
 | ID | Case | Oracle | Evidence | Status |
 | --- | --- | --- | --- | --- |
@@ -126,6 +133,17 @@ git repository under `$TMPDIR` so a deleted file and a binary file are real rath
 | OUT-13p | The exported word boundary and the not-run scan | the boundary is the `[\\p{L}\\p{N}_]` the schema and the docs name, a letter in any script included, so the three cannot drift apart silently | `... > the scan's word boundary is the one the schema and the docs name` | implemented |
 | OUT-13q | The Markdown section for the signature-change fixture with sites attached, and with the scan unavailable | every site renders as `` `file:line` ``, a symbol with none says so rather than being left out, the footer names the scan as an identifier scan, every table row closes with a pipe; an unavailable scan prints its code and detail and never a zero count | `the blast-radius section carries the call sites > call sites are listed with file and line under each symbol`, `... > an unavailable call-site scan states its reason rather than reading as no call sites` | implemented |
 | OUT-13r | `543477a~1..543477a` against this repository — a range whose export surface is genuinely non-empty — and `--help` | the blast-radius line is `footprint.blast_radius` 1.1.0 and validates; with a surface available every listed symbol carries a `call_sites` array of `{file, line}`, `call_site_scan.available` is true over more than ten scanned files, `counts.call_sites` equals the lists added up, and a receipt step says how the call sites were found; `--help` declares `footprint.blast_radius@1.1.0` | `the CLI speaks the Parley output protocol > the blast-radius result carries the call sites of every symbol it lists`, `... > --help and --schema are runs that describe the tool` | implemented |
+| OUT-14a | The signature-change surface with a scan whose call sites fall in `src/` and in `test/` | the grouping has exactly two systems, `src` and `test`, each carrying its own call sites, and `--human` renders two tables, one per system, each with a header row `call sites are grouped by system, one group per system > two systems are two groups, in order, each carrying its own call sites` | implemented |
+| OUT-14b | The same surface with every call site in one directory | one system, one table — a single system is still grouped and still named, not flattened back into a flat list `... > one system is still one named group and one table, not a flat list` | implemented |
+| OUT-14c | A call site in a file at the repository root (`package.json`), beside call sites under `src/` | the root call site is grouped under `(unassigned)`, is present on the record and in `--human`, and is not dropped; the systems list carries it last `the system a call site lives in is its first path segment > a file at the repository root belongs to no system`, `call sites are grouped by system, one group per system > a call site outside every known system is grouped, last, and never dropped` | implemented |
+| OUT-14d | One symbol declared in `src/render.ts`, with call sites in `src/render.ts` itself, in `test/cli.test.ts`, in `src/cli.ts` and in `CHANGELOG.md` | the four mitigations are, in order, `None needed` (basis `declaring_file`), `None needed` (basis `test_file`), the stated fact naming the system (basis `other_system`), and the stated fact for a call site outside every known system (basis `unassigned`) — the whole derivation, over both of the facts it reads `a mitigation is derived from two reported facts and nothing else > the four bases are the declaring file, a test file, another system, and no system`, `... > the declaring file wins over the system it sits in, and a test file over its own`, `... > the mitigation of a row in another system names that system and nothing more` | implemented |
+| OUT-14e | Every call site of the real DoD-run surface, scanned live against this repository | every `mitigation` on the record is one of exactly three forms, matched against an allowlist of forms the test declares independently of `src/`: the literal `None needed`, `Call site in <system>, outside the changed file.`, or `Call site outside every known system, outside the changed file.`; nothing else, so a padded mitigation — advice, an adjective, a verdict — turns this red `no row carries a mitigation that was not derived > every mitigation of the real DoD-run surface is one of three derived forms`, `... > the derivation produces nothing but those forms, over every basis and any system name` | implemented |
+| OUT-14f | The per-system call-site counts of a scanned surface | they sum to `counts.call_sites`, so no call site is grouped twice or lost; the systems are ordered by name with `(unassigned)` last, whatever order the sites arrived in, so the digest does not follow the scan `call sites are grouped by system, one group per system > the per-system counts sum to counts.call_sites, and the order does not follow the scan` | implemented |
+| OUT-14g | A scanned surface, and the same surface with no scan attached | the first validates at 1.1.0 and carries `call_site_systems` with every call site's `system`, `mitigation` and `mitigation_basis`; the second carries no `call_site_systems` at all and no site-level field, because a grouping of call sites nobody looked for is not a figure `the record carries the grouping with the rule named > a scanned surface carries the rule, the systems, and a mitigation on every call site`, `... > a surface with no scan carries no grouping at all, and no site-level field` | implemented |
+| OUT-14h | The same surface and scan twice, and once with one call site moved from `src/` to `test/` | equal digests for the repeat; different when the move changes a call site's system and its mitigation, so the grouping is inside the digest rather than beside it `... > the digest moves when a call site's system moves` | implemented |
+| OUT-14i | `--human` for a system holding more than twenty call sites of one symbol, and for a symbol with none | the table is capped per symbol and the remainder is named in a sentence under the table, never as a row with an empty mitigation cell; every table row closes with a pipe and carries a non-empty mitigation cell; a symbol with no call site is still stated rather than left out `--human renders one Markdown table per system > a long system is capped per symbol, with the remainder named below the table`, `... > the section names the grouping rule and the mitigation derivation` | implemented |
+| OUT-14j | `543477a~1..543477a` through the CLI against this repository — the Definition of Done of flyingrobots/footprint#11 | with a surface available, the blast-radius line carries `call_site_systems` naming the `path_prefix` rule and more than one system, every call site carries a `system` and a `mitigation`, and the per-system counts sum to `counts.call_sites`; `--human` renders one table per system `the CLI speaks the Parley output protocol > the blast-radius result groups the call sites by system, one --human table each` | implemented |
+| OUT-14k | The rule id, the unassigned label and the three mitigation forms exported by `src/systems.ts` | they are the ones `schemas/footprint.blast_radius.schema.json` and [Blast radius](../blast-radius/README.md) name, so the code, the contract and the reference cannot drift apart silently `the system a call site lives in is its first path segment > the rule, the label and the mitigation forms are the ones the schema and the docs name`, `the system a call site lives in is its first path segment > a path under a directory belongs to that directory, however deep` | implemented |
 
 ## Known gaps
 
@@ -145,11 +163,13 @@ git repository under `$TMPDIR` so a deleted file and a binary file are real rath
   string or the declaration itself, because the scan cannot: that is the stated limitation, not a
   gap in the evidence. Dynamic dispatch and a re-export under another name are invisible to it and
   no test claims otherwise.
-- Whether the live blast-radius branch is exercised at all depends on the machine. The same suite
-  reports 754 `expect()` calls locally, where graft answers, and 438 on CI, where it does not,
-  though it installs there: the graft-dependent assertions take their stated-limitation branch.
-  OUT-13r accepts both branches deliberately, so CI being green does not by itself mean a call
-  site was ever looked up in CI.
+- OUT-13r and OUT-14j accept both branches of the live blast radius, graft answering or not, so
+  they cannot tell on their own whether a call site was ever looked up. On CI that question is
+  settled by `test/require-graft.test.ts` (flyingrobots/footprint#25), which the workflow runs
+  with `FOOTPRINT_REQUIRE_GRAFT=1` and which fails unless graft answered: on this branch CI
+  reported 137 pass and 1,381 `expect()` calls, against 136 pass, 1 skip and 1,379 locally, so the
+  graft-dependent branches run in both places. A local run skips that guard by name, so a local
+  green alone still does not prove graft answered.
 - No test asserts that graft's live output still matches the fixtures. A graft release that changed
   the shape under the same `_schema` version would be caught only by OUT-10a's `counts` invariant.
 - OUT-12h (graft's language module missing, or missing the exports the drift test depends on) is
@@ -157,7 +177,17 @@ git repository under `$TMPDIR` so a deleted file and a binary file are real rath
   `@flyingrobots/graft`, which no fixture stands in for. The guard is in the code
   (`test/languages-drift.test.ts`'s `existsSync` and export-type checks throwing with the path
   named) and was read, not run.
-- No test runs the CLI with `gh` present, so `overlap.available: true` is never asserted
+- The grouping rule is the first path segment and nothing else, so no test distinguishes a
+  directory that is a real subsystem from one that is not. `test/` being one system is a fact about
+  this repository's layout, not a claim that its tests are one subsystem; a repository laying out
+  `packages/<name>/` would get one system, `packages`, and the rule would need changing rather than
+  the test. That is stated in the reference as a decision the owner may overrule, not covered by a
+  case.
+- No test asserts that a mitigation is *useful*, only that it is one of the three derived forms
+  and that more than two of them appear on the Definition-of-Done run. Usefulness is a judgement,
+  which is the thing `AGENTS.md` forbids the output from making, so there is nothing here for a
+  test to assert.
+- - No test runs the CLI with `gh` present, so `overlap.available: true` is never asserted
   end to end. The suite removes `gh` from the PATH deliberately: a test that listed this
   repository's open pull requests would depend on the network and on which pull requests happen to
   be open. Everything between the records and the result — the conflict graph, the waves and the

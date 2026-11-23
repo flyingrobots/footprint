@@ -13,7 +13,17 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { $ } from "bun";
 import { canonical, sha256 } from "@flyingrobots/parley-emit";
-import { SCAN_METHOD, notRunScan, scanCallSites, sitesFor, type CallSite, type CallSiteScan } from "./callsites.ts";
+import { SCAN_METHOD, notRunScan, scanCallSites, sitesFor, type CallSiteScan } from "./callsites.ts";
+import {
+  MITIGATION_RULE,
+  SYSTEM_RULE,
+  SYSTEM_RULE_DETAIL,
+  UNASSIGNED_SYSTEM,
+  assignCallSite,
+  systemCounts,
+  type AssignedCallSite,
+  type SystemRow,
+} from "./systems.ts";
 import type { UnsupportedLanguage } from "./languages.ts";
 
 export const BLAST_RADIUS_SCHEMA = JSON.parse(
@@ -38,11 +48,12 @@ export interface ExportedSymbol {
   readonly signature?: string;
   readonly previousSignature?: string;
   /**
-   * Where the symbol's name occurs in the tracked files at head, with file and line. Present once
+   * Where the symbol's name occurs in the tracked files at head, with file and line, the system
+   * that contains it and the mitigation its row carries (flyingrobots/footprint#11). Present once
    * a call-site scan has been attached (`withCallSites`); absent, never `[]`, when none has, so an
    * unscanned symbol can never be read as one nothing references.
    */
-  readonly callSites?: readonly CallSite[];
+  readonly callSites?: readonly AssignedCallSite[];
 }
 
 export interface ExportSurface {
@@ -199,7 +210,10 @@ export function withCallSites(exports: Exports, scan: CallSiteScan): Exports {
   if (!exports.available) return exports;
   const attach = (s: ExportedSymbol): ExportedSymbol => {
     const sites = sitesFor(scan, s.symbol);
-    return sites === null ? s : { ...s, callSites: sites };
+    // The system and the mitigation are attached here, not in the scan, because the mitigation
+    // reads the symbol's declaring file and the scan is per *name*: two symbols sharing a name
+    // share one site list and can honestly carry different mitigations for the same `file:line`.
+    return sites === null ? s : { ...s, callSites: sites.map((site) => assignCallSite(s.file, site)) };
   };
   const s = exports.surface;
   return {
@@ -217,6 +231,19 @@ export function withCallSites(exports: Exports, scan: CallSiteScan): Exports {
 /** Every symbol the surface names, in the order the result lists them. */
 export function surfaceSymbols(surface: ExportSurface): readonly ExportedSymbol[] {
   return [...surface.added, ...surface.removed, ...surface.signatureChanged];
+}
+
+/**
+ * One row per (symbol, call site) pair: what a blast-radius table is a table of
+ * (flyingrobots/footprint#11). Empty when no scan has been attached, which is the same thing the
+ * record says with `call_site_scan.available: false` -- not a claim that nothing is called.
+ */
+export function surfaceCallSiteRows(surface: ExportSurface): readonly SystemRow[] {
+  const rows: SystemRow[] = [];
+  for (const s of surfaceSymbols(surface)) {
+    for (const site of s.callSites ?? []) rows.push({ symbol: s.symbol, site });
+  }
+  return rows;
 }
 
 /**
@@ -261,7 +288,25 @@ function exportsPayload(exports: Exports): Record<string, unknown> {
     },
     semver_impact: s.semverImpact,
     call_site_scan: scanPayload(scan),
+    // Present only when the scan ran, for the same reason `counts.call_sites` is: a grouping of
+    // call sites nobody looked for is not a figure (flyingrobots/footprint#11).
+    ...(scan.available ? { call_site_systems: systemsPayload(s) } : {}),
     contract: { ...GRAFT_EXPORTS_CONTRACT },
+  };
+}
+
+/**
+ * The grouping, with the rule named on it. The per-system counts are the grouping: every call site
+ * is in exactly one system, `(unassigned)` included, so they sum to `counts.call_sites`, and the
+ * system of each individual call site rides the call site itself rather than being listed twice.
+ */
+function systemsPayload(surface: ExportSurface): Record<string, unknown> {
+  return {
+    rule: SYSTEM_RULE,
+    rule_detail: SYSTEM_RULE_DETAIL,
+    mitigation_rule: MITIGATION_RULE,
+    unassigned: UNASSIGNED_SYSTEM,
+    systems: systemCounts(surfaceCallSiteRows(surface).map((r) => r.site)).map((c) => ({ system: c.system, call_sites: c.callSites })),
   };
 }
 
@@ -283,7 +328,17 @@ function wire(s: ExportedSymbol): Record<string, unknown> {
     ...(s.kind === undefined ? {} : { kind: s.kind }),
     ...(s.signature === undefined ? {} : { signature: s.signature }),
     ...(s.previousSignature === undefined ? {} : { previous_signature: s.previousSignature }),
-    ...(s.callSites === undefined ? {} : { call_sites: s.callSites.map((c) => ({ file: c.file, line: c.line })) }),
+    ...(s.callSites === undefined
+      ? {}
+      : {
+          call_sites: s.callSites.map((c) => ({
+            file: c.file,
+            line: c.line,
+            system: c.system,
+            mitigation: c.mitigation,
+            mitigation_basis: c.mitigationBasis,
+          })),
+        }),
   };
 }
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://flyingrobots.dev/footprint/schemas/footprint.blast_radius/1.1.0",
   "title": "footprint.blast_radius 1.1.0",
-  "description": "The export-surface diff of a footprint run: the exported symbols added, removed and signature-changed between the compared refs, each with the call sites of its name, and the changed files in languages that could not be analysed at all. Every symbol comes from graft's CLI contract `graft struct exports --json` (`graft.cli.struct_exports` 1.0.0); footprint derives the counts, the ordering, and the call sites. The call sites are footprint's own conservative whole-word identifier scan of the tracked files of the working tree -- no graft contract answers with a call site's line -- so they include the declaration itself and a mention in a comment, a string or prose, and they cannot see a call through dynamic dispatch or a re-export under another name. When graft is unavailable the exports section is stated as unavailable with a reason, never omitted, and the same holds for the scan. unanalysed_languages is independent of graft: it is present and empty when every changed file was in a supported language.",
+  "description": "The export-surface diff of a footprint run: the exported symbols added, removed and signature-changed between the compared refs, each with the call sites of its name, and the changed files in languages that could not be analysed at all. Every symbol comes from graft's CLI contract `graft struct exports --json` (`graft.cli.struct_exports` 1.0.0); footprint derives the counts, the ordering, and the call sites. The call sites are footprint's own conservative whole-word identifier scan of the tracked files of the working tree -- no graft contract answers with a call site's line -- so they include the declaration itself and a mention in a comment, a string or prose, and they cannot see a call through dynamic dispatch or a re-export under another name. Each call site also names the system that contains it and carries a mitigation derived from reported facts alone, and exports.call_site_systems names the grouping rule, the mitigation derivation and every system with its call-site count. When graft is unavailable the exports section is stated as unavailable with a reason, never omitted, and the same holds for the scan. unanalysed_languages is independent of graft: it is present and empty when every changed file was in a supported language.",
   "type": "object",
   "required": ["event", "t", "seq", "run", "range", "exports", "unanalysed_languages", "digest", "_schema"],
   "properties": {
@@ -87,6 +87,31 @@
             { "if": { "properties": { "available": { "const": true } }, "required": ["available"] }, "then": { "required": ["available", "method", "files_scanned", "files_skipped"] } }
           ]
         },
+        "call_site_systems": {
+          "description": "How the call sites above group into systems, with the rule named on the record (flyingrobots/footprint#11). Present exactly when `call_site_scan.available` is true: a grouping of call sites nobody looked for is not a figure. The per-system `call_sites` counts sum to `counts.call_sites`, because every call site is in exactly one system, the unassigned group included.",
+          "type": "object",
+          "required": ["rule", "rule_detail", "mitigation_rule", "unassigned", "systems"],
+          "additionalProperties": false,
+          "properties": {
+            "rule": { "const": "path_prefix", "description": "The grouping rule: a system is the first path segment of a call site's repository-relative path" },
+            "rule_detail": { "type": "string", "minLength": 1, "description": "The rule in words, so the output explains its own grouping without a reader fetching this schema" },
+            "mitigation_rule": { "type": "string", "minLength": 1, "description": "How every row's mitigation was derived, in words, for the same reason" },
+            "unassigned": { "const": "(unassigned)", "description": "The group holding every call site in no system -- a file at the repository root. Named and listed last, never dropped." },
+            "systems": {
+              "type": "array",
+              "description": "One entry per system holding at least one call site, ordered by name with the unassigned group last so the grouping follows the tree rather than the order the scan found the sites in",
+              "items": {
+                "type": "object",
+                "required": ["system", "call_sites"],
+                "additionalProperties": false,
+                "properties": {
+                  "system": { "type": "string", "minLength": 1, "description": "The first path segment, or \"(unassigned)\" for the call sites in no system" },
+                  "call_sites": { "type": "integer", "minimum": 1 }
+                }
+              }
+            }
+          }
+        },
         "contract": {
           "type": "object",
           "description": "The graft CLI contract that answered, so a reader knows which interface produced the list",
@@ -114,6 +139,7 @@
             "properties": { "call_site_scan": { "required": ["available"], "properties": { "available": { "const": true } } } }
           },
           "then": {
+            "required": ["call_site_systems"],
             "properties": {
               "added": { "items": { "required": ["symbol", "file", "call_sites"] } },
               "removed": { "items": { "required": ["symbol", "file", "call_sites"] } },
@@ -121,6 +147,14 @@
               "counts": { "required": ["added", "removed", "signature_changed", "call_sites"] }
             }
           }
+        },
+        {
+          "description": "A scan that did not run carries no grouping at all, so an absent grouping can never be read as a change that reaches no system.",
+          "if": {
+            "required": ["call_site_scan"],
+            "properties": { "call_site_scan": { "required": ["available"], "properties": { "available": { "const": false } } } }
+          },
+          "then": { "not": { "required": ["call_site_systems"] } }
         }
       ]
     },
@@ -160,14 +194,20 @@
           "previous_signature": { "type": "string", "description": "The signature at base, present only on a signature change graft reported one for" },
           "call_sites": {
             "type": "array",
-            "description": "Where the symbol's name occurs as a whole word in the tracked, non-binary files of the working tree, ordered by file then line, one entry per line however many times it occurs on that line. Empty means the scan found none, which is reported rather than dropped; absent means no scan ran, which `call_site_scan.reason` states.",
+            "description": "Where the symbol's name occurs as a whole word in the tracked, non-binary files of the working tree, ordered by file then line, one entry per line however many times it occurs on that line. Each one names the system that contains it and carries its row's mitigation. Empty means the scan found none, which is reported rather than dropped; absent means no scan ran, which `call_site_scan.reason` states.",
             "items": {
               "type": "object",
-              "required": ["file", "line"],
+              "required": ["file", "line", "system", "mitigation", "mitigation_basis"],
               "additionalProperties": false,
               "properties": {
                 "file": { "type": "string", "minLength": 1, "description": "Repository-relative path, as `git ls-files` printed it" },
-                "line": { "type": "integer", "minimum": 1, "description": "1-based line number, as `grep -n` would print it" }
+                "line": { "type": "integer", "minimum": 1, "description": "1-based line number, as `grep -n` would print it" },
+                "system": { "type": "string", "minLength": 1, "description": "The system containing this call site: the first path segment of `file`, or \"(unassigned)\" when it has none (flyingrobots/footprint#11)" },
+                "mitigation": { "type": "string", "minLength": 1, "description": "This row's mitigation, derived from two reported facts and nothing else -- whether the call site is in the symbol's own declaring file, and what footprint's classification calls the file. Exactly one of three forms: the literal \"None needed\"; \"Call site in <system>, outside the changed file.\"; or \"Call site outside every known system, outside the changed file.\". Never a judgement about importance, risk or coverage, and never advice: footprint reports and does not judge." },
+                "mitigation_basis": {
+                  "enum": ["declaring_file", "test_file", "other_system", "unassigned"],
+                  "description": "Which fact chose the mitigation, so the derivation is checkable from the record. declaring_file: the call site is in the very file the symbol is exported from. test_file: footprint's classification calls the call site's file a test. other_system: any other call site, inside a system. unassigned: any other call site, in no system. The first two are \"None needed\"."
+                }
               }
             }
           }

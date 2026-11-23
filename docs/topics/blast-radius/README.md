@@ -1,8 +1,9 @@
 # Blast radius
 
 What a change does to the **export surface**: which exported symbols it added, which it removed,
-which kept their name but changed signature, and **where each of them is called from**. One result
-line per run, `footprint.blast_radius` 1.1.0, emitted after the landing plan.
+which kept their name but changed signature, and **where each of them is called from, grouped by the
+system that contains it**. One result line per run, `footprint.blast_radius` 1.1.0, emitted after
+the landing plan.
 
 Composition answers how much changed. This answers what moved, which is the part a reviewer cannot
 get from a file list: a renamed export is two lines in a diff and a broken call site everywhere
@@ -37,7 +38,7 @@ does not compute a semver impact and does not second-guess one.
 | `signature_changed` | Exported at both ends under the same name, with a different signature; carries `previous_signature` when graft reported one |
 
 Each entry carries `symbol` and `file`, plus `kind` and `signature` when graft reported them, and
-its `call_sites`. A
+its `call_sites`, each of which names the system containing it and carries that row's mitigation. A
 renamed export therefore appears twice: the old name under `removed`, the new one under `added`.
 Nothing in graft's answer says "renamed", and footprint does not infer it — a removal and an
 addition that happen to be a rename and a removal that is a deletion look the same from the
@@ -106,6 +107,153 @@ without resolving imports. The list is the union, and it is the same list on bot
 
 It is evidence a reviewer can check in one `grep`, not a call graph — and the `--human` section
 says so under every list it prints.
+
+## Grouping by system
+
+A flat list of call sites does not tell a reviewer which parts of the system a change reaches, so
+the call sites are grouped (flyingrobots/footprint#11). Two things have to be defined precisely for
+that grouping to be a report rather than an opinion, and both are stated on every record that
+carries it, under `exports.call_site_systems`.
+
+### What a system is
+
+> A **system** is the first path segment of a call site's repository-relative path: the directory
+> immediately under the repository root, however deep the file sits inside it. A file at the
+> repository root has no such segment and is grouped under **`(unassigned)`**.
+
+On the wire that rule is named `path_prefix`, and `rule_detail` carries it in words so the output
+explains its own grouping. `src/render.ts` and `src/nested/deep/thing.ts` are both `src`;
+`.github/workflows/ci.yml` is `.github`; `CHANGELOG.md` and `package.json` are `(unassigned)`.
+
+`(unassigned)` is a group, not a gap. It is named, listed **last**, and carries its call sites like
+any other — the edge flyingrobots/footprint#11 names, "a call site outside every known system",
+is a table, not a silence. Systems are otherwise ordered by name, so the grouping follows the tree
+rather than the order the scan happened to find the sites in; that is what lets it sit inside the
+digest.
+
+Two rules were considered and rejected, and the owner may overrule either:
+
+- **`src/` descending one more level.** `src/` in this repository is flat, so the extra clause
+  would never fire on the run that proves the feature. A rule whose extra clause nobody can check
+  is worse than no extra clause.
+- **A configurable list of systems.** It would make the grouping depend on a setting rather than on
+  the tree, and a reviewer reading the output could not tell which systems were even considered.
+
+The per-system `call_sites` counts sum to `counts.call_sites`, because every call site is in
+exactly one system, `(unassigned)` included. That sum is asserted, not assumed: OUT-14f and
+OUT-14j.
+
+### What a mitigation is
+
+Every row carries one, and `AGENTS.md`'s rule applies in full: **report, never judge.** So a
+mitigation here is not advice. It is one of exactly three sentences, chosen by two facts about the
+call site and nothing else — whether the call site is in the very file the symbol is exported from,
+and what [`classify()`](../composition/README.md) calls that file:
+
+| `mitigation_basis` | When | `mitigation` |
+| --- | --- | --- |
+| `declaring_file` | The call site is in the very file the symbol is exported from | `None needed` |
+| `test_file` | `classify()` calls the call site's file a `test` | `None needed` |
+| `other_system` | Any other call site, inside a system | `Call site in <system>, outside the changed file.` |
+| `unassigned` | Any other call site, in no system | `Call site outside every known system, outside the changed file.` |
+
+The order is load-bearing. The declaring file wins over everything, because a symbol declared in a
+test file is still its own declaration; `classify()` wins over the system, because a test fixture
+at the repository root is a test file before it is a file in no system.
+
+Both `None needed` bases are facts a reviewer can check in one line rather than assessments. The
+declaring file is the file whose export surface moved, so a call site in it *is* the change rather
+than something the change reaches. A test file is what `classify()`'s documented, ordered,
+first-match-wins rules say it is.
+
+**What a mitigation deliberately does not say:** whether a call site matters, whether it will
+break, whether it is covered, or what anyone should do about it. The moment a mitigation reads
+"consider adding a test" it is a verdict, and footprint stops being a report. That is
+flyingrobots/footprint#11's named failure mode — a padded mitigation — and the guard against it is
+OUT-14e: every mitigation of the real Definition-of-Done run is matched against an allowlist of the
+three forms above, declared in the test rather than imported from `src/`, so a fourth form cannot
+add itself to its own oracle.
+
+`mitigation_basis` rides every call site beside the sentence, so the derivation is checkable from
+the record without re-deriving it.
+
+### The run it was built on, captured
+
+**Captured output**, not illustrative: this is the `--human` blast-radius section of
+`footprint 543477a~1..543477a --human` run against this repository on 2026-11-22 — the Definition
+of Done of flyingrobots/footprint#11, the same real signature change (`render` gaining
+`review?: StructuralReview | null`) that the call-site work of flyingrobots/footprint#10 used. Four
+systems, 168 call sites, 70 scanned files. It is **abridged**: the `docs` and `(unassigned)` tables
+are complete, `src` keeps five of its 28 rows and `test` is reduced to its last line, and the
+elisions are marked. Line numbers are of the working tree as checked out, so they move.
+
+```markdown
+<summary>Call sites by system (168 across 4 systems, 70 scanned files)</summary>
+
+**`docs`** — 8 call sites
+
+| Symbol | Call site | Mitigation |
+| --- | --- | --- |
+| `render` | `docs/topics/blast-radius/README.md:97` | Call site in docs, outside the changed file. |
+| `render` | `docs/topics/blast-radius/README.md:98` | Call site in docs, outside the changed file. |
+| `render` | `docs/topics/blast-radius/README.md:125` | Call site in docs, outside the changed file. |
+| `render` | `docs/topics/output/test-plan.md:112` | Call site in docs, outside the changed file. |
+| `render` | `docs/topics/output/test-plan.md:117` | Call site in docs, outside the changed file. |
+| `render` | `docs/topics/output/test-plan.md:122` | Call site in docs, outside the changed file. |
+| `render` | `docs/topics/output/test-plan.md:133` | Call site in docs, outside the changed file. |
+| `StructuralReview` | `docs/topics/output/test-plan.md:112` | Call site in docs, outside the changed file. |
+
+**`src`** — 28 call sites
+
+| Symbol | Call site | Mitigation |
+| --- | --- | --- |
+| `render` | `src/cli.ts:8` | Call site in src, outside the changed file. |
+| `render` | `src/render.ts:66` | None needed |
+| `render` | `src/report.ts:10` | Call site in src, outside the changed file. |
+| `resolveGraft` | `src/graft.ts:30` | None needed |
+| `StructuralReview` | `src/report.ts:34` | Call site in src, outside the changed file. |
+                                      … 23 further rows elided from this capture …
+
+**`test`** — 129 call sites
+
+| Symbol | Call site | Mitigation |
+| --- | --- | --- |
+| `devDependencies` | `test/callsites.test.ts:174` | None needed |
+                                      … 128 further rows elided from this capture …
+
+<sub>…and 62 more for `render`; the result line carries every one.</sub>
+
+**`(unassigned)`** — 3 call sites
+
+| Symbol | Call site | Mitigation |
+| --- | --- | --- |
+| `devDependencies` | `bun.lock:10` | Call site outside every known system, outside the changed file. |
+| `devDependencies` | `package.json:27` | None needed |
+| `resolveGraft` | `AGENTS.md:51` | Call site outside every known system, outside the changed file. |
+```
+
+Four things in that capture are worth reading, and all four are the rules above rather than
+coincidences:
+
+- **`src/render.ts:66` is `None needed`** and `src/cli.ts:8` is not, for the same symbol in the
+  same system. `render` is exported from `src/render.ts`, so a call site there is the declaring
+  file — the change itself — and the basis is `declaring_file`, not the system.
+- **The whole `test` system is `None needed`**, 129 rows of it, by `classify()` and nothing else.
+  That is also what makes it the cheapest row to skim, which is the point of grouping.
+- **`package.json:27` is `None needed` inside `(unassigned)`.** `devDependencies` is exported from
+  `package.json`, so the declaring-file basis wins over the group a reviewer might expect to be
+  uniformly "outside".
+- **`bun.lock:10` and `AGENTS.md:51` are in the capture at all.** The scan over-reports by design
+  (a lockfile entry; the word `resolveGraft` in a sentence of `AGENTS.md`), and the grouping does
+  not hide that — it places it, which is the honest thing for a tool that reports rather than
+  judges.
+
+### When the grouping is absent
+
+`exports.call_site_systems` is present exactly when `call_site_scan.available` is true. A grouping
+of call sites nobody looked for is not a figure, so a scan that did not run carries no grouping at
+all — and an absent grouping can therefore never be read as a change that reaches no system. The
+schema enforces both directions.
 
 ### When the scan cannot run
 
@@ -194,11 +342,15 @@ footprint origin/main | jq -c 'select(._schema.id == "footprint.blast_radius") |
 ```bash
 footprint origin/main | jq -c 'select(._schema.id == "footprint.blast_radius")
   | .exports.signature_changed[] | {symbol, sites: (.call_sites | length)}'
+footprint origin/main | jq -c 'select(._schema.id == "footprint.blast_radius")
+  | .exports.call_site_systems.systems'
+footprint origin/main | jq -r 'select(._schema.id == "footprint.blast_radius")
+  | .exports.signature_changed[].call_sites[] | [.system, .file + ":" + (.line|tostring), .mitigation] | @tsv'
 ```
 
 The field-by-field reference is in [Output](../output/README.md); the contract is
 `schemas/footprint.blast_radius.schema.json`, and the cases that hold it are OUT-10, OUT-11,
-OUT-12 and OUT-13 in the [output test plan](../output/test-plan.md).
+OUT-12, OUT-13 and OUT-14 in the [output test plan](../output/test-plan.md).
 
 ## Performance
 
@@ -228,6 +380,9 @@ longer, proportionally to both.
 
 ## What this is not
 
-Not a grouping by system: that is flyingrobots/footprint#11, and it will land as a field on this
-result with a schema version bump. Not a call graph either, and the call-site section above says
-exactly where that line is.
+Not a call graph, and the call-site section above says exactly where that line is. Not a risk
+score either: the grouping places a call site and the mitigation restates two facts about it, and
+neither is a judgement about what the change will do.
+
+Not language reporting. flyingrobots/footprint#2 §3's feature is complete except for that, which
+is still only `unanalysed_languages` naming the gap.

@@ -72,6 +72,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   not fatal; a scan that could not run is `call_site_scan.available: false` with a reason and a
   `callsites.scan_failed` warning, and then no symbol carries `call_sites` at all.
   (flyingrobots/footprint#10)
+- **Call sites grouped by system, with a mitigation on every row.** Each call site now names the
+  `system` containing it and carries a `mitigation` and the `mitigation_basis` that derived it, and
+  `exports.call_site_systems` names the grouping rule, the mitigation derivation and every system
+  with its call-site count — counts that sum to `counts.call_sites`. `--human`'s `## Blast radius`
+  section renders one Markdown table per system, `| Symbol | Call site | Mitigation |`.
+  A **system** is the first path segment of a call site's repository-relative path, the directory
+  immediately under the repository root; a file at the repository root is grouped under
+  `(unassigned)`, which is named and listed last rather than dropped. A **mitigation** is one of
+  exactly three sentences, chosen by two reported facts and nothing else — whether the call site is
+  in the very file the symbol is exported from, and what `classify()` calls that file: `None
+  needed` for the declaring file or a test file, otherwise the system it is in, or that it is
+  outside every known system. It is never a judgement about importance, risk or coverage and never
+  advice, because footprint reports and does not judge (`AGENTS.md`); the guard is a test that
+  matches every mitigation of the real Definition-of-Done run against an allowlist of those three
+  forms, declared in the test rather than imported from `src/`. A scan that did not run carries no
+  grouping at all, so an absent grouping can never be read as a change that reaches no system.
+  **Still on the unreleased 1.1.0 draft rather than the 1.2.0 the issue proposed**: 1.1.0 has never
+  been in a release, so `AGENTS.md`'s rule (spec §4.5) is to record the change in this entry rather
+  than cut a second unreleased version. (flyingrobots/footprint#11)
 - `test/languages-drift.test.ts`: checks `src/languages.ts`'s hand-mirrored extension list against
   the extensions the *installed* `@flyingrobots/graft` actually recognises, by reading its
   `dist/parser/lang.js` from disk and running footprint's extensions through its own `detectLang`.
