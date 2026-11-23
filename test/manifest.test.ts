@@ -4,7 +4,7 @@
 // no command. These cases hold the manifest to npm's own normalization, and hold the release
 // workflow's sanity check to failing on any correction npm reports.
 import { describe, expect, test } from "bun:test";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { manifestChanges, publishCorrections } from "../scripts/manifest-check.ts";
@@ -45,12 +45,33 @@ describe("the published manifest", () => {
     expect(manifestChanges(before, structuredClone(before))).toEqual([]);
   });
 
-  test("the sanity check passes on this repository and speaks JSON Lines", () => {
-    const r = Bun.spawnSync([process.execPath, join(ROOT, "scripts/manifest-check.ts")], { cwd: ROOT, stdout: "pipe", stderr: "pipe" });
-    const lines = [r.stdout.toString(), r.stderr.toString()].join("\n").split("\n").filter((l) => l.trim());
-    const parsed = lines.map((l) => JSON.parse(l) as { kind?: string; ok?: boolean });
-    for (const p of parsed) expect(typeof p.kind).toBe("string");
-    expect(parsed.at(-1)).toMatchObject({ kind: "manifest_check", ok: true });
-    expect(r.exitCode).toBe(0);
+  // The script end to end, as the sanity job runs it, on two throwaway packages that differ only in
+  // the bin path's form. Not run on this repository itself: once a version is on npm, a publish dry
+  // run of that same version fails by design ("cannot publish over the previously published
+  // versions"), which would turn every later CI run red. The dry run asks the registry about a
+  // package name nobody has published, so these cases need the network.
+  const check = (bin: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "footprint-manifest-check-case-"));
+    writeFileSync(join(dir, "a.ts"), "console.log(1);\n");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "footprint-manifest-check-fixture-unpublished", version: "0.0.0", bin: { x: bin }, files: ["a.ts"] }));
+    const r = Bun.spawnSync([process.execPath, join(ROOT, "scripts/manifest-check.ts"), "--cwd", dir], { stdout: "pipe", stderr: "pipe" });
+    expect(r.stderr.toString()).toBe("");
+    const lines = r.stdout.toString().split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l) as { kind: string; ok?: boolean; field?: string });
+    for (const l of lines) expect(typeof l.kind).toBe("string");
+    return { code: r.exitCode, lines };
+  };
+
+  test("the sanity check fails on a manifest npm would correct, naming each correction", () => {
+    const { code, lines } = check("./a.ts");
+    expect(code).toBe(1);
+    expect(lines.filter((l) => l.kind === "manifest_rewrite").map((l) => l.field)).toEqual(["bin"]);
+    expect(lines.filter((l) => l.kind === "publish_correction")).toHaveLength(1);
+    expect(lines.at(-1)).toMatchObject({ kind: "manifest_check", ok: false });
+  }, 60_000);
+
+  test("the sanity check passes on a manifest npm leaves alone", () => {
+    const { code, lines } = check("a.ts");
+    expect(lines).toEqual([expect.objectContaining({ kind: "manifest_check", ok: true })]);
+    expect(code).toBe(0);
   }, 60_000);
 });
