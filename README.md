@@ -113,7 +113,7 @@ changed symbol grouped by system, the unanalysed languages, and the cross-pull-r
 all as JSON Lines through the Parley output protocol. Released on GitHub; on npm as
 `@flyingrobots/footprint` once its first publish is done (see
 [the release workflow](docs/workflows/release/README.md)). Symbol-level overlap is
-[tracked as an issue](https://github.com/flyingrobots/footprint/issues).
+tracked as flyingrobots/footprint#33.
 
 Documentation: [`docs/README.md`](docs/README.md). Working agreement: [`AGENTS.md`](AGENTS.md).
 

@@ -106,7 +106,7 @@ The codes are listed in [the output reference](../output/README.md#errors).
 ## What is not here
 
 - **Symbol-level overlap.** Two pull requests in one file but in different functions are an edge
-  all the same. Tracked separately.
+  all the same. Tracked as flyingrobots/footprint#33.
 - **Performing merges.** footprint proposes an order; a human merges.
 - **Pull requests beyond the limit.** 100 open pull requests are listed; if the list comes back at
   the limit, `truncated` is true, a `gh.list_truncated` warning is emitted, and the comment says
