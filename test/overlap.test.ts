@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { computeOverlap, mergeWaves, sharedFiles, unavailableOverlap, type PullRequest } from "../src/overlap.ts";
 import { classifyFailure } from "../src/pulls.ts";
 
-/** What an overlap or an edge carries when no symbol analysis was passed in (footprint.overlap 2.0.0). */
+/** What an overlap or an edge carries when no symbol analysis was passed in (footprint.overlap 2.x). */
 function notAnalysed(files: string[]) {
   return { level: "undetermined", files: files.map((path) => ({ path, level: "undetermined", code: "symbols.not_analysed", reason: "symbol-level analysis was not run" })) };
 }

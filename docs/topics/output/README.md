@@ -103,9 +103,9 @@ nothing in its mitigation cell is exactly the padded row flyingrobots/footprint#
 symbol with no call site at all is in no system and so in no table; it is stated under them
 instead, because leaving it out would read as a symbol that was never looked up.
 
-### `footprint.overlap` 2.0.0
+### `footprint.overlap` 2.1.0
 
-The fourth line in the same run, after the blast radius: schema `footprint.overlap` 2.0.0
+The fourth line in the same run, after the blast radius: schema `footprint.overlap` 2.1.0
 (`schemas/footprint.overlap.schema.json`). What it means and how the waves are built is
 [the overlap reference](../overlap/README.md); this is the field list.
 
@@ -220,6 +220,7 @@ and `overlap.code` says which:
 | `gh.unauthenticated`, `gh.rate_limited`, `gh.no_remote`, `gh.list_failed`, `gh.list_unreadable` | `gh` resolved but could not list the open pull requests; `overlap.available` is false. No warning when `gh` is simply absent — that is not a failure of anything footprint ran | 0 |
 | `gh.diff_failed` | `gh pr diff --name-only` would not report some pull request's files; they are in `overlap.undetermined` | 0 |
 | `gh.list_truncated` | The pull-request list came back at the limit, so there may be more than were considered | 0 |
+| `symbols.cleanup_failed` | The temporary directory the graft outlines were written to could not be removed; the symbol levels already computed are kept | 0 |
 | `symbols.analysis_failed` | The symbol-level comparison threw. Every edge is file-level, with `symbols.not_analysed` on each shared file. A graft or git failure on one file is not this warning; it is that file's `undetermined` code | 0 |
 | `callsites.scan_failed` | The call-site scan could not list the tracked files; `exports.call_site_scan.available` is false with its reason and no symbol carries `call_sites` | 0 |
 
@@ -228,7 +229,7 @@ and `overlap.code` says which:
 `footprint --help` and `footprint --schema` are runs too: they bootstrap, write a receipt, emit
 one `command` line and the schemas footprint can emit, and close with `end`. `--help` carries
 `footprint.composition` 1.0.0, `footprint.landing` 1.0.0, `footprint.blast_radius` 1.1.0,
-`footprint.overlap` 2.0.0 and `parley.error` 2.0.0, in that order; `--schema` adds every protocol
+`footprint.overlap` 2.1.0 and `parley.error` 2.0.0, in that order; `--schema` adds every protocol
 schema the writer itself emits.
 
 ## Exit status

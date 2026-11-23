@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.overlap/2.0.0",
-  "title": "footprint.overlap 2.0.0",
+  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.overlap/2.1.0",
+  "title": "footprint.overlap 2.1.0",
   "description": "The fourth result of a footprint run: which open pull requests touch a file this change touches, the conflict graph between the open pull requests, and a proposed merge order as waves. Every figure comes from gh pr list --json and gh pr diff --name-only; each shared file of a pair is also compared at the symbol level, from git diff -U0 and graft read outline's jump table at each side's merge base and head (flyingrobots/footprint#33). When gh cannot answer, available is false and the reason is stated rather than the section being omitted.",
   "type": "object",
   "required": [
@@ -292,7 +292,7 @@
           "const": "footprint.overlap"
         },
         "version": {
-          "const": "2.0.0"
+          "const": "2.1.0"
         }
       }
     }
@@ -405,13 +405,16 @@
             "graft.outline_unreadable",
             "budget.spent",
             "gh.head_unknown",
+            "gh.head_moved",
+            "gh.base_unknown",
             "git.head_missing",
             "git.base_missing",
             "git.merge_base",
             "git.diff_failed",
             "git.show_failed",
             "git.binary",
-            "symbols.outside"
+            "symbols.outside",
+            "symbols.file_unchanged"
           ],
           "description": "Why the symbol level could not be decided; present only when undetermined"
         },

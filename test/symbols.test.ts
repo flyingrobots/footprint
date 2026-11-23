@@ -268,10 +268,10 @@ describe("symbol-level overlap, computed", () => {
   });
 });
 
-describe("the overlap schema 2.0.0", () => {
+describe("the overlap schema 2.1.0", () => {
   const schema = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.overlap.schema.json"), "utf8")) as Record<string, unknown>;
   const validate = new Ajv2020({ strict: false, allErrors: true }).compile(schema);
-  const record = (overlap: unknown) => ({ event: "result", t: 1, seq: 2, run: "r", range: "a...b", overlap, digest: "0".repeat(64), _schema: { id: "footprint.overlap", version: "2.0.0" } });
+  const record = (overlap: unknown) => ({ event: "result", t: 1, seq: 2, run: "r", range: "a...b", overlap, digest: "0".repeat(64), _schema: { id: "footprint.overlap", version: "2.1.0" } });
   const prs = [{ number: 1, title: "1", isDraft: false, files: ["x.ts"] }, { number: 2, title: "2", isDraft: false, files: ["x.ts"] }];
 
   test("every undetermined code src/symbols.ts can produce is one the schema accepts", () => {
@@ -343,7 +343,7 @@ describe("symbol-level overlap through the CLI", () => {
     return bin;
   }
 
-  withGraft("golden end to end: the overlap result names the other pull request's symbols and validates as 2.0.0", async () => {
+  withGraft("golden end to end: the overlap result names the other pull request's symbols and validates as 2.1.0", async () => {
     const { dir, heads, main } = await fixture({ a: { lib: alphaBody }, b: { lib: betaBody } });
     const bin = await fakeGh(dir, main, [{ number: 1, head: heads.a!, branch: "a", files: ["lib.ts"] }, { number: 2, head: heads.b!, branch: "b", files: ["lib.ts"] }]);
     const env = { ...process.env, PATH: bin, XDG_STATE_HOME: scratch("state-") };
@@ -355,7 +355,7 @@ describe("symbol-level overlap through the CLI", () => {
     };
     const lines = (await run(["main...a"])).split("\n").filter((l) => l !== "").map((l) => JSON.parse(l) as Record<string, unknown> & { _schema: { id: string; version: string } });
     const result = lines.find((l) => l.event === "result" && l._schema.id === "footprint.overlap") as Record<string, unknown> & { overlap: ReturnType<typeof computeOverlap> };
-    expect(result._schema.version).toBe("2.0.0");
+    expect(result._schema.version).toBe("2.1.0");
     const schema = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.overlap.schema.json"), "utf8")) as Record<string, unknown>;
     const validate = new Ajv2020({ strict: false, allErrors: true }).compile(schema);
     expect(validate(result)).toBe(true);
