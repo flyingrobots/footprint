@@ -147,3 +147,76 @@ describe("why gh could not answer", () => {
     expect(classifyFailure("first line\nsecond line\n", 1).reason).toBe("first line; second line");
   });
 });
+
+// ---- the pull request under review (flyingrobots/footprint#29) -----------------------------------
+
+import { underReview } from "../src/overlap.ts";
+import { OVERLAP_SCHEMA } from "../src/report.ts";
+
+const SHA_A = "a".repeat(40);
+const SHA_B = "b".repeat(40);
+const SHA_C = "c".repeat(40);
+
+describe("overlap with this change > the pull request under review", () => {
+  test("the pull request whose head commit is the range head is excluded and named", () => {
+    const prs = [pr(7, ["src/a.ts"], { headCommit: SHA_A, headBranch: "feat" }), pr(9, ["src/a.ts"], { headCommit: SHA_B, headBranch: "other" })];
+    const self = underReview(prs, { commit: SHA_A, branch: "feat" });
+    expect(self).toBe(7);
+    const o = computeOverlap(["src/a.ts"], prs, { self });
+    expect(o.self).toBe(7);
+    expect(o.overlapping.map((x) => x.number)).toEqual([9]);
+    expect(o.waves.flatMap((w) => w.pullRequests)).toEqual([7, 9]);
+  });
+
+  test("with no pull request under review, self is null and present", () => {
+    expect(underReview([], { commit: SHA_A, branch: "feat" })).toBeNull();
+    expect(underReview([pr(9, ["x"], { headCommit: SHA_B, headBranch: "other" })], { commit: SHA_A, branch: "feat" })).toBeNull();
+    const o = computeOverlap(["src/a.ts"], [], { self: null });
+    expect("self" in o).toBe(true);
+    expect(o.self).toBeNull();
+  });
+
+  test("the head matches by commit when the branch names differ", () => {
+    const prs = [pr(7, ["src/a.ts"], { headCommit: SHA_A, headBranch: "renamed-on-github" })];
+    expect(underReview(prs, { commit: SHA_A, branch: "local-name" })).toBe(7);
+    expect(underReview(prs, { commit: SHA_A, branch: null })).toBe(7);
+  });
+
+  test("a fork's pull request that shares the branch name is not excluded", () => {
+    const prs = [pr(7, ["src/a.ts"], { headCommit: SHA_B, headBranch: "feat", crossRepository: true })];
+    expect(underReview(prs, { commit: SHA_A, branch: "feat" })).toBeNull();
+  });
+
+  test("a same-repository head branch is the fallback when no commit matches", () => {
+    const prs = [pr(7, ["src/a.ts"], { headCommit: SHA_B, headBranch: "feat", crossRepository: false })];
+    expect(underReview(prs, { commit: SHA_A, branch: "feat" })).toBe(7);
+    expect(underReview(prs, { commit: SHA_A, branch: null })).toBeNull();
+  });
+
+  test("a commit match outranks a branch-name match", () => {
+    const prs = [
+      pr(5, ["x"], { headCommit: SHA_B, headBranch: "feat", crossRepository: false }),
+      pr(8, ["x"], { headCommit: SHA_A, headBranch: "elsewhere", crossRepository: false }),
+    ];
+    expect(underReview(prs, { commit: SHA_A, branch: "feat" })).toBe(8);
+  });
+
+  test("a commit match on a fork's pull request still counts: it is the same commit", () => {
+    const prs = [pr(7, ["x"], { headCommit: SHA_C, headBranch: "feat", crossRepository: true })];
+    expect(underReview(prs, { commit: SHA_C, branch: null })).toBe(7);
+  });
+
+  test("the summary counts the other open pull requests", () => {
+    const prs = [pr(7, ["src/a.ts"]), pr(9, ["src/a.ts"]), pr(11, ["docs/x.md"])];
+    const o = computeOverlap(["src/a.ts"], prs, { self: 7 });
+    expect(o.summary).toBe("1 of 2 other open pull requests touches a file this change touches.");
+    const alone = computeOverlap(["src/a.ts"], [pr(7, ["src/a.ts"])], { self: 7 });
+    expect(alone.summary).toBe("No other pull request is open, so nothing can overlap this change.");
+    expect(alone.overlapping).toEqual([]);
+  });
+
+  test("self is required by the overlap schema", () => {
+    const available = (OVERLAP_SCHEMA as { properties: { overlap: { oneOf: Array<{ required: string[] }> } } }).properties.overlap.oneOf[0]!;
+    expect(available.required).toContain("self");
+  });
+});

@@ -19,6 +19,38 @@ export interface PullRequest {
   readonly title: string;
   readonly isDraft: boolean;
   readonly files: readonly string[] | null;
+  /** The pull request's head commit id, from `gh pr list --json headRefOid`. */
+  readonly headCommit?: string;
+  /** Its head branch name, from `headRefName`. */
+  readonly headBranch?: string;
+  /** True when the head branch lives in a fork, from `isCrossRepository`. */
+  readonly crossRepository?: boolean;
+}
+
+/** What identifies the range's head: its commit id, and its branch name when it has one. */
+export interface RangeHead {
+  readonly commit: string | null;
+  readonly branch: string | null;
+}
+
+/**
+ * The pull request under review: the one whose head is the range's head. The commit id decides
+ * first; the head branch name decides only when no pull request's head commit matches, and only
+ * for a same-repository pull request, because a fork's branch of the same name is a different
+ * change. When several share the deciding fact the lowest number is the one named, so the answer
+ * does not follow the order `gh` listed them. Null when none matches.
+ */
+export function underReview(prs: readonly PullRequest[], head: RangeHead): number | null {
+  const ordered = [...prs].sort((a, b) => a.number - b.number);
+  if (head.commit !== null) {
+    const byCommit = ordered.find((p) => p.headCommit !== undefined && p.headCommit === head.commit);
+    if (byCommit !== undefined) return byCommit.number;
+  }
+  if (head.branch !== null) {
+    const byBranch = ordered.find((p) => p.crossRepository === false && p.headBranch === head.branch);
+    if (byBranch !== undefined) return byBranch.number;
+  }
+  return null;
 }
 
 /** An open pull request that touches a file this change touches. */
@@ -52,7 +84,7 @@ export interface Undetermined {
 
 export interface OverlapAvailable {
   readonly available: true;
-  /** This change's own pull request, excluded from `overlapping`; null when it is not known. */
+  /** The pull request under review (its head is the range's head), excluded from `overlapping`; null when none matches. */
   readonly self: number | null;
   readonly openPullRequests: number;
   /** The `gh pr list --limit` used, and whether the list came back at it. */
@@ -171,16 +203,19 @@ export function computeOverlap(
     conflicts: conflictGraph(prs),
     waves: mergeWaves(prs),
     undetermined,
-    summary: summarize(prs.length, overlapping.length, undetermined.length),
+    summary: summarize(prs.length, overlapping.length, undetermined.length, self !== null && prs.some((p) => p.number === self)),
   };
 }
 
-function summarize(open: number, overlapping: number, undetermined: number): string {
+function summarize(listed: number, overlapping: number, undetermined: number, hasSelf: boolean): string {
+  // The pull request under review is not a candidate for overlap, so it is not in the count.
+  const open = hasSelf ? listed - 1 : listed;
+  const other = hasSelf ? "other " : "";
   const tail = undetermined === 0
     ? ""
     : ` ${undetermined} ${plural(undetermined, "pull request's", "pull requests'")} files could not be read.`;
-  if (open === 0) return `No pull request is open, so nothing can overlap this change.${tail}`;
-  const requests = `${open} open ${plural(open, "pull request", "pull requests")}`;
+  if (open === 0) return `No ${hasSelf ? "other " : ""}pull request is open, so nothing can overlap this change.${tail}`;
+  const requests = `${open} ${other}open ${plural(open, "pull request", "pull requests")}`;
   if (overlapping === 0) return `None of the ${requests} ${plural(open, "touches", "touch")} a file this change touches.${tail}`;
   return `${overlapping} of ${requests} ${plural(overlapping, "touches", "touch")} a file this change touches.${tail}`;
 }

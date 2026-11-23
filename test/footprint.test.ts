@@ -1,7 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import { classify } from "../src/classify.ts";
 import { compose, parseNumstat, mermaidPie } from "../src/footprint.ts";
-import { render } from "../src/render.ts";
+import { blastRadius, render } from "../src/render.ts";
 import { structuralSummary } from "../src/graft.ts";
 
 describe("classify", () => {
@@ -146,5 +146,21 @@ describe("render with and without graft", () => {
       breakingChanges: ["removed export foo"],
     });
     expect(out).toContain("1 breaking change(s)");
+  });
+});
+
+describe("each severity statement names the graft command it comes from (flyingrobots/footprint#29)", () => {
+  test("the breaking count names graft struct review and the semver reading names graft struct exports", () => {
+    const changes = [{ path: "src/a.ts", added: 1, removed: 1, binary: false }];
+    const md = render(compose(changes), changes, "a...b", {
+      files: [{ path: "src/a.ts", category: "structural", added: 0, removed: 0, changed: 1 }],
+      breakingChanges: ["signature of foo changed"],
+    });
+    expect(md).toContain("1 breaking change(s)");
+    expect(md).toContain("graft struct review");
+    const surface = { available: true, surface: { base: "a", head: "b", added: [], removed: [], signatureChanged: [], semverImpact: "minor", callSiteScan: { available: false, reason: { code: "x", detail: "y" } } } } as unknown as Parameters<typeof blastRadius>[0];
+    const blast = blastRadius(surface);
+    expect(blast).toContain("graft struct exports");
+    expect(blast).toContain("**minor**");
   });
 });

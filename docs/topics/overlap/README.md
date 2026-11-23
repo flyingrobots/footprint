@@ -76,14 +76,23 @@ function, so importing it would mean reaching into `node_modules/@flyingrobots/g
 is exactly the coupling [`AGENTS.md`](../../../AGENTS.md) forbids. graft's substrate is slated to
 be rewritten; twenty lines of greedy first-fit is a cheaper thing to own than that coupling.
 
-## This change's own pull request
+## The pull request under review
 
-When the branch being reported on already has a pull request, `self` carries its number. It is
-excluded from `overlapping` — a pull request does not overlap itself — and kept in the waves,
-because it still has to land somewhere in the order.
+A report on an open pull request must not list that pull request against itself. `self` carries
+the number of the open pull request whose **head commit equals the range's resolved head commit**
+(`gh pr list --json headRefOid` against `git rev-parse <head>^{commit}`). It is excluded from
+`overlapping`, and from the count in `summary` ("1 of 2 other open pull requests"), and kept in
+the waves, because it still has to land somewhere in the order. `--human` runs print a step naming it.
 
-When the branch has no pull request yet, `self` is null and every open pull request is a candidate
-for overlap.
+Only when no pull request's head commit matches does the head **branch name** decide, and only for
+a same-repository pull request (`isCrossRepository` false): a fork's branch that happens to share
+the name is a different change and stays listed. The range's head has a branch name when it is
+`HEAD` on a branch, a local branch, or `origin/<branch>`; a commit id or a tag has none, so only
+the commit comparison applies. If several pull requests share the deciding fact the lowest number
+is named.
+
+`self` is always present on an available result and is null when no pull request matches: the
+branch has none yet, or the range is not an open pull request's head.
 
 ## When gh cannot answer
 

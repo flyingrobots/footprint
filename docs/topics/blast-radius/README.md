@@ -29,6 +29,13 @@ ordering, which is by file then symbol so that the digest follows the surface ra
 internal order. The `semver_impact` is graft's own judgement, carried through unchanged — footprint
 does not compute a semver impact and does not second-guess one.
 
+The report carries two statements about breakage, and each names its source. The composition
+section's count of breaking changes is `breakingChanges` from `graft struct review --json`
+(`graft.cli.struct_review`); this section's reading is `semverImpact` from `graft struct exports
+--json` (`graft.cli.struct_exports`). They are two graft subcommands answering two questions over
+the same range, and footprint reports both without choosing one. A change can be listed as
+breaking by the first while the second reads it as minor; neither is footprint's verdict.
+
 ## What is listed
 
 | List | Meaning |

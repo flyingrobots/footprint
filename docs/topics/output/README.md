@@ -35,7 +35,7 @@ What the change touches, schema `schemas/footprint.composition.schema.json`:
 | `range` | The git range compared, as given to `git diff` |
 | `composition` | `files`, `added`, `removed`, `binaryFiles`, and `byCategory` rows that sum to the totals (the invariant under test) |
 | `gut_check` | The `headline` and the `flags`, observations and never verdicts |
-| `structural` | `available: false` when graft could not be resolved or failed; otherwise the counts and `breakingChanges`. The section is stated, never omitted. |
+| `structural` | `available: false` when graft could not be resolved or failed; otherwise the counts and `breakingChanges`, which is `graft struct review`'s list (the `--human` line says so; the blast radius's `semver_impact` is `graft struct exports`'s reading, a separate measure). The section is stated, never omitted. |
 | `digest` | SHA-256 over the canonical JSON of the four fields above, so two runs compare with one string |
 
 The receipt copy of the same line also carries `files` (the listing from `git diff --numstat`) and

@@ -84,7 +84,7 @@ export function render(
       "",
     );
     if (review.breakingChanges.length > 0) {
-      out.push(`- **${review.breakingChanges.length} breaking change(s).**`, "");
+      out.push(`- **${review.breakingChanges.length} breaking change(s)**, as \`graft struct review\` lists them.`, "");
     }
     if (symbols === 0 && s.structural === 0) {
       out.push("- No symbol was added, removed or changed. Nothing's public shape moved.", "");
@@ -170,7 +170,7 @@ export function blastRadius(exports: Exports, unanalysed: readonly UnsupportedLa
   out.push(
     `**+${s.added.length} added / -${s.removed.length} removed / ~${s.signatureChanged.length} signature-changed exported symbols**` +
       ` · \`${s.base}\` → \`${s.head}\`` +
-      (s.semverImpact === null ? "" : ` · graft reads this as a **${s.semverImpact}** change`),
+      (s.semverImpact === null ? "" : ` · \`graft struct exports\` reads this as a **${s.semverImpact}** change`),
     "",
   );
   if (rows.length === 0) {

@@ -29,7 +29,7 @@
         "code": { "enum": ["gh.not_found", "gh.unauthenticated", "gh.rate_limited", "gh.no_remote", "gh.list_failed", "gh.list_unreadable"], "description": "Why the overlap is unavailable; present only when available is false" },
         "reason": { "type": "string", "minLength": 1, "description": "gh's own message, or why gh could not be found" },
         "summary": { "type": "string", "minLength": 1, "description": "The plain statement: the counts, or that there is no overlap, or the limitation. Never an empty section." },
-        "self": { "type": ["integer", "null"], "description": "This change's own pull request, excluded from overlapping and kept in the waves; null when this branch has none" },
+        "self": { "type": ["integer", "null"], "description": "The pull request under review: the open pull request whose head commit is the range's head commit, or, when no head commit matches, the same-repository pull request whose head branch is the range's head branch. Excluded from overlapping and kept in the waves; always present, null when none matches." },
         "openPullRequests": { "type": "integer", "minimum": 0, "description": "How many open pull requests gh listed" },
         "limit": { "type": "integer", "minimum": 1, "description": "The gh pr list --limit used" },
         "truncated": { "type": "boolean", "description": "True when the list came back at the limit, so there may be more open pull requests than were considered" },
