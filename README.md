@@ -14,6 +14,12 @@ bun src/cli.ts --human | gh pr comment 42 --body-file -   # the Markdown comment
 bun src/cli.ts --help             # what it emits, as JSON Lines
 ```
 
+From a clone, run it with `bun src/cli.ts` as above. Once the package is on npm,
+`bunx @flyingrobots/footprint` takes the same arguments; the package runs on Bun, not Node. On
+macOS, do not type a bare `footprint`: `/usr/bin/footprint` is an unrelated Apple memory tool that
+comes first on `PATH`. For an agent reviewing a pull request there is a skill that does all of
+this: [`skills/footprint/SKILL.md`](skills/footprint/SKILL.md).
+
 footprint speaks the [Parley output protocol](https://github.com/flyingrobots/parley): four
 `result` lines on stdout — the composition with its gut check, structural summary and digest, then
 the landing plan, the blast radius and the cross-pull-request overlap; errors on stderr as
@@ -102,10 +108,12 @@ than quietly omitting it. A degraded run should never read as a clean one.
 
 ## Status
 
-**v0.2.0** — composition, as JSON Lines through the Parley output protocol. On `main` and not yet
-released: the landing plan, the export-surface diff with the call sites of each changed symbol,
-and the cross-pull-request overlap above. Grouping by system and symbol-level overlap are
-[tracked as issues](https://github.com/flyingrobots/footprint/issues).
+**v0.3.0** — composition, the landing plan, the export-surface diff with the call sites of each
+changed symbol grouped by system, the unanalysed languages, and the cross-pull-request overlap,
+all as JSON Lines through the Parley output protocol. Released on GitHub; on npm as
+`@flyingrobots/footprint` once its first publish is done (see
+[the release workflow](docs/workflows/release/README.md)). Symbol-level overlap is
+tracked as flyingrobots/footprint#33.
 
 Documentation: [`docs/README.md`](docs/README.md). Working agreement: [`AGENTS.md`](AGENTS.md).
 

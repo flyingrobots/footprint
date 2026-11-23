@@ -280,8 +280,8 @@ describe("the record carries the call sites", () => {
     ]),
   };
 
-  // The third argument is flyingrobots/footprint#12's unanalysed-language list, which rides the
-  // same unreleased 1.1.0 draft. Empty here: nothing in these cases is about it, and both
+  // The third argument is flyingrobots/footprint#12's unanalysed-language list, which is part of
+  // the same 1.1.0 version. Empty here: nothing in these cases is about it, and both
   // additive fields have to validate side by side, which the first case below asserts.
   function record(exports: Exports, unanalysed: UnsupportedLanguage[] = []) {
     return enveloped(exportsRecord("origin/main...HEAD", exports, unanalysed));
@@ -309,7 +309,7 @@ describe("the record carries the call sites", () => {
     expect(dev.call_sites).toEqual([]);
   });
 
-  test("the call sites and the unanalysed languages ride the same 1.1.0 draft side by side", () => {
+  test("the call sites and the unanalysed languages ride the same 1.1.0 version side by side", () => {
     const unanalysed: UnsupportedLanguage[] = [{ extension: ".hs", count: 2 }];
     const line = record(withCallSites(parseExportSurfaceText(SIGNATURE_CHANGE), SCAN), unanalysed) as Record<string, unknown>;
     if (!validate(line)) throw new Error(ajv.errorsText(validate.errors));

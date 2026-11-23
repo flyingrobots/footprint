@@ -56,13 +56,19 @@ A "Deployment" heading is not a landing section either. footprint reads how a ch
 repository; deploying a system is a different question, and quietly adopting a deployment runbook
 as merge instructions would be exactly the invention this avoids.
 
+### footprint's own steps
+
+This repository declares its own after-merge steps in [`RELEASE.md`](../../../RELEASE.md), as
+top-level list items under `## After merge`, so a run on a change here quotes them back, each
+cited `` `RELEASE.md` › After merge``. `test/release.test.ts` (OUT-17a) reads the real file through
+the same derivation and fails if it ever stops declaring steps in a form footprint reads. Because
+every non-documentation change is reported with all of them, each step says when it applies.
+
 ### When nothing is declared
 
 `after_merge.declared` is false and `after_merge.statement` is a **stated fallback** that names
 each document and what was found there — absent, no landing section, or a landing section with
-nothing listed under it — and says that footprint states none rather than inventing them. This is
-footprint's own case today: this repository has no `RELEASE.md`, and its `AGENTS.md` has no landing
-section.
+nothing listed under it — and says that footprint states none rather than inventing them.
 
 ### When there is nothing to do
 

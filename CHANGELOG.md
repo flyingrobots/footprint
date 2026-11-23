@@ -5,8 +5,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-11-22
+
+The first release to carry the landing plan, the blast radius and the cross-pull-request overlap.
+**After this release no footprint schema is a draft**: `footprint.composition` 1.0.0,
+`footprint.landing` 1.0.0, `footprint.blast_radius` 1.1.0 and `footprint.overlap` 1.0.0 have all
+shipped, so a change to any of them is a new version of that schema, recorded under `### Schemas`,
+rather than an edit to the entry below (spec §4.5).
+
 ### Added
 
+- **A release workflow.** `.github/workflows/release.yml` runs on a tag `vX.Y.Z`: a `sanity` job
+  refuses a tag that differs from `package.json`'s `version` or has no dated changelog heading,
+  checks the manifest's publishing fields, runs the gate and dry-runs the pack; a `release` job
+  creates the GitHub release with this section as its notes and the tarball plus `SHA256SUMS`
+  attached; a `publish` job, in the GitHub environment `npm`, publishes with OIDC provenance
+  through npm trusted publishing, with no token in the repository. The first publish of the package
+  is manual. See [`docs/workflows/release/README.md`](docs/workflows/release/README.md).
+  (flyingrobots/footprint#30)
+- **`RELEASE.md`**, the after-merge steps in the form footprint's landing plan reads, so footprint
+  run on a change to this repository reports its own landing steps. `test/release.test.ts` holds it
+  to that form, and checks that the manifest version has a dated heading here. (flyingrobots/footprint#30)
+- **The `footprint` agent skill**, `skills/footprint/SKILL.md`: on an open pull request, run
+  footprint over its range, post the `--human` report as a comment, and act on what it lists
+  before and after the merge, without reading it as a verdict. See
+  [`docs/topics/agent-skill/README.md`](docs/topics/agent-skill/README.md). (flyingrobots/footprint#30)
+- `package.json` carries `files`, `engines`, `publishConfig`, `homepage` and `bugs`, so the npm
+  package ships the source, the schemas and the skill and nothing else.
 - A measured wall-time bound for the call-site scan on a large repository: 4,823 tracked files,
   169 changed files, 142 changed symbols, 7,735 call sites, median 38.72s over three runs. See
   [Performance](docs/topics/blast-radius/README.md#performance). (flyingrobots/footprint#13)
@@ -114,6 +139,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - [`docs/topics/overlap/README.md`](docs/topics/overlap/README.md): the conflict graph, the merge
   waves, and why the greedy grouping is a reimplementation of graft's `findParallelGroups` rather
   than an import.
+
+### Fixed
+
+- `package-lock.json` was stale since 0.1.0: it named version 0.1.0 and lacked
+  `@flyingrobots/parley-emit`. Regenerated.
 
 ### Changed
 
