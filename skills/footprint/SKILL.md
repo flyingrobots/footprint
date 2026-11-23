@@ -54,12 +54,12 @@ history, its `RELEASE.md` and its `AGENTS.md`.
 ```bash
 git fetch origin
 BASE=$(gh pr view "$PR" --json baseRefName -q .baseRefName)
-HEAD=$(gh pr view "$PR" --json headRefName -q .headRefName)
-RANGE="origin/$BASE...origin/$HEAD"
+HEAD_REF=$(gh pr view "$PR" --json headRefName -q .headRefName)
+RANGE="origin/$BASE...origin/$HEAD_REF"
 ```
 
 Three dots: the change since the branch left its base, not the base's own later commits. For a
-pull request from a fork, `origin/$HEAD` does not exist; fetch the pull request's head instead and
+pull request from a fork, `origin/$HEAD_REF` does not exist; fetch the pull request's head instead and
 use it:
 
 ```bash
