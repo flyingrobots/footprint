@@ -198,6 +198,48 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(receipt.some((o) => o.event === "receipt.step" && /call site/i.test(String(o.decision)))).toBe(true);
   }, CLI_TIMEOUT);
 
+  /**
+   * The Definition of Done of flyingrobots/footprint#11: the same range, grouped. The grouping is
+   * a pure function of the surface and the scan, so what this adds over the cases in
+   * `test/systems.test.ts` is that a real run emits it and a real `--human` renders it.
+   */
+  test("the blast-radius result groups the call sites by system, one --human table each", async () => {
+    const r = await cli(["543477a~1..543477a"]);
+    expect(r.status).toBe(0);
+    const out = validateAll(r.stdout, "stdout");
+    const blast = out.filter((o) => o.event === "result")[2] as Line & { exports: Record<string, unknown> };
+    const ex = blast.exports as {
+      available: boolean;
+      added?: Array<Record<string, unknown>>;
+      removed?: Array<Record<string, unknown>>;
+      signature_changed?: Array<Record<string, unknown>>;
+      counts?: Record<string, number>;
+      call_site_systems?: { rule: string; rule_detail: string; mitigation_rule: string; unassigned: string; systems: Array<{ system: string; call_sites: number }> };
+    };
+    if (!ex.available) {
+      // graft is optional; with no surface there is nothing to group and no grouping is claimed.
+      expect(ex.call_site_systems).toBeUndefined();
+      return;
+    }
+    const grouping = ex.call_site_systems!;
+    expect(grouping.rule).toBe("path_prefix");
+    expect(grouping.unassigned).toBe("(unassigned)");
+    expect(grouping.systems.length).toBeGreaterThan(1);
+    // The per-system counts account for every call site: none grouped twice, none lost.
+    expect(grouping.systems.reduce((n, g) => n + g.call_sites, 0)).toBe(ex.counts!.call_sites);
+    for (const s of [...ex.added!, ...ex.removed!, ...ex.signature_changed!]) {
+      for (const site of s.call_sites as Array<Record<string, unknown>>) {
+        expect(grouping.systems.some((g) => g.system === site.system)).toBe(true);
+        expect(String(site.mitigation).length).toBeGreaterThan(0);
+      }
+    }
+
+    const human = await cli(["543477a~1..543477a", "--human"]);
+    expect(human.status).toBe(0);
+    for (const g of grouping.systems) expect(human.stdout).toContain(`**\`${g.system}\`**`);
+    expect(human.stdout).toContain("| Symbol | Call site | Mitigation |");
+  }, CLI_TIMEOUT);
+
   test("the head carries the resolved range with both commit ids, and inv moves with them", async () => {
     const a = await cli(["HEAD~1..HEAD"]);
     const b = await cli(["HEAD~2..HEAD~1"]);
