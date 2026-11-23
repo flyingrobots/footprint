@@ -10,6 +10,7 @@
 | [Output](topics/output/README.md) | What a caller receives: JSON Lines, the receipt, `--human`, errors, discovery, exit status |
 | [Output test plan](topics/output/test-plan.md) | Requirements and evidence for the output contract, including the overlap result and footprint's own landing steps (OUT-17) |
 | [The agent skill](topics/agent-skill/README.md) | What `skills/footprint/SKILL.md` does on a pull request, what it needs, and how to install it |
+| [Agent skill test plan](topics/agent-skill/test-plan.md) | Requirements and evidence: the skill's commands, run as written under bash and zsh |
 
 | Workflow | Job |
 | --- | --- |
