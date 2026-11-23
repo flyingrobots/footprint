@@ -134,6 +134,38 @@ overlap, and the `digest` is what moves when they do.
 **Before merge** and **After merge**, then `## Blast radius`, then `### Open pull requests`, so one
 run is one comment.
 
+### The size of the `--human` report
+
+GitHub rejects a comment body over **65536 characters**, and the report is one comment, so
+`--human` is bounded to that in total (flyingrobots/footprint#51). The JSON Lines records and the
+receipt are not bounded and carry every row; only the Markdown is cut, and every cut says how much
+it left out. Nothing is dropped silently.
+
+| Section | What is cut | How |
+| --- | --- | --- |
+| Composition | The `Files` list, and the paths graft labels `formatting` | 200 files and 20 formatting paths, then `N more files omitted` (the receipt's `files` field has every one) and `N more formatting-labelled files omitted`; at most 16384 characters for the section |
+| Blast radius, `Exported symbols` | Table rows | 100 rows, signature-changed and removed before added, then `N more exported symbols omitted` |
+| Blast radius, `Call sites by system` | Rows of each system's table, the summary table, and the names of symbols with no call site | 100 rows per system, rows whose mitigation is not `None needed` first, then `N more call sites in this system omitted (K of them with a mitigation other than None needed)`; the `…and N more for <symbol>` remainder notes name at most 10 symbols per system and count the rest together |
+| Overlap | Pull requests, conflicts, waves, and the files one pull request shares | 50 of each and 10 shared files, then `N more pull requests omitted`, `and N more files`; at most 8192 characters for the section |
+| Before merge, After merge | Items and steps | 50 of each, then `N more steps omitted` naming the files to read them in; at most 8192 characters for the two sections together |
+
+Past those starting limits the blast radius is held to what the other sections leave of 65536:
+while it is over, the larger of its two tables has its limit halved and it is rendered again. The
+same input gives the same text. The overlap section's 8192 characters are reserved, not measured,
+because it is rendered after the blast radius; a report with no overlapping pull request leaves
+most of that unused.
+
+**Summarised, not listed.** A symbol with more than **50** call sites in all systems together is
+not given a row per site. One `Symbols with more than 50 call sites` table gives its total, its
+count in each system, and how many of its sites carry a mitigation other than `None needed`. The
+reason is the names: a field of a JSON Schema file, or of any config file graft parses, is an
+exported symbol called `type` or `id`, and the whole-word scan finds it in every file that uses the
+word. footprint still scans for those names and still records every site; it reports and does not
+judge which names are worth scanning. The per-symbol cap of 20 rows in one system still applies
+below the threshold.
+
+**Last resort.** Each section is also clamped to its own budget (composition 16384, landing 8192, overlap 8192, blast radius the rest), so the total cannot exceed 65536 whatever the input: text still over its budget after every list was cut to nothing is cut again at a line boundary, any `<details>` it left open is closed, and the end says `N characters of <section> omitted`.
+
 ## Identity
 
 Every line carries the run id. The bootstrap line and the receipt head also carry `inv`, the

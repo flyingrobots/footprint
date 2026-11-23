@@ -108,7 +108,7 @@ than quietly omitting it. A degraded run should never read as a clean one.
 
 ## Status
 
-**v0.3.2** — composition, the landing plan, the export-surface diff with the call sites of each
+**v0.3.3** — composition, the landing plan, the export-surface diff with the call sites of each
 changed symbol grouped by system, the unanalysed languages, and the cross-pull-request overlap,
 all as JSON Lines through the Parley output protocol. Released on GitHub; on npm as
 `@flyingrobots/footprint` once its first publish is done (see

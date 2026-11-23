@@ -87,6 +87,11 @@ gh pr comment "$PR" --body-file "$OUT"
 if you need a field rather than the prose. Post the report as footprint wrote it; do not edit,
 trim or summarise it into the comment.
 
+The report is bounded to GitHub's 65536-character comment limit in total, whatever the change, so a large change prints
+summaries and says what it omitted (`N more ... omitted`, or a `Symbols with more than 50 call
+sites` table with a count per system). It is already the whole report that can be posted; the
+rest is in the JSON Lines result lines and the receipt (its `files` field for the file list), which are not bounded.
+
 ## 4. Follow what it lists
 
 Read the posted report and act on every item below. Each one is either handled in the pull
@@ -100,7 +105,10 @@ request or answered in a PR comment that says why it needs nothing. Silence is n
   blast radius: confirm the callers were updated, or the change is versioned as breaking.
 - **Call sites outside the changed file.** Every row whose mitigation is not `None needed` names
   a call site in another system, or outside every known system. Check each: updated, unaffected
-  (say why), or followed up.
+  (say why), or followed up. Where the report says it omitted call sites, or counted a symbol's
+  sites instead of listing them, its own figure says how many carry a mitigation other than `None
+  needed`; read those from the `footprint.blast_radius` result (run `fp "$RANGE"` without
+  `--human`) and check them the same way.
 - **Overlap.** Each open pull request that shares a file, and the proposed merge order. Tell the
   authors of overlapping pull requests, and land in the proposed waves unless there is a reason not
   to, which you state.

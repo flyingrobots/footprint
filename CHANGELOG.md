@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.3.3] — 2026-11-22
+
+### Fixed
+
+- **The `--human` report always fits one GitHub comment.** On flyingrobots/taskalisk#71 it was
+  284007 characters and GitHub refused it at 65536. It is now bounded to 65536 characters in total:
+  the `Files` list, the exported-symbols table, each system's call-site table, the lists of symbols
+  with no call site, and the overlap section are cut to a limit, and each cut says how many entries
+  it left out and that the result line carries every one; if the report is still too long the larger
+  table is halved until it fits, deterministically. A symbol with more than 50 call sites (the
+  fields of a JSON Schema file, such as `type` and `id`, were the cause) is summarised as a count per
+  system instead of a row per site. footprint still scans for those names and still records every
+  site. The same range now renders at 54368 characters. The JSON Lines records are unchanged and not
+  bounded. The landing section, the formatting-labelled paths and the per-symbol remainder notes are
+  bounded too, and a last-resort clamp on every section makes the total bound hold for any input,
+  stating what it cut. (flyingrobots/footprint#51)
+
 ## [0.3.2] — 2026-11-22
 
 ### Fixed
