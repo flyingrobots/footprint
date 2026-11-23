@@ -68,7 +68,9 @@ plan prints as **Before merge** and **After merge**, after the composition comme
 The export-surface diff and the call sites of every symbol in it, grouped by the system that
 contains them, the third result line of the run, after the landing plan (`schemas/footprint.blast_radius.schema.json`). What it lists, the graft
 contract the symbols come from, and why the call sites are footprint's own scan rather than
-graft's, is [Blast radius](../blast-radius/README.md); these are its fields:
+graft's, is [Blast radius](../blast-radius/README.md); these are its fields. The measured wall-time
+bound for the call-site scan is stated there too, under
+[Performance](../blast-radius/README.md#performance).
 
 | Field | Meaning |
 | --- | --- |
