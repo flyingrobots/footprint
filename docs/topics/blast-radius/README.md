@@ -200,6 +200,32 @@ The field-by-field reference is in [Output](../output/README.md); the contract i
 `schemas/footprint.blast_radius.schema.json`, and the cases that hold it are OUT-10, OUT-11,
 OUT-12 and OUT-13 in the [output test plan](../output/test-plan.md).
 
+## Performance
+
+The call-site scan is a whole-word identifier scan of every changed symbol over every tracked,
+non-binary file — `O(symbols × files)` by construction, because each symbol gets its own pass over
+the file set. flyingrobots/footprint#13 is the one measured run that states a bound rather than
+leaving the question open:
+
+| | |
+| --- | --- |
+| Repository | [`flyingrobots/bijou`](https://github.com/flyingrobots/bijou) at `2d131ce3feee6612015422347ed37e9d8b369dc4` |
+| Range | `d83fe2810028fdf21e965dc5bfbdfc6a83e5adc3..2d131ce3feee6612015422347ed37e9d8b369dc4` (`HEAD~20..HEAD`) |
+| Tracked files | 4,823 |
+| Changed files | 169 |
+| Changed symbols | 142 (140 added, 0 removed, 2 signature-changed) |
+| Call sites found | 7,735 |
+| graft | answered (`exports.available: true`) |
+| Wall time, three runs | 37.25s, 38.72s, 48.31s — **median 38.72s** |
+| Machine | Apple M5 MacBook Air, 16 GB RAM, macOS 26.6 |
+| Measured | 2026-11-22 |
+
+All figures above are measured, not estimated. The median sits under the sixty-second bound a
+reviewer would wait for on a pull request comment, so this is stated as the bound rather than
+optimised — scope for #13 was one measured run and the recorded number, not a faster algorithm.
+A repository with substantially more tracked files or more changed symbols than this one will take
+longer, proportionally to both.
+
 ## What this is not
 
 Not a grouping by system: that is flyingrobots/footprint#11, and it will land as a field on this
