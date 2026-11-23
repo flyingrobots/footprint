@@ -8,7 +8,7 @@ import { compose, parseNumstat } from "./footprint.ts";
 import { blastRadius, gutCheck, render, renderLanding, renderOverlap } from "./render.ts";
 import { resolveGraft, structuralReview } from "./graft.ts";
 import { landingPlan, readLandingDocs, LANDING_DOCUMENTS } from "./landing.ts";
-import { computeOverlap, unavailableOverlap, type Overlap } from "./overlap.ts";
+import { computeOverlap, underReview, unavailableOverlap, type Overlap, type RangeHead } from "./overlap.ts";
 import { isFailure, listOpenPullRequests, resolveGh } from "./pulls.ts";
 import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord, OVERLAP_SCHEMA, OVERLAP_TYPE, overlapRecord } from "./report.ts";
 import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, attachCallSites, exportSurface, exportsRecord, surfaceSymbols } from "./exports.ts";
@@ -124,7 +124,7 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   run.result(exportsRecord(range, surface, unanalysed), BLAST_RADIUS_TYPE, { markdown: blastMarkdown });
 
   // Cross-pull-request overlap: the fourth result in the same run, after the blast radius.
-  const overlap = await crossPullRequest(run, changes.map((c) => c.path));
+  const overlap = await crossPullRequest(run, changes.map((c) => c.path), range.split(/\.{2,3}/)[1] || "HEAD");
   overlapMarkdown = renderOverlap(overlap);
   run.result(overlapRecord(range, overlap), OVERLAP_TYPE, { markdown: overlapMarkdown });
 }
@@ -134,7 +134,7 @@ async function footprint(run: Run, args: string[]): Promise<void> {
  * `gh` absent, unauthenticated or rate-limited is a stated limitation and the run still succeeds:
  * an omitted section would read as "nothing overlaps", which is a different claim.
  */
-async function crossPullRequest(run: Run, changed: readonly string[]): Promise<Overlap> {
+async function crossPullRequest(run: Run, changed: readonly string[], headRef: string): Promise<Overlap> {
   const gh = resolveGh();
   if (gh === null) {
     run.step("cross-pull-request overlap unavailable", "gh is not on PATH; the result states the limitation rather than omitting the section");
@@ -146,7 +146,9 @@ async function crossPullRequest(run: Run, changed: readonly string[]): Promise<O
     run.warning({ code: pulls.code, problem: `gh could not list the open pull requests: ${pulls.reason}`, remedy: "run gh pr list by hand to see why; the composition result is unaffected", remedy_target: gh });
     return unavailableOverlap(pulls.code, pulls.reason);
   }
-  const overlap = computeOverlap(changed, pulls.pullRequests, { self: pulls.self, limit: pulls.limit });
+  const self = underReview(pulls.pullRequests, await rangeHead(headRef));
+  const overlap = computeOverlap(changed, pulls.pullRequests, { self, limit: pulls.limit });
+  if (self !== null) run.step(`#${self} is the pull request under review`, "its head commit is the range's head commit (or, failing a commit match, its same-repository head branch is the range's head branch), so it is excluded from the overlap rather than listed against itself");
   run.step(`cross-pull-request overlap over ${overlap.openPullRequests} open pull request${overlap.openPullRequests === 1 ? "" : "s"}`, "gh listed the open pull requests and gh pr diff --name-only their files; waves are greedy first-fit over the conflict graph, a proposal rather than a minimum");
   if (overlap.undetermined.length > 0) {
     run.warning({ code: "gh.diff_failed", problem: `gh pr diff --name-only would not report the changed files of ${overlap.undetermined.map((u) => `#${u.number}`).join(", ")}; those pull requests are reported as undetermined rather than assumed disjoint`, remedy: "run gh pr diff --name-only by hand to see why", remedy_target: gh });
@@ -155,6 +157,22 @@ async function crossPullRequest(run: Run, changed: readonly string[]): Promise<O
     run.warning({ code: "gh.list_truncated", problem: `gh returned ${overlap.openPullRequests} open pull requests, the limit asked for; there may be more that were not considered`, measured: overlap.openPullRequests, limit: overlap.limit, remedy: "narrow the question, or raise the limit in src/pulls.ts" });
   }
   return overlap;
+}
+
+/**
+ * The range's head as the pull-request match needs it: the commit id, and the branch name when the
+ * head is a branch (HEAD resolves to the checked-out branch; `origin/x` is branch `x`; a commit id
+ * or a tag has no branch name).
+ */
+async function rangeHead(ref: string): Promise<RangeHead> {
+  const text = async (...cmd: string[]) => (await $`${cmd}`.quiet().nothrow()).text().trim() || null;
+  const commit = await text("git", "rev-parse", "--verify", "--quiet", `${ref}^{commit}`);
+  let branch: string | null = null;
+  const exists = async (full: string) => (await $`git show-ref --verify --quiet ${full}`.quiet().nothrow()).exitCode === 0;
+  if (ref === "HEAD") branch = await text("git", "symbolic-ref", "--short", "--quiet", "HEAD");
+  else if (await exists(`refs/heads/${ref}`)) branch = ref;
+  else if (ref.startsWith("origin/") && (await exists(`refs/remotes/${ref}`))) branch = ref.slice("origin/".length);
+  return { commit, branch };
 }
 
 /**

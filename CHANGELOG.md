@@ -103,8 +103,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   as waves, where no two pull requests in a wave share a file. `--human` renders it as an
   `### Open pull requests` section. (flyingrobots/footprint#1)
 - The open pull requests come from `gh pr list --json` and their files from
-  `gh pr diff --name-only`; this branch's own pull request comes from `gh pr view --json number`
-  and is excluded from the overlap while staying in the waves. When `gh` is absent,
+  `gh pr diff --name-only`; the pull request under review is the one whose head commit is the
+  range's head commit (falling back to a same-repository head branch name), reported in `self`
+  (null when none) and excluded from the overlap and its count while staying in the waves, so a
+  report on an open pull request no longer lists it against itself. (flyingrobots/footprint#29) When `gh` is absent,
   unauthenticated, rate-limited, without a GitHub remote, or returns unreadable JSON, the result
   carries `available: false` with a stable code and `gh`'s own message, and the run still exits 0.
   A pull request whose files `gh` would not report is `undetermined` rather than assumed disjoint;
@@ -112,6 +114,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - [`docs/topics/overlap/README.md`](docs/topics/overlap/README.md): the conflict graph, the merge
   waves, and why the greedy grouping is a reimplementation of graft's `findParallelGroups` rather
   than an import.
+
+### Changed
+
+- The `--human` comment says where each severity statement comes from: "breaking change(s), as
+  `graft struct review` lists them" and "`graft struct exports` reads this as a minor change", so
+  the two cannot read as a contradiction. footprint reports both and picks neither.
+  (flyingrobots/footprint#29)
 
 ### Decided
 

@@ -4,9 +4,8 @@
 //
 // Two `gh` calls per run plus one per pull request, all read-only:
 //
-//   gh pr list --state open --json number,title,isDraft --limit <n>
+//   gh pr list --state open --json number,title,isDraft,headRefOid,headRefName,isCrossRepository --limit <n>
 //   gh pr diff <number> --name-only
-//   gh pr view --json number            (this branch's own pull request, if it has one)
 //
 // `gh` missing, unauthenticated or rate-limited is a stated limitation, never an omitted section:
 // an absent signal that reads as a clean signal is worse than no signal.
@@ -21,8 +20,6 @@ export interface PullsFailure {
 
 export interface Pulls {
   readonly pullRequests: readonly PullRequest[];
-  /** This branch's own pull request, when it has one. */
-  readonly self: number | null;
   readonly limit: number;
 }
 
@@ -57,6 +54,9 @@ interface Listed {
   number?: unknown;
   title?: unknown;
   isDraft?: unknown;
+  headRefOid?: unknown;
+  headRefName?: unknown;
+  isCrossRepository?: unknown;
 }
 
 /**
@@ -64,7 +64,7 @@ interface Listed {
  * `null`, which the computation reports as undetermined rather than treating as disjoint.
  */
 export async function listOpenPullRequests(gh: string, cwd: string, limit: number = LIST_LIMIT): Promise<PullsResult> {
-  const listed = await $`${gh} pr list --state open --json number,title,isDraft --limit ${limit}`.cwd(cwd).quiet().nothrow();
+  const listed = await $`${gh} pr list --state open --json number,title,isDraft,headRefOid,headRefName,isCrossRepository --limit ${limit}`.cwd(cwd).quiet().nothrow();
   if (listed.exitCode !== 0) return classifyFailure(listed.stderr.toString(), listed.exitCode);
 
   let rows: Listed[];
@@ -84,10 +84,13 @@ export async function listOpenPullRequests(gh: string, cwd: string, limit: numbe
       title: typeof row.title === "string" ? row.title : "",
       isDraft: row.isDraft === true,
       files: await changedFiles(gh, cwd, row.number),
+      ...(typeof row.headRefOid === "string" ? { headCommit: row.headRefOid } : {}),
+      ...(typeof row.headRefName === "string" ? { headBranch: row.headRefName } : {}),
+      ...(typeof row.isCrossRepository === "boolean" ? { crossRepository: row.isCrossRepository } : {}),
     });
   }
 
-  return { pullRequests, self: await selfNumber(gh, cwd), limit };
+  return { pullRequests, limit };
 }
 
 /** The paths one pull request changes, or null when `gh pr diff` would not say. */
@@ -95,19 +98,4 @@ export async function changedFiles(gh: string, cwd: string, number: number): Pro
   const diff = await $`${gh} pr diff ${number} --name-only`.cwd(cwd).quiet().nothrow();
   if (diff.exitCode !== 0) return null;
   return diff.text().split("\n").map((l) => l.trim()).filter((l) => l !== "");
-}
-
-/**
- * This branch's own pull request. Not having one is ordinary — the change may not be pushed yet —
- * so a failure here is null, not an error.
- */
-export async function selfNumber(gh: string, cwd: string): Promise<number | null> {
-  const view = await $`${gh} pr view --json number`.cwd(cwd).quiet().nothrow();
-  if (view.exitCode !== 0) return null;
-  try {
-    const parsed = JSON.parse(view.text()) as { number?: unknown };
-    return typeof parsed.number === "number" ? parsed.number : null;
-  } catch {
-    return null;
-  }
 }
