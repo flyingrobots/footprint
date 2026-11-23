@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Fixed
 
+- **A change to an agent skill is not documentation only.** Markdown under a `skills/` path
+  component, and any `SKILL.md`, classified as `docs`, so a skill-only change read "Documentation
+  only" and the landing plan set aside the after-merge steps, including this repository's own
+  "reinstall the skill". They now classify as `config`, which changes no schema; compositions of
+  changes to skills shift from `docs` to `config`. (flyingrobots/footprint#34)
+
 - **Licence files are docs.** `LICENSE`, `LICENSE.*`, `NOTICE` and `COPYING`, at any depth, fell
   through to `source`, so a change adding them inflated the source share and reported them as
   "changed files in unanalysed language: `(none)`". They now classify as `docs`; a composition

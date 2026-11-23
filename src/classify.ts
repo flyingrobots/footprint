@@ -20,6 +20,12 @@ const RULES: ReadonlyArray<readonly [Category, RegExp]> = [
   ["test", /(^|\/)(tests?|__tests__|spec|fixtures?|testdata)\//],
   ["test", /\.(test|spec)\.[cm]?[jt]sx?$/],
   ["test", /_test\.(go|py|rs)$/],
+  // Agent skills are instructions an agent executes, not documentation: Markdown under a `skills/`
+  // path component, and any SKILL.md. `config` rather than a new category, which would change the
+  // shipped footprint.composition schema's enum (flyingrobots/footprint#34). Before the docs rules,
+  // after the test rules, so a skill fixture stays a test.
+  ["config", /(^|\/)skills\/(.+\/)?[^/]+\.mdx?$/i],
+  ["config", /(^|\/)SKILL\.md$/],
   // Licence and notice texts, by whole file name: extensionless, so without this they fall through
   // to source and read as code in an unanalysed language (flyingrobots/footprint#36).
   ["docs", /(^|\/)(LICENSE(\.[^/]+)?|NOTICE|COPYING)$/],

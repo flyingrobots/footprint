@@ -27,6 +27,14 @@ Flags are observations, not verdicts. A large change is not automatically risky.
 list in `src/classify.ts`, first match wins, and the order matters: a test fixture classifies as
 `test` before extension rules apply, and a lockfile as `generated` before the JSON rule claims it.
 
+An agent skill is `config`, not `docs`: Markdown (`.md`, `.mdx`) under a `skills/` path
+component, and any file named `SKILL.md`. A skill is instructions an agent executes, so a change to
+one is not "documentation only", and the landing plan reports the after-merge steps a repository
+declares for it (flyingrobots/footprint#34). It is `config` rather than a category of its own
+because a new category would change the shipped `footprint.composition` schema's `category` enum,
+and rather than `source` because a skill is not code in a language graft could analyse. A skill
+fixture under a test path is still `test`.
+
 Licence and notice texts are `docs` by whole file name, at any depth: `LICENSE`, `LICENSE.<anything>`,
 `NOTICE` and `COPYING`. They have no extension for the other rules to see, and without that rule
 they would count as source and read as code in an unanalysed language. One under a generated or

@@ -1,7 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import { classify } from "../src/classify.ts";
 import { compose, parseNumstat, mermaidPie } from "../src/footprint.ts";
-import { blastRadius, render } from "../src/render.ts";
+import { blastRadius, gutCheck, render } from "../src/render.ts";
 import { structuralSummary } from "../src/graft.ts";
 import { unsupportedLanguages } from "../src/languages.ts";
 
@@ -47,6 +47,31 @@ describe("classify", () => {
 
   test("only the named licence files are docs, not names that merely contain them", () => {
     for (const p of ["src/NOTICES", "COPYINGX", "MYLICENSE"]) expect([p, classify(p)]).toEqual([p, "source"]);
+  });
+
+  // flyingrobots/footprint#34: a skill is instructions an agent executes, so not documentation.
+  test("an agent skill's Markdown is config, not docs", () => {
+    for (const p of ["skills/footprint/SKILL.md", "skills/footprint/reference.md", "packages/a/skills/b/notes.mdx", ".claude/skills/x/SKILL.md", "SKILL.md", "docs/agents/SKILL.md"]) {
+      expect([p, classify(p)]).toEqual([p, "config"]);
+    }
+  });
+
+  test("only Markdown under a skills/ component, or SKILL.md, moves out of docs", () => {
+    const cases: Array<[string, string]> = [
+      ["test/fixtures/skills/x/SKILL.md", "test"],
+      ["docs/skills.md", "docs"],
+      ["myskills/x.md", "docs"],
+      ["skills/x/run.ts", "source"],
+      ["skills/x/logo.png", "assets"],
+    ];
+    for (const [p, want] of cases) expect([p, classify(p)]).toEqual([p, want]);
+  });
+
+  test("a skill-only change is not flagged documentation only, nor an unanalysed language", () => {
+    const c = compose([{ path: "skills/footprint/SKILL.md", added: 3, removed: 1, binary: false }]);
+    expect(c.byCategory.map((r) => r.category)).toEqual(["config"]);
+    expect(gutCheck(c).flags.some((f) => f.startsWith("Documentation only"))).toBe(false);
+    expect(unsupportedLanguages(["skills/footprint/SKILL.md"])).toEqual([]);
   });
 
   test("licence files are not reported as an unanalysed language", () => {

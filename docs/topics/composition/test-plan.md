@@ -10,6 +10,7 @@ Evidence lives in `test/footprint.test.ts`.
 | CO-4 | A change with no line edits does not divide by zero |
 | CO-5 | Unrecognised files classify as `source` rather than being dropped |
 | CO-7 | A licence or notice file — `LICENSE`, `LICENSE.<anything>`, `NOTICE`, `COPYING`, at any depth — is `docs`, so it neither inflates the source share nor reads as code in an unanalysed language (flyingrobots/footprint#36) |
+| CO-8 | An agent skill is configuration an agent executes, not documentation: Markdown (`.md`, `.mdx`) under a `skills/` path component, and any file named `SKILL.md`, classify as `config`, so a change to a skill is never "documentation only" (flyingrobots/footprint#34) |
 
 | ID | Case | Oracle | Evidence | Status |
 | --- | --- | --- | --- | --- |
@@ -25,6 +26,9 @@ Evidence lives in `test/footprint.test.ts`.
 | CO-7b | `node_modules/x/LICENSE`, `test/fixtures/repo/LICENSE` | `generated` and `test`: the earlier, more specific rules still win | `classify > a licence file under a generated or test path keeps that category` | implemented |
 | CO-7c | `src/NOTICES`, `COPYINGX`, `MYLICENSE` | `source` each: the rule names whole file names and nothing that merely contains them | `classify > only the named licence files are docs, not names that merely contain them` | implemented |
 | CO-7d | `unsupportedLanguages` over `packages/parley-emit-py/LICENSE` and `packages/parley-emit-py/NOTICE` (the flyingrobots/parley#89 case) | no unanalysed language reported | `classify > licence files are not reported as an unanalysed language` | implemented |
+| CO-8a | `skills/footprint/SKILL.md`, `skills/footprint/reference.md`, `packages/a/skills/b/notes.mdx`, `.claude/skills/x/SKILL.md`, `SKILL.md`, `docs/agents/SKILL.md` | each `classify()` is `config` | `classify > an agent skill's Markdown is config, not docs` | implemented |
+| CO-8b | `test/fixtures/skills/x/SKILL.md`, `docs/skills.md`, `myskills/x.md`, `skills/x/run.ts`, `skills/x/logo.png` | `test`, `docs`, `docs`, `source`, `assets`: only Markdown under a whole `skills` component moves, and the test rule still wins | `classify > only Markdown under a skills/ component, or SKILL.md, moves out of docs` | implemented |
+| CO-8c | `compose` and `gutCheck` over a change to `skills/footprint/SKILL.md` alone; `unsupportedLanguages` over it | one `config` row, no "Documentation only" flag; no unanalysed language (why `config` and not `source`) | `classify > a skill-only change is not flagged documentation only, nor an unanalysed language` | implemented |
 
 ## Known gaps
 
