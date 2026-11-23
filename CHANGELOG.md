@@ -10,6 +10,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - CI: a GitHub Actions workflow (`.github/workflows/ci.yml`) runs `bun install --frozen-lockfile`
   and `bun test` on every push to `main` and on every pull request. See
   [`docs/workflows/ci/README.md`](docs/workflows/ci/README.md). (flyingrobots/footprint#22)
+- **CI proves graft answered, rather than merely installed.** `test/require-graft.test.ts` asserts
+  `footprint.blast_radius`'s `exports.available` over a real range of this repository, naming graft
+  and the reason it carried when that fails — but only when `FOOTPRINT_REQUIRE_GRAFT=1` is set, so
+  a local run without it still passes. The workflow sets the variable, plus `GIT_AUTHOR_NAME`,
+  `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME` and `GIT_COMMITTER_EMAIL`: graft writes its own lazy WARP
+  index as git objects, through git-plumbing that strips `HOME` from the environment it hands its
+  own git subprocesses, so without an identity in one of those four variables `git commit-tree`
+  exited 128 on `ubuntu-latest` and every graft-backed assertion took its "unavailable" branch
+  while the suite read green. See [`docs/workflows/ci/README.md`](docs/workflows/ci/README.md).
+  (flyingrobots/footprint#25)
 - A second result in the same run, `footprint.landing` 1.0.0
   (`schemas/footprint.landing.schema.json`), and two `--human` sections, **Before merge** and
   **After merge**. The after-merge steps are read out of the repository's own `RELEASE.md` and
