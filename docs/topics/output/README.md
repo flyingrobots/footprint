@@ -245,15 +245,21 @@ The `comment` command's errors and warnings are listed on [the pull-request comm
 `footprint --help` and `footprint --schema` are runs too: they bootstrap, write a receipt, emit
 `command` lines and the schemas footprint can emit, and close with `end`. `--help` describes the
 default command, `footprint`, and carries `footprint.composition` 1.0.0, `footprint.landing`
-1.0.0, `footprint.blast_radius` 1.1.0, `footprint.overlap` 2.2.0 and `parley.error` 2.0.0, in that
-order. `footprint comment --help` describes the `comment` command and carries
-`footprint.comment` 1.0.0 and `parley.error` 2.0.0. `--schema` describes both commands and adds
+1.0.0, `footprint.blast_radius` 1.1.0, `footprint.overlap` 2.2.0, `parley.error` 2.0.0 and
+`parley.startup.failed` 1.0.0, in that order. `footprint comment --help` describes the `comment`
+command and carries `footprint.comment` 1.0.0, `parley.error` 2.0.0 and `parley.startup.failed`
+1.0.0. `--schema` describes both commands and adds
 every protocol schema the writer itself emits.
 
 ## Exit status
 
 `0` success, `2` a structured error was reported, `3` no writable receipt location (one
 `startup.failed` line on stderr), `4` the output or receipt could not be written. Spec §3.4.
+
+**Arguments are checked after the bootstrap line** (spec §3.2), in the command's handler. A usage
+error, such as an unknown flag, a second range or an out-of-range `--max-chars`, is therefore a
+command error: one `parley.error` line with code `args.invalid`, exit `2`, and a complete receipt
+whose `end` records the failure. It is never exit `3`.
 
 ## Retention and hygiene
 

@@ -324,7 +324,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     const h = validateAll(help.stdout, "stdout");
     expect(h[0]!.event).toBe("run"); expect(h.at(-1)!.event).toBe("end");
     expect(h.filter((o) => o.event === "command").map((o) => o.name)).toEqual(["footprint"]);
-    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.1.0", "footprint.overlap@2.2.0", "parley.error@2.0.0"]);
+    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.1.0", "footprint.overlap@2.2.0", "parley.error@2.0.0", "parley.startup.failed@1.0.0"]);
     const schema = await cli(["--schema"]);
     const s = validateAll(schema.stdout, "stdout");
     expect(s.filter((o) => o.event === "schema").length).toBeGreaterThan(2);
