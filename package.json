@@ -1,6 +1,6 @@
 {
   "name": "@flyingrobots/footprint",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "What a change actually touches: composition, blast radius, and how to land it",
   "license": "Apache-2.0",
   "type": "module",
@@ -22,7 +22,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@flyingrobots/parley-emit": "^0.1.0"
+    "@flyingrobots/parley-emit": "^0.2.4"
   },
   "optionalDependencies": {
     "@flyingrobots/graft": "^0.14.0"

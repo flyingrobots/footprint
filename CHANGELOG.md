@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.6.2] — 2026-11-23
+
+### Changed
+
+- **On `@flyingrobots/parley-emit` `^0.2.4`** (flyingrobots/footprint#41), up from `^0.1.0`.
+  **BREAKING for a consumer that pins the discovery output:** `footprint --help` and `footprint
+  comment --help` now list `parley.startup.failed@1.0.0` after `parley.error@2.0.0` (Parley spec
+  §4.2). Receipt retention follows spec §5.1: an incomplete receipt is exempt until it has gone
+  unmodified for 24 hours. No footprint schema changes.
+
+### Documented
+
+- Where arguments are checked (Parley spec §3.2): after the bootstrap line, in the handler, so a
+  usage error is `args.invalid` with exit `2` and a complete receipt, never exit `3`.
+
 ## [0.6.1] — 2026-11-23
 
 ### Changed
