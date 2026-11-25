@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-11-24
+
 ### Changed
 
 - **On `@flyingrobots/parley-emit` `^0.4.0`** (flyingrobots/footprint#64), up from `^0.2.4`, with
