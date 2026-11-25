@@ -1,5 +1,7 @@
 # footprint
 
+<img width="1774" height="887" alt="footprint-git" src="https://github.com/user-attachments/assets/7b59cc5f-b5f2-4dfd-b9ef-c6ac0c59c45d" />
+
 What a change actually touches.
 
 `footprint` reads a diff and reports its composition — how many files, of what kind, and what share
