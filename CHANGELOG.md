@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Changed
+
+- **On `@flyingrobots/parley-emit` `^0.4.0`** (flyingrobots/footprint#64), up from `^0.2.4`, with
+  Parley spec 0.2.1. What a caller can see:
+  - retention keeps a receipt that has no `end` for 24 hours before it may delete it;
+  - a `.parley/.gitignore` negation the writer cannot evaluate sends receipts to the state
+    directory, with a `receipt.relocated` warning;
+  - records the writer raises itself can never be withheld, and a run always ends with `end`.
+  The writer's new refusal of a redacted record it cannot check (status 4) cannot fire here:
+  footprint declares no secrets, so nothing is ever redacted. No footprint schema changes.
+
 ## [0.7.0] — 2026-11-23
 
 ### Changed

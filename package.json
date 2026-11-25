@@ -22,7 +22,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@flyingrobots/parley-emit": "^0.2.4"
+    "@flyingrobots/parley-emit": "^0.4.0"
   },
   "optionalDependencies": {
     "@flyingrobots/graft": "^0.14.0"
