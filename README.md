@@ -1,6 +1,7 @@
 # footprint
 
-<img width="1774" height="887" alt="footprint-git" src="https://github.com/user-attachments/assets/7b59cc5f-b5f2-4dfd-b9ef-c6ac0c59c45d" />
+<img width="1774" height="887" alt="footprint-git" src="https://github.com/user-attachments/assets/94ac676b-b63f-4ccc-afae-f128a1249344" />
+
 
 What a change actually touches.
 
