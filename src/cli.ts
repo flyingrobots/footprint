@@ -126,7 +126,7 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   const headId = await commitOf(ends.head);
   const pinned = baseId !== null && headId !== null ? `${baseId}${ends.threeDot ? "..." : ".."}${headId}` : range;
 
-  const diff = await $`git diff --numstat ${pinned}`.quiet().nothrow();
+  const diff = await $`git diff --numstat -z ${pinned}`.quiet().nothrow();
   if (diff.exitCode !== 0) {
     run.error({ code: "git.diff_failed", problem: `git diff --numstat ${range} exited ${diff.exitCode}: ${diff.stderr.toString().trim() || "(no message)"}`, remedy: "pass a range git can resolve", remedy_target: range });
     return;

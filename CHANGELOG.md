@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Fixed
+
+- **A renamed, copied or unusually named file is reported under its real path**
+  (flyingrobots/footprint#66). footprint read `git diff --numstat` without `-z`, so a rename came
+  through as `dir/{old => new}/file` and a path with a tab or a non-ASCII byte came through
+  C-quoted. Classification, the landing plan, the unanalysed-language list and the overlap with
+  other pull requests all read a path that did not exist. footprint now reads `git diff --numstat
+  -z` and reports each file under its post-change path. No schema changes.
+
 ## [0.7.1] — 2026-11-24
 
 ### Changed
