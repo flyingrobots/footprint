@@ -1,7 +1,7 @@
 {
   "name": "@flyingrobots/footprint",
   "version": "0.7.1",
-  "description": "What a change actually touches: composition, blast radius, and how to land it",
+  "description": "What a change touches and what else is moving: composition, blast radius, landing, and overlap with open pull requests",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
