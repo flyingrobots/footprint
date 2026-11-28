@@ -4,7 +4,7 @@
 // and contents answers a real repository would, built from real git objects in a fixture
 // repository whose pull-request heads are then made absent, as a fork's are in CI. The outliner is
 // the stand-in one (each `export function NAME` through the next `}`), so they hold without graft.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test, setDefaultTimeout } from "bun:test";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -136,13 +136,15 @@ async function run(w: World, prs: PullRequest[], ghPath: string, opts: { budget?
 const file0 = (r: Awaited<ReturnType<typeof run>>) => r.overlap.conflicts[0]!.symbolLevel.files[0]!;
 
 /**
- * The clock for a test that runs the analysis more than once (flyingrobots/footprint#90): one
- * RUN_TIMEOUT per run. Each run builds a git world and spawns a fake gh, about a second idle and
- * several under load; Bun's fixed 5 s default timed out a four-run test at load average 6. This
- * raises the clock, never an assertion, as test/cli.test.ts does.
+ * The clock (flyingrobots/footprint#90). Each test builds a git world and runs the analysis, which
+ * spawns a fake gh: about a second idle, more than Bun's fixed 5 s default under load -- at load
+ * average 6, four single-run tests and one four-run test timed out at 5000 ms. So every test here
+ * gets one RUN_TIMEOUT, and a test that runs the analysis n times gets runs(n). This raises the
+ * clock, never an assertion, as test/cli.test.ts does.
  */
 const RUN_TIMEOUT = 15_000;
 const runs = (n: number) => n * RUN_TIMEOUT;
+setDefaultTimeout(RUN_TIMEOUT);
 
 describe("symbol level through the GitHub API (flyingrobots/footprint#55)", () => {
   test("golden: two heads absent from the clone are classified disjoint, reading compare and contents by exact commit id", async () => {
