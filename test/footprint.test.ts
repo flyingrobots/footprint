@@ -246,3 +246,39 @@ describe("the Structural line names graft as the source of its formatting readin
     expect(md).toMatch(/graft's (reading|label)/);
   });
 });
+
+describe("vendored code, lockfiles and generated sources are generated (flyingrobots/footprint#68)", () => {
+  test("a vendor/ directory at any depth is generated", () => {
+    for (const f of ["vendor/github.com/x/y.go", "app/vendor/autoload.php", "packages/a/vendor/lib.rb"]) expect(classify(f)).toBe("generated");
+  });
+
+  test("every major ecosystem's lockfile is generated", () => {
+    for (const f of [
+      "Gemfile.lock", "poetry.lock", "uv.lock", "Pipfile.lock", "composer.lock", "flake.lock", "mix.lock",
+      "pubspec.lock", "Podfile.lock", "npm-shrinkwrap.json", "packages.lock.json", "Package.resolved",
+      "gradle.lockfile", "services/api/poetry.lock",
+    ]) expect([f, classify(f)]).toEqual([f, "generated"]);
+  });
+
+  test("common generated-source names are generated", () => {
+    for (const f of ["src/api.generated.ts", "gen/user.pb.go", "proto/user_pb2.py", "proto/user_pb2_grpc.py", "lib/model.g.dart"]) {
+      expect([f, classify(f)]).toEqual([f, "generated"]);
+    }
+  });
+
+  test("a name that only resembles one stays what it was", () => {
+    expect(classify("src/lock.ts")).toBe("source");
+    expect(classify("src/vendor.ts")).toBe("source");
+    expect(classify("src/generated_report.py")).toBe("source");
+    expect(classify("docs/locking.md")).toBe("docs");
+  });
+
+  test("a mostly vendored change raises the generated-share flag", () => {
+    const flags = gutCheck(compose([
+      { path: "vendor/lib/big.go", added: 900, removed: 0, binary: false },
+      { path: "src/main.go", added: 10, removed: 2, binary: false },
+      { path: "src/main_test.go", added: 1, removed: 0, binary: false },
+    ])).flags;
+    expect(flags.some((f) => f.includes("generated or vendored"))).toBe(true);
+  });
+});
