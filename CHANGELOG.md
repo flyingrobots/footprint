@@ -28,15 +28,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   C-quoted. Classification, the landing plan, the unanalysed-language list and the overlap with
   other pull requests all read a path that did not exist. footprint now reads `git diff --numstat
   -z` and reports each file under its post-change path. The figures no longer depend on the user's
-  git config: footprint passes `-M`, `-l1000`, `--diff-algorithm=myers`, `--no-relative`,
-  `--no-ext-diff`, `--no-textconv` and `-c core.attributesFile=/dev/null`, so `diff.renames`,
-  `diff.renameLimit`, `diff.algorithm`, `diff.relative`, configured diff drivers and the user's own
-  attributes file cannot change them; the repository's `.gitattributes` still applies. Every
-  changed-file path, extension, call-site system name, symbol-level reason and overlap edge reason
-  that names a path writes it as a code span with control characters escaped, so a file name
-  holding a newline or a backtick cannot break out into the posted comment. An overlap edge's
-  `reason` in the result line now writes its shared paths in backticks; no other result text
-  changes, and no schema changes.
+  global or system git config, which the numstat call does not read (`GIT_CONFIG_GLOBAL=/dev/null`,
+  `GIT_CONFIG_NOSYSTEM=1`). Against the repository's own config it pins git's defaults for the
+  settings that move numstat: `-M`, `-l1000`, `--diff-algorithm=myers`, `--no-relative`,
+  `--no-ext-diff`, `--no-textconv`, `core.bigFileThreshold=512m` and `core.attributesFile=/dev/null`.
+  The repository's committed `.gitattributes` and the clone's `.git/info/attributes` still apply.
+  Every changed-file path, extension, call-site system name (in both call-site tables),
+  symbol-level reason and overlap edge reason that names a path writes it as a code span with
+  control characters escaped, so a file name holding a newline or a backtick cannot break out into
+  the posted comment. In the overlap result line, an edge's `reason` and a shared file's
+  symbol-level `reason` now write paths and extensions in backticks; no schema changes.
 
 ## [0.7.1] — 2026-11-24
 

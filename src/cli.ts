@@ -126,14 +126,15 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   const headId = await commitOf(ends.head);
   const pinned = baseId !== null && headId !== null ? `${baseId}${ends.threeDot ? "..." : ".."}${headId}` : range;
 
-  // The figures must not depend on the user's git config (flyingrobots/footprint#66): -M pins git's
-  // default rename detection against diff.renames, -l1000 its default rename limit against
-  // diff.renameLimit, --diff-algorithm=myers its default algorithm against diff.algorithm,
-  // --no-relative the whole tree against diff.relative, --no-ext-diff and --no-textconv the real
-  // bytes against configured drivers, and core.attributesFile=/dev/null the user's own attributes
-  // file (the repository's .gitattributes still applies: that is the repository's declaration, not
-  // the user's). -z gives each path verbatim, a rename under its new path.
-  const diff = await $`git -c core.attributesFile=/dev/null diff --numstat -z -M -l1000 --diff-algorithm=myers --no-relative --no-ext-diff --no-textconv ${pinned}`.quiet().nothrow();
+  // The figures must not depend on the user's git config (flyingrobots/footprint#66). The user's
+  // global and system config are not read at all (GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM). Against
+  // the repository's own config the settings that move numstat are pinned to git's defaults: -M
+  // (diff.renames), -l1000 (diff.renameLimit), --diff-algorithm=myers (diff.algorithm),
+  // --no-relative (diff.relative), --no-ext-diff and --no-textconv (diff drivers),
+  // core.bigFileThreshold=512m and core.attributesFile=/dev/null. What still applies, by design,
+  // is the repository's declaration: its committed .gitattributes, and .git/info/attributes in the
+  // clone. -z gives each path verbatim, a rename under its new path.
+  const diff = await $`git -c core.attributesFile=/dev/null -c core.bigFileThreshold=512m diff --numstat -z -M -l1000 --diff-algorithm=myers --no-relative --no-ext-diff --no-textconv ${pinned}`.env({ ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" }).quiet().nothrow();
   if (diff.exitCode !== 0) {
     run.error({ code: "git.diff_failed", problem: `git diff --numstat ${range} exited ${diff.exitCode}: ${diff.stderr.toString().trim() || "(no message)"}`, remedy: "pass a range git can resolve", remedy_target: range });
     return;

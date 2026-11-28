@@ -368,10 +368,10 @@ function heavyTable(heavy: readonly HeavySymbol[], above: number, limit: number,
   const shown = heavy.slice(0, Math.max(0, limit));
   const rows = shown.map((h) => {
     const systems = [...h.bySystem.entries()].sort(([a], [b]) => a.localeCompare(b));
-    const per = systems.map(([sys, n]) => `\`${sys}\` ${n}`).join(", ");
+    const per = systems.map(([sys, n]) => `${pipes(codeSpan(sys))} ${n}`).join(", ");
     // A summarised symbol is assessed per system: one line per system it is called in.
     const assessed = (pick: "impact" | "dataFlow") =>
-      systems.map(([sys]) => `\`${sys}\`: ${cellText(impact?.forSystem(h.symbol, sys)?.[pick] ?? NOT_ASSESSED)}`).join("<br>");
+      systems.map(([sys]) => `${pipes(codeSpan(sys))}: ${cellText(impact?.forSystem(h.symbol, sys)?.[pick] ?? NOT_ASSESSED)}`).join("<br>");
     return `| \`${h.symbol}\` | ${h.total} | ${per} | ${h.needLook} |` + (impact === undefined ? "" : ` ${assessed("impact")} | ${assessed("dataFlow")} |`);
   });
   const out = [
@@ -479,7 +479,6 @@ function unreferenced(symbols: readonly ExportedSymbol[], limit: number): string
   return out;
 }
 
-/** A table cell cannot carry a pipe. Mitigations are derived from paths, which may hold one. */
 /**
  * A row's mitigation as the --human table shows it. The result line carries the sentence verbatim
  * (a shipped contract); here the system named in it, a path's first directory read verbatim from
@@ -491,6 +490,7 @@ function mitigationCell(row: SystemRow): string {
   return `Call site in ${codeSpan(row.site.system)}, outside the changed file.`;
 }
 
+/** A table cell cannot carry a pipe. Mitigations are derived from paths, which may hold one. */
 function pipes(text: string): string {
   return text.replace(/\|/g, "\\|");
 }
