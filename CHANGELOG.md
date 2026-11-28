@@ -49,17 +49,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   control characters escaped, so a file name holding a newline or a backtick cannot break out into
   the posted comment. In the overlap result line, an edge's `reason` and a shared file's
   symbol-level `reason` now write paths and extensions in backticks; no schema changes.
-- **No `@handle` from quoted text can mention anyone in the Footprint comment**
-  (flyingrobots/footprint#78). Text footprint did not write (the Changelog's Change, Reason and
-  Remarks, the Impact and Data flow cells, other pull requests' titles, after-merge steps and
-  headings quoted from `RELEASE.md` and `AGENTS.md`, the before-merge notes, and the reasons, error
-  details and `gh` messages shown beside a section) gets an invisible zero width space (U+200B)
-  straight after every spelling of `@` (`@`, `&#64;`, `&#x40;`, `&commat;`). GitHub links a mention
-  only when a letter or digit follows the `@` directly, so none can form, whatever Markdown
-  surrounds it. The space copies with the text, and an email address or a URL holding an `@`
-  carries it too. A first version wrapped handles in code; three review rounds found inputs that
-  escaped it, all now in the test corpus, and GitHub renders none of them as a mention. Changelog
-  rows posted before this change are carried over as they were.
+- **No `@handle` can mention anyone through a Footprint report or comment**
+  (flyingrobots/footprint#78). footprint puts an invisible zero width space (U+200B) straight
+  after every spelling of `@` (`@`, `&#64;`, `&#x40;`, `&commat;`) in the whole `--human` report as
+  it is written, and in the whole body `footprint comment` posts. GitHub links a mention only when
+  a letter or digit follows the `@` directly, so none can form, whatever Markdown surrounds it or
+  whichever path the text took: quoted pull request titles, landing steps, reasons, symbol names,
+  signatures, or a branch name in the range. The costs: the space copies with the text; a link
+  whose address holds an `@` then points at that address with the space encoded in it; an email
+  address is no longer a `mailto:` link. A first version wrapped handles in code, and three review
+  rounds found inputs that escaped it; the test corpus holds every one, and GitHub renders none of
+  them as a mention. Changelog rows posted before this change are escaped when the comment is next
+  updated.
 
 ## [0.7.1] — 2026-11-24
 

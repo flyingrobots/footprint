@@ -244,6 +244,5 @@ earlier head is a report on a different change.
   reading goes, and the comment says so.
 - Never post a second Footprint comment, and never edit or delete another user's.
 - Never rely on an `@handle` in `--change`, `--reason`, `--remarks` or an Impact or Data flow cell to
-  notify someone. footprint puts an invisible zero width space after every `@` there, as it does
-  in quoted pull request titles and landing steps, so no handle mentions anyone. Tell people in a
-  separate comment.
+  notify someone. footprint puts an invisible zero width space after every `@` in the report and
+  the posted comment, so no handle there mentions anyone. Tell people in a separate comment.
