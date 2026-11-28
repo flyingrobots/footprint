@@ -13,7 +13,7 @@ import type { UnsupportedLanguage } from "./languages.ts";
 import type { Overlap } from "./overlap.ts";
 import type { SymbolLevel } from "./symbols.ts";
 import { IMPACT_COLUMNS, IMPACT_NOTE, NOT_ASSESSED, type ImpactIndex } from "./impact.ts";
-import { cellText } from "./cell.ts";
+import { cellText, noMentions } from "./cell.ts";
 import { BLAST_LIMITS, COMPOSITION_BUDGET, LANDING_BUDGET, REPORT_LIMIT, clamp, shrinkToFit, type BlastLimits, type Rendered } from "./bound.ts";
 
 export interface GutCheck {
@@ -196,7 +196,7 @@ function landingSection(l: Landing, limit: number): Rendered<"rows"> {
 
   out.push("## After merge", "", l.after_merge.statement, "");
   const mark = out.length;
-  for (const s of l.after_merge.steps.slice(0, limit)) out.push(`- [ ] ${s.step} <sub>— \`${s.file}\` › ${s.heading}</sub>`);
+  for (const s of l.after_merge.steps.slice(0, limit)) out.push(`- [ ] ${noMentions(s.step)} <sub>— \`${s.file}\` › ${noMentions(s.heading)}</sub>`);
   const left = l.after_merge.steps.slice(limit);
   if (left.length > 0) {
     const files = [...new Set(left.map((s) => s.file))].map((f) => `\`${f}\``).join(", ");
@@ -572,13 +572,13 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
     return shown.map((f) => `\`${f}\``).join(", ") + (left > 0 ? ` and ${left} more file${left === 1 ? "" : "s"}` : "");
   };
   for (const p of o.overlapping.slice(0, limit)) {
-    out.push(`- **#${p.number}** ${p.title}${p.isDraft ? " _(draft)_" : ""} — ${files(p.sharedFiles)}`);
+    out.push(`- **#${p.number}** ${noMentions(p.title)}${p.isDraft ? " _(draft)_" : ""} — ${files(p.sharedFiles)}`);
     out.push(...symbolLines(p.symbolLevel, "this change", `#${p.number}`, limit, "  "));
   }
   if (o.overlapping.length > limit) out.push("", omitted(o.overlapping.length - limit, `pull request${o.overlapping.length - limit === 1 ? "" : "s"}`));
   if (o.overlapping.length > 0) out.push("");
 
-  for (const u of o.undetermined.slice(0, limit)) out.push(`- **#${u.number}** ${u.title} — files unknown: ${u.reason}`);
+  for (const u of o.undetermined.slice(0, limit)) out.push(`- **#${u.number}** ${noMentions(u.title)} — files unknown: ${u.reason}`);
   if (o.undetermined.length > limit) out.push("", omitted(o.undetermined.length - limit, `pull requests whose files are unknown`));
   if (o.undetermined.length > 0) out.push("");
 

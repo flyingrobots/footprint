@@ -30,12 +30,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   `tests/e2e/package-lock.json`. Any `vendor/` path component is `generated`, including hand-written
   code in a directory named `vendor`. Not covered: `.terraform.lock.hcl`, Julia's `Manifest.toml`,
   `conda-lock.yml`. No schema changes.
-- **No bare `@handle` reaches the Footprint comment** (flyingrobots/footprint#78). Every cell of
-  text footprint did not write (the Changelog's Change, Reason and Remarks, and the Impact and Data
-  flow columns) writes an `@user` or `@org/team` outside a code span as `<code>@handle</code>`, so
-  the comment, edited on every run, notifies no one. `<code>` rather than backticks, because a
-  backtick fence next to an existing code span merges with it; GitHub's renderer links neither.
-  An email address is left as it is.
+- **No bare `@handle` from quoted text reaches the Footprint comment** (flyingrobots/footprint#78).
+  Text footprint did not write (the Changelog's Change, Reason and Remarks, the Impact and Data
+  flow cells, other pull requests' titles, and after-merge steps quoted from `RELEASE.md` and
+  `AGENTS.md`) writes every mention outside a code span or URL as `<code>@handle</code>`, so it
+  notifies no one. A mention is any spelling GitHub's renderer links: `@`, `\@`, `&#64;`, `&#x40;`
+  or `&commat;`, not after a letter or digit (`_@x_` is one). `<code>` rather than backticks,
+  because a backtick fence next to an existing code span merges with it. An email address and a
+  URL are left as they are.
 
 ## [0.7.1] — 2026-11-24
 

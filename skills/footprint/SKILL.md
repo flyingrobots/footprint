@@ -244,5 +244,5 @@ earlier head is a report on a different change.
   reading goes, and the comment says so.
 - Never post a second Footprint comment, and never edit or delete another user's.
 - Never rely on an `@handle` in `--change`, `--reason`, `--remarks` or an Impact or Data flow cell to
-  notify someone. footprint writes every handle there as code, so the comment, which is edited on
-  every run, notifies no one. Tell people in a separate comment.
+  notify someone. footprint writes every handle there as code, as it does in quoted pull request
+  titles and landing steps, so they notify no one. Tell people in a separate comment.
