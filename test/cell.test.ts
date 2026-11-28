@@ -1,135 +1,106 @@
 // A bare @handle in a GitHub comment notifies that user or team, and footprint edits its one
-// comment on every run (flyingrobots/footprint#78). Every cell of text footprint did not write goes
-// through cellText, so that is where a handle is wrapped as code.
+// comment on every run (flyingrobots/footprint#78). Text footprint did not write goes through
+// noMentions, which puts a zero width space straight after every spelling of `@`.
 import { describe, expect, test } from "bun:test";
-import { cellText } from "../src/cell.ts";
+import { cellText, noMentions } from "../src/cell.ts";
 import { landingPlan } from "../src/landing.ts";
-import { computeOverlap, type PullRequest } from "../src/overlap.ts";
+import { computeOverlap, unavailableOverlap, type PullRequest } from "../src/overlap.ts";
 import { renderLanding, renderOverlap } from "../src/render.ts";
 
+const ZWSP = "​";
+
 /**
- * An oracle that shares no pattern with src/cell.ts. It does what a renderer does first: it drops
- * <code> elements and complete code spans (CommonMark's rule: a backtick run, then content, then a
- * run of the same length), drops real links (a scheme, then a host starting with a letter or
- * digit), and decodes character references. Then it applies GitHub's mention rule, checked with
- * gh api markdown: `@` not after a letter or digit, then a letter or digit.
+ * The oracle, sharing no pattern with src/cell.ts. It decodes the text as a renderer does first
+ * (numeric and named references, with or without the `;`, and a backslash before `@`), then
+ * applies GitHub's mention rule, checked with gh api markdown: `@` not after a letter or digit,
+ * then a letter or digit. It applies the rule everywhere, code and links included, so it is
+ * stricter than GitHub, never looser.
  */
-function bareMentions(markdown: string): string[] {
-  const t = markdown.replace(/<code>[\s\S]*?<\/code>/g, " ");
-  let out = "";
-  for (let i = 0; i < t.length; ) {
-    // Outside a span, a backslash escapes the next character (an escaped backtick opens no span);
-    // inside one it is literal, which the span skip below already gives.
-    if (t[i] === "\\" && t[i + 1] === "`") { out += " "; i += 2; continue; }
-    const run = /^`+/.exec(t.slice(i))?.[0];
-    if (run !== undefined && t[i - 1] !== "`") {
-      const close = t.slice(i + run.length).search(new RegExp(`(?<!\`)${run}(?!\`)`));
-      if (close > 0) { out += " "; i += run.length + close + run.length; continue; }
-      out += run; i += run.length; continue;
-    }
-    out += t[i]; i++;
-  }
-  out = out.replace(/https?:\/\/[A-Za-z0-9][^\s<>]*/g, " ");
-  out = out.replace(/&#[xX]([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)));
-  out = out.replace(/&#([0-9]+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)));
-  out = out.replace(/&commat;/g, "@").replace(/\\@/g, "@");
-  return [...out.matchAll(/(?<![A-Za-z0-9])@[A-Za-z0-9][-A-Za-z0-9]*/g)].map((m) => m[0]);
+function mentions(markdown: string): string[] {
+  const decoded = markdown
+    .replace(/&#[xX]([0-9a-fA-F]+);?/g, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#([0-9]+);?/g, (_, d: string) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&commat;/g, "@")
+    .replace(/\\@/g, "@");
+  return [...decoded.matchAll(/(?<![A-Za-z0-9])@[A-Za-z0-9]/g)].map((m) => m[0]);
 }
 
-const BARE = { test: (text: string) => bareMentions(text).length > 0 };
-const outsideCode = (text: string) => text;
+/**
+ * Every input that carried a mention past an earlier version of this code, through three review
+ * rounds, each confirmed by rendering through GitHub. On 2026-11-28 GitHub rendered 14 mentions
+ * from the first 18 as given and none once escaped.
+ */
+const CORPUS = [
+  "@octocat", "\\@octocat", "a\\@octocat", "@octo\\@cat", "\\&#64;octocat", "https://a_.@octocat", "https://a_/.@octocat",
+  "xhttps://e.com/.@octocat", "@&#111;ctocat", "&#64;&#111;ctocat", "https://@octocat", "http://.@octocat", "_@octocat_",
+  "b\\`.@&#x6f;ctocat`x", "&commat;octocat", "&#x40;octocat", "[@octocat](https://e.com)", "ping @octocat.",
+  "&#64@octocat", "&#x40@octocat", "ping @org/team", "@b@x", "`@1``..`", "\\\\`@a`",
+];
 
-describe("no bare @handle reaches a comment (flyingrobots/footprint#78)", () => {
-  test("a user and a team handle are wrapped in <code>", () => {
-    expect(cellText("ping @octocat and @org/team")).toBe("ping <code>@octocat</code> and <code>@org/team</code>");
+describe("no @ can start a mention in text footprint did not write (flyingrobots/footprint#78)", () => {
+  test("the oracle sees the mentions the corpus carries as given", () => {
+    const carried = CORPUS.filter((c) => mentions(c).length > 0);
+    expect(carried.length).toBeGreaterThanOrEqual(20); // witnesses: the oracle is not vacuous
   });
 
-  test("a handle at either end of a cell is wrapped", () => {
-    expect(cellText("@a-b did it")).toBe("<code>@a-b</code> did it");
-    expect(cellText("done by @a")).toBe("done by <code>@a</code>");
+  test("no input of the corpus carries a mention once escaped", () => {
+    for (const c of CORPUS) expect([c, mentions(noMentions(c))]).toEqual([c, []]);
   });
 
-  test("a handle already in a code span is left alone, and never double-wrapped", () => {
-    expect(cellText("see `@octocat` and ``x @y``")).toBe("see `@octocat` and ``x @y``");
+  test("every spelling of @ gets a zero width space after it, and nothing else changes", () => {
+    expect(noMentions("ping @octocat and &#64;x and &#x40;y and &commat;z")).toBe(`ping @${ZWSP}octocat and &#64;${ZWSP}x and &#x40;${ZWSP}y and &commat;${ZWSP}z`);
+    expect(noMentions("&#64x &#x40y")).toBe(`&#64${ZWSP}x &#x40${ZWSP}y`);
+    expect(noMentions("no at sign `here` or https://e.com/a")).toBe("no at sign `here` or https://e.com/a");
   });
 
-  test("a stray backtick before a handle cannot shield it, and is escaped", () => {
-    expect(cellText("`@octocat")).toBe("\\`<code>@octocat</code>");
+  test("a reference that only starts like one for @ is not split", () => {
+    expect(noMentions("&#640; &#x400;")).toBe("&#640; &#x400;");
   });
 
-  test("a handle right before an existing code span leaves the span as it was", () => {
-    expect(cellText("@1`..`")).toBe("<code>@1</code>`..`");
+  test("cellText still escapes pipes and newlines, after noMentions", () => {
+    expect(cellText(" @a | b\nc ")).toBe(`@${ZWSP}a \\| b<br>c`);
   });
 
-  test("every other spelling GitHub reads as a mention is wrapped too", () => {
-    expect(cellText("_@octocat_")).toBe("_<code>@octocat_</code>"); // the whole run is wrapped
-    expect(cellText("\\@octocat")).toBe("<code>@octocat</code>");
-    expect(cellText("&#64;octocat &#x40;octocat &commat;octocat")).toBe("<code>@octocat</code> <code>@octocat</code> <code>@octocat</code>");
-  });
-
-  test("a character reference inside the name, or a URL with no host, cannot carry a mention (review round 2)", () => {
-    for (const t of ["@&#111;ctocat", "&#64;&#111;ctocat", "https://@octocat", "http://.@octocat"]) {
-      expect([t, bareMentions(cellText(t))]).toEqual([t, []]);
-    }
-  });
-
-  test("a code span holding a backtick is left exactly as written", () => {
-    expect(cellText("see `` a`b `` here")).toBe("see `` a`b `` here");
-  });
-
-  test("a URL is left as it is: GitHub makes no mention inside a link", () => {
-    expect(cellText("see https://www.npmjs.com/package/@flyingrobots/footprint")).toBe("see https://www.npmjs.com/package/@flyingrobots/footprint");
-  });
-
-  test("an email address and a lone @ are not mentions and are left as they are", () => {
-    expect(cellText("mail a@b.dev")).toBe("mail a@b.dev");
-    expect(cellText("x @ y")).toBe("x @ y");
-  });
-
-  test("property: no cell of random text carries a bare mention outside a code span", () => {
-    // Seeded, so a failure reproduces: a linear congruential generator over an alphabet rich in the
-    // characters that matter here.
+  test("property: no cell of random text carries a mention", () => {
+    // Seeded, so a failure reproduces: a linear congruential generator over the tokens that matter.
     let seed = 0x5eed;
-    const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff);
-    const alphabet = ["@", "@", "@", "`", "`", " ", "a", "b", "o", "-", "/", ".", "_", "\n", "|", "x", "1", "é", "\\", "&#64;", "&#x40;", "&commat;", "&#111;", "&#x6f;", "https://e.com/", "https://", "http://."];
+    const next = () => (seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff); // imul: a plain product passes 2^53 and loses bits
+    const alphabet = ["@", "@", "@", "`", " ", "a", "o", "1", "-", "/", ".", "_", "\n", "|", "\\", "&#64;", "&#64", "&#x40;", "&commat;", "&#111;", "https://e.com/", "<code>", "</code>", ";"];
     let witnesses = 0;
-    for (let n = 0; n < 2000; n++) {
+    for (let n = 0; n < 3000; n++) {
       const text = Array.from({ length: 1 + (next() % 24) }, () => alphabet[next() % alphabet.length]).join("");
-      if (BARE.test(outsideCode(text))) witnesses++;
-      expect([text, BARE.test(outsideCode(cellText(text)))]).toEqual([text, false]);
+      if (mentions(text).length > 0) witnesses++;
+      expect([text, mentions(cellText(text))]).toEqual([text, []]);
     }
-    expect(witnesses).toBeGreaterThan(100); // the generator does produce bare mentions to escape
+    expect(witnesses).toBeGreaterThan(300); // the generator does produce mentions to escape
   });
 });
 
-describe("text quoted from other pull requests and the repository names no one either (flyingrobots/footprint#78, review)", () => {
-  const BARE_IN = (md: string) => md.split("\n").filter((l) => /(?<![A-Za-z0-9`>])@[A-Za-z0-9]/.test(l.replace(/<code>[^<]*<\/code>/g, "")));
-
-  test("an open pull request's title is written with its handles as code", () => {
+describe("text quoted from other pull requests and the repository names no one either (flyingrobots/footprint#78)", () => {
+  test("an open pull request's title", () => {
     const pr = { number: 7, title: "Ping @octocat about it", isDraft: false, files: ["a.ts"], headCommit: "c", baseBranch: "main" } as PullRequest;
     const md = renderOverlap(computeOverlap(["a.ts"], [pr]));
-    expect(md).toContain("Ping <code>@octocat</code> about it");
-    expect(bareMentions(md)).toEqual([]);
+    expect(md).toContain(`Ping @${ZWSP}octocat about it`);
+    expect(mentions(md)).toEqual([]);
   });
 
-  test("a landing heading quoted when its section lists no steps names no one", () => {
+  test("an after-merge step quoted from RELEASE.md", () => {
+    const release = "# Release\n\n## After merge\n\n- Tell @org/release-team the tag is out.\n";
+    const md = renderLanding(landingPlan(["src/a.ts"], [{ file: "RELEASE.md", text: release }, { file: "AGENTS.md", text: null }]));
+    expect(md).toContain(`Tell @${ZWSP}org/release-team the tag is out.`);
+    expect(mentions(md)).toEqual([]);
+  });
+
+  test("a landing heading quoted when its section lists no steps", () => {
     const release = "# Release\n\n## Release (owner @octocat)\n\nSee the wiki.\n";
     const md = renderLanding(landingPlan(["src/a.ts"], [{ file: "RELEASE.md", text: release }, { file: "AGENTS.md", text: null }]));
     expect(md).toContain("owner");
-    expect(bareMentions(md)).toEqual([]);
+    expect(mentions(md)).toEqual([]);
   });
 
-  test("a symbol-level reason that quotes a file name names no one", () => {
-    const pr7 = { number: 7, title: "a", isDraft: false, files: ["@octocat notes.md"], headCommit: "c", baseBranch: "main" } as PullRequest;
-    const pr8 = { ...pr7, number: 8 };
-    const md = renderOverlap(computeOverlap(["@octocat notes.md"], [pr7, pr8]));
-    expect(bareMentions(md)).toEqual([]);
-  });
-
-  test("an after-merge step quoted from RELEASE.md is written with its handles as code", () => {
-    const release = "# Release\n\n## After merge\n\n- Tell @org/release-team the tag is out.\n";
-    const md = renderLanding(landingPlan(["src/a.ts"], [{ file: "RELEASE.md", text: release }, { file: "AGENTS.md", text: null }]));
-    expect(md).toContain("Tell <code>@org/release-team</code> the tag is out.");
-    expect(bareMentions(md)).toEqual([]);
+  test("gh's own message when the overlap is unavailable", () => {
+    const md = renderOverlap(unavailableOverlap("gh.failed", "HTTP 403: ask @octocat for access"));
+    expect(md).toContain("ask");
+    expect(mentions(md)).toEqual([]);
   });
 });
