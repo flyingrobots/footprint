@@ -247,6 +247,20 @@ describe("the Structural line names graft as the source of its formatting readin
   });
 });
 
+describe("the composition table's total share is computed (flyingrobots/footprint#67)", () => {
+  const totalRow = (md: string) => md.split("\n").find((l) => l.startsWith("| **total** |"));
+
+  test("a change with no changed lines reports a 0% total, as its rows do", () => {
+    const changes = [{ path: "docs/logo.png", added: 0, removed: 0, binary: true }];
+    expect(totalRow(render(compose(changes), changes, "a...b", null))).toBe("| **total** | **1** | **+0/-0** | **0%** |");
+  });
+
+  test("a change with changed lines reports a 100% total", () => {
+    const changes = parseNumstat("10\t2\tsrc/a.ts");
+    expect(totalRow(render(compose(changes), changes, "a...b", null))).toBe("| **total** | **1** | **+10/-2** | **100%** |");
+  });
+});
+
 describe("vendored code, lockfiles and generated sources are generated (flyingrobots/footprint#68)", () => {
   test("a vendor/ directory at any depth is generated", () => {
     for (const f of ["vendor/github.com/x/y.go", "app/vendor/autoload.php", "packages/a/vendor/lib.rb"]) expect(classify(f)).toBe("generated");

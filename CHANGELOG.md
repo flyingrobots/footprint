@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Fixed
 
+- **The composition table's total share is computed** (flyingrobots/footprint#67). It was a
+  literal `100%`, so a change with files but no changed lines showed `0%` on every row and `100%`
+  in the total. It is now `0%` for such a change and `100%` otherwise. No schema changes: the
+  total share appears in the `--human` report only.
 - **Vendored code, every major ecosystem's lockfile and common generated sources classify as
   `generated`** (flyingrobots/footprint#68). The gut check's flag names "generated or vendored"
   lines, but nothing classified as vendored, and lockfiles outside JavaScript, Rust and Go fell
