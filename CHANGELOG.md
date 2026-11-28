@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+
+- **A `git-footprint` binary** (flyingrobots/footprint#74), beside `footprint`, so an installed
+  package runs as `git footprint <range>` and macOS's unrelated `/usr/bin/footprint` no longer
+  matters. `bunx @flyingrobots/footprint` still runs `footprint` (checked against a packed
+  tarball). For help, run `git-footprint --help`: git turns `git footprint --help` into a man-page
+  lookup. The skill uses `git footprint` when `command -v git-footprint` answers.
+
 ### Fixed
 
 - **The composition table's total share is computed** (flyingrobots/footprint#67). It was a
