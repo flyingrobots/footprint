@@ -4,7 +4,7 @@
 // no command. These cases hold the manifest to npm's own normalization, and hold the release
 // workflow's sanity check to failing on any correction npm reports.
 import { describe, expect, test } from "bun:test";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { manifestChanges, publishCorrections } from "../scripts/manifest-check.ts";
@@ -74,4 +74,42 @@ describe("the published manifest", () => {
     expect(lines).toEqual([expect.objectContaining({ kind: "manifest_check", ok: true })]);
     expect(code).toBe(0);
   }, 60_000);
+});
+
+// flyingrobots/footprint#74: `footprint` collides with macOS's /usr/bin/footprint, so the package
+// also ships `git-footprint`, which git runs as `git footprint`. Both names stay: existing
+// `bunx @flyingrobots/footprint` calls resolve the one named after the package.
+describe("the git-footprint binary (flyingrobots/footprint#74)", () => {
+  test("package.json declares git-footprint beside footprint, both the CLI", () => {
+    const bin = readJson(join(ROOT, "package.json")).bin as Record<string, string>;
+    expect(bin["git-footprint"]).toBe(bin.footprint);
+    expect(bin.footprint).toBe("src/cli.ts");
+  });
+
+  test("git runs it as `git footprint`", () => {
+    // A PATH holding git, bun and a git-footprint link to the CLI, as an install leaves it; git
+    // finds a `git-<name>` executable on PATH for `git <name>`.
+    const dir = mkdtempSync(join(tmpdir(), "footprint-gitbin-"));
+    for (const exe of ["git", "bun"]) symlinkSync(Bun.which(exe)!, join(dir, exe));
+    const bin = readJson(join(ROOT, "package.json")).bin as Record<string, string>;
+    // With no git-footprint entry the link points at nothing, and git reports no such command.
+    symlinkSync(join(ROOT, bin["git-footprint"] ?? "no-git-footprint-in-package-json"), join(dir, "git-footprint"));
+    // Not `git footprint --help`: git turns `git <name> --help` into `git help <name>` and looks for
+    // a man page, so it never reaches footprint. An argument footprint refuses is answered by
+    // footprint itself, quickly, with its own structured error.
+    const r = Bun.spawnSync(["git", "footprint", "a..b", "c..d"], { cwd: ROOT, env: { ...process.env, PATH: dir, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-state-")) }, stdout: "pipe", stderr: "pipe" });
+    expect(r.exitCode).toBe(2);
+    const errors = r.stderr.toString().split("\n").filter((l) => l !== "").map((l) => JSON.parse(l) as { code?: string });
+    expect(errors.map((e) => e.code)).toContain("args.invalid");
+  });
+});
+
+// npm records the root package's own manifest in package-lock.json, bin included, and footprint's
+// landing plan flags a package.json change with no lockfile beside it. flyingrobots/footprint#74
+// changed bin and left the lockfile stale until footprint's own report said so.
+describe("package-lock.json records the manifest's bin (flyingrobots/footprint#74)", () => {
+  test("the lockfile's root package has the same bin entries as package.json", () => {
+    const lock = readJson(join(ROOT, "package-lock.json")) as { packages: Record<string, { bin?: unknown }> };
+    expect(lock.packages[""]?.bin).toEqual(readJson(join(ROOT, "package.json")).bin);
+  });
 });
