@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.overlap/2.2.0",
-  "title": "footprint.overlap 2.2.0",
+  "$id": "https://flyingrobots.dev/footprint/schemas/footprint.overlap/2.3.0",
+  "title": "footprint.overlap 2.3.0",
   "description": "The fourth result of a footprint run: which open pull requests touch a file this change touches, the conflict graph between the open pull requests, and a proposed merge order as waves. Every figure comes from gh pr list --json and gh pr diff --name-only; each shared file of a pair is also compared at the symbol level, from git diff -U0 and graft read outline's jump table at each side's merge base and head (flyingrobots/footprint#33). When gh cannot answer, available is false and the reason is stated rather than the section being omitted.",
   "type": "object",
   "required": [
@@ -57,7 +57,9 @@
             "conflicts",
             "waves",
             "undetermined",
-            "symbolAnalysis"
+            "symbolAnalysis",
+            "baseMerge",
+            "mergeAnalysis"
           ]
         },
         {
@@ -129,7 +131,8 @@
               "title",
               "isDraft",
               "sharedFiles",
-              "symbolLevel"
+              "symbolLevel",
+              "merge"
             ],
             "properties": {
               "number": {
@@ -154,6 +157,10 @@
               "symbolLevel": {
                 "$ref": "#/$defs/symbolLevel",
                 "description": "The shared files at the symbol level; side a is this change, side b this pull request"
+              },
+              "merge": {
+                "$ref": "#/$defs/merge",
+                "description": "This change's head merged with this pull request's head."
               }
             }
           }
@@ -168,7 +175,8 @@
               "b",
               "sharedFiles",
               "reason",
-              "symbolLevel"
+              "symbolLevel",
+              "merge"
             ],
             "properties": {
               "a": {
@@ -195,6 +203,10 @@
               "symbolLevel": {
                 "$ref": "#/$defs/symbolLevel",
                 "description": "The shared files at the symbol level. A symbol-disjoint edge is reported and does not separate waves; it is not a claim that git will merge the two cleanly"
+              },
+              "merge": {
+                "$ref": "#/$defs/merge",
+                "description": "The two heads merged. A conflict separates waves; a clean merge does not; unavailable falls back to the symbol level."
               }
             }
           }
@@ -287,6 +299,53 @@
               "minimum": 0
             }
           }
+        },
+        "baseMerge": {
+          "$ref": "#/$defs/merge",
+          "description": "This change's head merged with the current tip of its base."
+        },
+        "mergeAnalysis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fetch",
+            "mergesRun",
+            "mergeBudget",
+            "mergeTimeoutMs",
+            "fetched",
+            "fetchBudget",
+            "fetchTimeoutMs"
+          ],
+          "description": "How the merges were bounded this run: whether a missing pull request head was fetched read-only (false with --no-fetch), merges run and the most a run may run, fetches made and the most it may make, and the timeout on each.",
+          "properties": {
+            "fetch": {
+              "type": "boolean"
+            },
+            "mergesRun": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mergeBudget": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mergeTimeoutMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "fetched": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "fetchBudget": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "fetchTimeoutMs": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
         }
       }
     },
@@ -307,7 +366,7 @@
           "const": "footprint.overlap"
         },
         "version": {
-          "const": "2.2.0"
+          "const": "2.3.0"
         }
       }
     }
@@ -484,6 +543,74 @@
           }
         }
       }
+    },
+    "merge": {
+      "description": "git merge-tree --write-tree on two commits (2.3.0, flyingrobots/footprint#80): clean, conflicted with the conflicted paths, or unavailable with a code and the reason. Textual evidence: a clean merge is not proof that the two changes work together.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "result"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "result": {
+              "const": "clean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "result",
+            "paths"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "result": {
+              "const": "conflicted"
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "result",
+            "code",
+            "reason"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "result": {
+              "const": "unavailable"
+            },
+            "code": {
+              "enum": [
+                "merge.not_run",
+                "merge.budget_spent",
+                "git.merge_tree_unsupported",
+                "git.merge_tree_failed",
+                "git.timeout",
+                "git.head_missing",
+                "git.fetch_failed",
+                "git.head_moved"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
     }
   }
 }

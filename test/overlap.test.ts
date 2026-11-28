@@ -10,6 +10,9 @@ function notAnalysed(files: string[]) {
   return { level: "undetermined", files: files.map((path) => ({ path, level: "undetermined", code: "symbols.not_analysed", reason: "symbol-level analysis was not run" })) };
 }
 
+/** What an overlap or an edge carries when no merge results were passed in (footprint.overlap 2.3.0). */
+const NOT_RUN = { result: "unavailable", code: "merge.not_run", reason: "the merge was not attempted" };
+
 function pr(number: number, files: readonly string[] | null, extra: Partial<PullRequest> = {}): PullRequest {
   return { number, title: `pull request ${number}`, isDraft: false, files, ...extra };
 }
@@ -20,7 +23,7 @@ describe("overlap with this change", () => {
     expect(o.available).toBe(true);
     expect(o.openPullRequests).toBe(1);
     expect(o.overlapping).toEqual([
-      { number: 7, title: "pull request 7", isDraft: false, sharedFiles: ["src/audit.ts"], symbolLevel: notAnalysed(["src/audit.ts"]) },
+      { number: 7, title: "pull request 7", isDraft: false, sharedFiles: ["src/audit.ts"], symbolLevel: notAnalysed(["src/audit.ts"]), merge: NOT_RUN },
     ]);
     expect(o.summary).toBe("1 of 1 open pull request touches a file this change touches.");
   });
@@ -79,6 +82,7 @@ describe("the conflict graph", () => {
         sharedFiles: ["a.ts", "b.ts"],
         reason: "#7 and #9 both change `a.ts` and `b.ts`; the symbol level is undetermined, so the edge separates waves as a file-level one does",
         symbolLevel: notAnalysed(["a.ts", "b.ts"]),
+        merge: NOT_RUN,
       },
     ]);
   });
