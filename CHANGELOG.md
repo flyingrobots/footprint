@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Fixed
 
+- **The composition table's total share is computed** (flyingrobots/footprint#67). It was a
+  literal `100%`, so a change with files but no changed lines showed `0%` on every row and `100%`
+  in the total. It is now `0%` for such a change and `100%` otherwise. No schema changes: the
+  total share appears in the `--human` report only.
 - **A renamed, copied or unusually named file is reported under its real path**
   (flyingrobots/footprint#66). footprint read `git diff --numstat` without `-z`, so a rename came
   through as `dir/{old => new}/file` and a path with a tab or a non-ASCII byte came through
