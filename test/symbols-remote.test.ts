@@ -4,7 +4,7 @@
 // and contents answers a real repository would, built from real git objects in a fixture
 // repository whose pull-request heads are then made absent, as a fork's are in CI. The outliner is
 // the stand-in one (each `export function NAME` through the next `}`), so they hold without graft.
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test, setDefaultTimeout } from "bun:test";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -135,6 +135,17 @@ async function run(w: World, prs: PullRequest[], ghPath: string, opts: { budget?
 
 const file0 = (r: Awaited<ReturnType<typeof run>>) => r.overlap.conflicts[0]!.symbolLevel.files[0]!;
 
+/**
+ * The clock (flyingrobots/footprint#90). Each test builds a git world and runs the analysis, which
+ * spawns a fake gh: about a second idle, more than Bun's fixed 5 s default under load -- at load
+ * average 6, four single-run tests and one four-run test timed out at 5000 ms. So every test here
+ * gets one RUN_TIMEOUT, and a test that runs the analysis n times gets runs(n). This raises the
+ * clock, never an assertion, as test/cli.test.ts does.
+ */
+const RUN_TIMEOUT = 15_000;
+const runs = (n: number) => n * RUN_TIMEOUT;
+setDefaultTimeout(RUN_TIMEOUT);
+
 describe("symbol level through the GitHub API (flyingrobots/footprint#55)", () => {
   test("golden: two heads absent from the clone are classified disjoint, reading compare and contents by exact commit id", async () => {
     const w = await world({ a: alphaBody, b: betaBody });
@@ -197,7 +208,7 @@ describe("symbol level through the GitHub API (flyingrobots/footprint#55)", () =
     expect(file0(failed)).toMatchObject({ level: "undetermined", code: "gh.remote_failed" });
     expect(file0(failed).reason).toContain("404");
     expect(file0(failed).reason).toContain("git fetch origin pull/1/head");
-  });
+  }, runs(2));
 
   test("a rate limit is gh.rate_limited, and once hit no further call is made", async () => {
     const w = await world({ a: alphaBody, b: betaBody });
@@ -237,7 +248,7 @@ describe("symbol level through the GitHub API (flyingrobots/footprint#55)", () =
     const unknownBase = await run(w, [pr(1, w.heads.a!, undefined), pr(2, w.heads.b!, w.main)], g.gh);
     expect(file0(unknownBase)).toMatchObject({ level: "undetermined", code: "git.head_missing" });
     expect(g.calls().length).toBe(0);
-  });
+  }, runs(2));
 
   test("a merge base the compare does not state exactly leaves the file undetermined", async () => {
     const w = await world({ a: alphaBody, b: betaBody });
@@ -249,7 +260,7 @@ describe("symbol level through the GitHub API (flyingrobots/footprint#55)", () =
     }
     const garbled = fakeGh({ ...w.answers, [key]: { out: "not json" } });
     expect(file0(await run(w, [pr(1, w.heads.a!, w.main), pr(2, w.heads.b!, w.main)], garbled.gh))).toMatchObject({ code: "gh.compare_unpinned" });
-  });
+  }, runs(4));
 
   test("a file the compare lists without a patch, renamed, or not at all is undetermined, never an empty side", () => {
     const sha = "a".repeat(40);
