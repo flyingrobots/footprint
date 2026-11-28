@@ -18,7 +18,7 @@ import { resolve } from "node:path";
 import type { Run } from "@flyingrobots/parley-emit";
 import { COMMENT_REPORT_LIMIT, REPORT_LIMIT } from "./bound.ts";
 import { parseArgs } from "./args.ts";
-import { cellText } from "./cell.ts";
+import { cellText, noMentions } from "./cell.ts";
 import { classifyFailure, resolveGh } from "./pulls.ts";
 
 export const COMMENT_SCHEMA = JSON.parse(readFileSync(new URL("../schemas/footprint.comment.schema.json", import.meta.url), "utf8")) as Record<string, unknown>;
@@ -111,7 +111,9 @@ export function buildComment(report: string, changelog: Changelog, row: string, 
   for (let keep = all.length; keep >= 1; keep--) {
     const rows = all.slice(all.length - keep);
     const dropped = changelog.dropped + (all.length - keep);
-    const body = assemble(report, rows, dropped);
+    // The whole body, once: text footprint did not write reaches it by many paths, and a backtick
+    // in any of them can free a handle (flyingrobots/footprint#78).
+    const body = noMentions(assemble(report, rows, dropped));
     if (body.length <= limit) return { body, rows, dropped };
   }
   throw new Error(`the comment is too long: a ${report.length}-character report leaves no room for one Changelog row under ${limit} characters`);

@@ -20,6 +20,7 @@ import { parseArgs } from "./args.ts";
 import { impactIndex, parseImpact, unmatchedEntries, type ImpactIndex } from "./impact.ts";
 import { COMMENT_SCHEMA, COMMENT_TYPE, commentCommand, commentProse } from "./comment.ts";
 import { readFileSync } from "node:fs";
+import { noMentions } from "./cell.ts";
 import { resolve as resolvePath } from "node:path";
 
 let markdown = "";
@@ -51,14 +52,16 @@ const tool = defineTool({
     },
   },
   retention: { count: 50 },
+  // Every section of --human, once and whole: no render path can let a handle through, however
+  // the text reached it (flyingrobots/footprint#78).
   human: (line) => {
     if (line.event !== "result") return null;
     const id = (line._schema as { id?: string } | undefined)?.id;
-    if (id === LANDING_TYPE.id) return landingMarkdown;
-    if (id === BLAST_RADIUS_TYPE.id) return blastMarkdown;
-    if (id === OVERLAP_TYPE.id) return overlapMarkdown;
-    if (id === COMMENT_TYPE.id) return commentProse(line);
-    return markdown;
+    if (id === LANDING_TYPE.id) return noMentions(landingMarkdown);
+    if (id === BLAST_RADIUS_TYPE.id) return noMentions(blastMarkdown);
+    if (id === OVERLAP_TYPE.id) return noMentions(overlapMarkdown);
+    if (id === COMMENT_TYPE.id) return noMentions(commentProse(line));
+    return noMentions(markdown);
   },
 });
 

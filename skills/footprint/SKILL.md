@@ -243,3 +243,6 @@ earlier head is a report on a different change.
   anything added by hand is not. Your Impact and Data flow entries are the one place your own
   reading goes, and the comment says so.
 - Never post a second Footprint comment, and never edit or delete another user's.
+- Never rely on an `@handle` in `--change`, `--reason`, `--remarks` or an Impact or Data flow cell to
+  notify someone. footprint puts an invisible zero width space after every `@` in the report and
+  the posted comment, so no handle there mentions anyone. Tell people in a separate comment.

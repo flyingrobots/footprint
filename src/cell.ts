@@ -22,8 +22,37 @@ export function codeSpan(text: string): string {
   return `${fence} ${visible} ${fence}`;
 }
 
-/** `|` escaped, every newline a `<br>`, never empty. */
+/**
+ * Every spelling a renderer may decode to `@`: the character, and the references `&#64;`, `&#x40;`
+ * and `&commat;`, with or without the closing `;`. GitHub leaves an unterminated `&#64` as text
+ * (checked with gh api markdown), but HTML decodes it, so it is covered at no cost. There is no
+ * lookbehind for the letter or digit that stops a mention (`a@b.dev`): treating every `@` the
+ * same is simpler to trust. One already followed by the space is left alone, so escaping twice
+ * is escaping once; a `;` that is there is always taken, so the check cannot stop short of it.
+ */
+const AT = /(?:@|&#0*64(?![0-9])(?:;|(?!;))|&#[xX]0*40(?![0-9a-fA-F])(?:;|(?!;))|&commat;)(?!\u200b)/g;
+
+/** U+200B ZERO WIDTH SPACE: invisible, and not a letter or digit. */
+const ZWSP = "\u200b";
+
+/**
+ * Text in which no `@` can start a GitHub mention (flyingrobots/footprint#78). A Footprint comment
+ * is edited on every run, and a bare handle in it pings that user or team. GitHub links a mention
+ * only when a letter or digit follows the `@` directly, after it has decoded the text, so a zero
+ * width space is put straight after every spelling of `@`, everywhere: in code, in links, in a
+ * name spelled with character references (`@&#111;ctocat`). Nothing is parsed, so there is no
+ * code-span or URL rule to get wrong, which three review rounds of a wrapping approach did. The
+ * costs: the space is invisible but copies with the text; a link whose address holds an `@`
+ * then points at an address with the space encoded in it (`%E2%80%8B`); and an email address is no
+ * longer turned into a `mailto:` link. The CLI applies this to the whole --human report, and
+ * `footprint comment` to the whole body it posts, so no render path can miss it.
+ */
+export function noMentions(text: string): string {
+  return text.replace(AT, (at) => at + ZWSP);
+}
+
+/** No bare `@handle`, `|` escaped, every newline a `<br>`, never empty. */
 export function cellText(text: string): string {
-  const t = text.trim().replace(/\r\n|\r|\n/g, "<br>").replace(/\|/g, "\\|");
+  const t = noMentions(text.trim()).replace(/\r\n|\r|\n/g, "<br>").replace(/\|/g, "\\|");
   return t === "" ? EMPTY_CELL : t;
 }
