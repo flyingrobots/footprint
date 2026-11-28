@@ -126,15 +126,17 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   const headId = await commitOf(ends.head);
   const pinned = baseId !== null && headId !== null ? `${baseId}${ends.threeDot ? "..." : ".."}${headId}` : range;
 
-  // The figures must not depend on the user's git config (flyingrobots/footprint#66). The user's
-  // global and system config are not read at all (GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM). Against
-  // the repository's own config the settings that move numstat are pinned to git's defaults: -M
-  // (diff.renames), -l1000 (diff.renameLimit), --diff-algorithm=myers (diff.algorithm),
-  // --no-relative (diff.relative), --no-ext-diff and --no-textconv (diff drivers),
-  // core.bigFileThreshold=512m and core.attributesFile=/dev/null. What still applies, by design,
-  // is the repository's declaration: its committed .gitattributes, and .git/info/attributes in the
-  // clone. -z gives each path verbatim, a rename under its new path.
-  const diff = await $`git -c core.attributesFile=/dev/null -c core.bigFileThreshold=512m diff --numstat -z -M -l1000 --diff-algorithm=myers --no-relative --no-ext-diff --no-textconv ${pinned}`.env({ ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" }).quiet().nothrow();
+  // Config settings known to change numstat's counts are pinned to git's defaults, against the
+  // user's and the repository's config alike (flyingrobots/footprint#66): -M (diff.renames),
+  // -l1000 (diff.renameLimit), --diff-algorithm=myers (diff.algorithm), --no-relative
+  // (diff.relative), --no-ext-diff and --no-textconv (diff drivers), --ignore-submodules=none
+  // (diff.ignoreSubmodules), core.bigFileThreshold=512m, and core.attributesFile=/dev/null (the
+  // user's attributes file, $XDG_CONFIG_HOME/git/attributes by default). Every other setting is
+  // read as usual: the user's global config must still be read, because git takes safe.directory
+  // only from there, and a container checkout depends on it. The repository's own attributes, its
+  // committed .gitattributes and the clone's .git/info/attributes, still apply. -z gives each path
+  // verbatim, a rename under its new path.
+  const diff = await $`git -c core.attributesFile=/dev/null -c core.bigFileThreshold=512m diff --numstat -z -M -l1000 --diff-algorithm=myers --no-relative --no-ext-diff --no-textconv --ignore-submodules=none ${pinned}`.quiet().nothrow();
   if (diff.exitCode !== 0) {
     run.error({ code: "git.diff_failed", problem: `git diff --numstat ${range} exited ${diff.exitCode}: ${diff.stderr.toString().trim() || "(no message)"}`, remedy: "pass a range git can resolve", remedy_target: range });
     return;

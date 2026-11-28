@@ -35,12 +35,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   through as `dir/{old => new}/file` and a path with a tab or a non-ASCII byte came through
   C-quoted. Classification, the landing plan, the unanalysed-language list and the overlap with
   other pull requests all read a path that did not exist. footprint now reads `git diff --numstat
-  -z` and reports each file under its post-change path. The figures no longer depend on the user's
-  global or system git config, which the numstat call does not read (`GIT_CONFIG_GLOBAL=/dev/null`,
-  `GIT_CONFIG_NOSYSTEM=1`). Against the repository's own config it pins git's defaults for the
-  settings that move numstat: `-M`, `-l1000`, `--diff-algorithm=myers`, `--no-relative`,
-  `--no-ext-diff`, `--no-textconv`, `core.bigFileThreshold=512m` and `core.attributesFile=/dev/null`.
-  The repository's committed `.gitattributes` and the clone's `.git/info/attributes` still apply.
+  -z` and reports each file under its post-change path. The config settings known to change
+  numstat's counts are pinned to git's defaults, whether the user's config or the repository's sets
+  them: `diff.renames` (`-M`), `diff.renameLimit` (`-l1000`), `diff.algorithm`
+  (`--diff-algorithm=myers`), `diff.relative` (`--no-relative`), diff drivers (`--no-ext-diff`,
+  `--no-textconv`), `diff.ignoreSubmodules` (`--ignore-submodules=none`), `core.bigFileThreshold`
+  (`512m`) and the user's attributes file (`core.attributesFile=/dev/null`). Other settings are read
+  as usual, `safe.directory` among them. The repository's committed `.gitattributes` and the clone's
+  `.git/info/attributes` still apply.
   Every changed-file path, extension, call-site system name (in both call-site tables),
   symbol-level reason and overlap edge reason that names a path writes it as a code span with
   control characters escaped, so a file name holding a newline or a backtick cannot break out into
