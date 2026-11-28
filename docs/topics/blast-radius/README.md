@@ -311,7 +311,7 @@ detail:
 | `reason.code` | When |
 | --- | --- |
 | `graft.not_resolved` | No graft binary through the package dependency, `PATH` or `FOOTPRINT_GRAFT` |
-| `graft.exports_failed` | The subcommand exited non-zero; the detail carries its first line of stderr |
+| `graft.exports_failed` | The subcommand exited non-zero, and the detail carries its first line of stderr; or it did not answer within 60 seconds (`GRAFT_TIMEOUT_MS` in `src/bounded.ts`) and was stopped, and the detail says so (flyingrobots/footprint#100) |
 | `graft.output_unreadable` | The answer was not JSON, carried no `added`/`removed`/`changed` arrays, or held an entry with no `symbol` or no `filePath` |
 | `graft.schema_mismatch` | A different `_schema` id or version; the detail names both what graft said and what footprint reads |
 | `range.unresolved` | A three-dot range whose ends have no merge base |

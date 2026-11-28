@@ -35,6 +35,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { $ } from "bun";
+import { drain } from "./bounded.ts";
 import { codeSpan } from "./cell.ts";
 import { extensionOf, parsableByGraft } from "./languages.ts";
 import type { ConflictEdge, PullRequest, SharedWith } from "./overlap.ts";
@@ -313,16 +314,6 @@ export function graftOutliner(graft: string, opts: { timeoutMs?: number } = {}):
   });
 }
 
-/** A stream read to its end as text; cancelling the reader ends it early. */
-async function drain(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<string> {
-  const decoder = new TextDecoder();
-  let text = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) return text + decoder.decode();
-    text += decoder.decode(value, { stream: true });
-  }
-}
 
 /** One side of a comparison: a revision range, or why it has none. */
 type Side = { readonly ok: true; readonly base: string; readonly head: string; readonly label: string; readonly compare?: RemoteCompare } | ({ readonly ok: false } & Failure);

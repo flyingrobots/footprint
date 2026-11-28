@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { $ } from "bun";
+import { GRAFT_TIMEOUT_MS, runBounded } from "./bounded.ts";
 import { canonical, sha256 } from "@flyingrobots/parley-emit";
 import { SCAN_METHOD, notRunScan, scanCallSites, sitesFor, type CallSiteScan } from "./callsites.ts";
 import {
@@ -168,7 +169,7 @@ export function parseExportSurfaceText(text: string): Exports {
  * A three-dot range is compared from the merge base, matching the composition's own semantics, so
  * exported symbols the default branch moved elsewhere are not reported as this change's doing.
  */
-export async function exportSurface(graft: string | null, repo: string, range: string): Promise<Exports> {
+export async function exportSurface(graft: string | null, repo: string, range: string, opts: { readonly timeoutMs?: number } = {}): Promise<Exports> {
   if (graft === null) {
     return unavailableExports("graft.not_resolved", "graft could not be resolved through the package dependency, PATH or FOOTPRINT_GRAFT");
   }
@@ -176,12 +177,16 @@ export async function exportSurface(graft: string | null, repo: string, range: s
   const resolved = await rangeBase(repo, range);
   if (!resolved.ok) return unavailableExports("range.unresolved", `${resolved.detail}, so there is no merge base to compare the export surface from`);
   const baseRef = resolved.ref;
-  const run = await $`${graft} --cwd ${repo} struct exports ${baseRef} ${head} --json`.quiet().nothrow();
-  if (run.exitCode !== 0) {
-    const why = run.stderr.toString().trim().split("\n")[0] ?? "(no message)";
-    return unavailableExports("graft.exports_failed", `graft struct exports ${baseRef} ${head} --json exited ${run.exitCode}: ${why}`);
+  // Under a deadline (flyingrobots/footprint#100): a graft that stalls is stopped, and the section
+  // is unavailable with the reason rather than holding the run.
+  const label = `graft struct exports ${baseRef} ${head} --json`;
+  const run = await runBounded([graft, "--cwd", repo, "struct", "exports", baseRef, head, "--json"], repo, opts.timeoutMs ?? GRAFT_TIMEOUT_MS, label);
+  if (!run.ok) return unavailableExports("graft.exports_failed", run.reason);
+  if (run.code !== 0) {
+    const why = run.err.trim().split("\n")[0] || "(no message)";
+    return unavailableExports("graft.exports_failed", `${label} exited ${run.code}: ${why}`);
   }
-  return parseExportSurfaceText(run.text());
+  return parseExportSurfaceText(run.out);
 }
 
 /**

@@ -8,6 +8,7 @@
 // long-lived process, and the daemon has known memory growth.
 
 import { $ } from "bun";
+import { GRAFT_TIMEOUT_MS, runBounded } from "./bounded.ts";
 
 export interface StructuralFile {
   readonly path: string;
@@ -54,21 +55,23 @@ export async function resolveGraft(explicit?: string): Promise<string | null> {
 }
 
 /**
- * Run `graft struct review`. Returns null rather than throwing when graft is absent or fails:
- * enrichment is optional, and a missing enrichment must be reported as a limitation rather
- * than failing the report.
+ * Run `graft struct review` under a deadline (flyingrobots/footprint#100). Returns `{ failed }`
+ * with the reason rather than throwing when graft fails, stalls or answers with something
+ * unreadable: enrichment is optional, and a missing enrichment must be reported as a limitation
+ * rather than failing the report.
  */
 export async function structuralReview(
   graft: string,
   repo: string,
   base: string,
   head: string,
-): Promise<StructuralReview | null> {
-  const run = await $`${graft} --cwd ${repo} struct review --base ${base} --head ${head} --json`
-    .quiet()
-    .nothrow();
-  if (run.exitCode !== 0) return null;
-  return parseStructuralReview(run.text());
+  opts: { readonly timeoutMs?: number } = {},
+): Promise<StructuralReview | { readonly failed: string }> {
+  const label = `graft struct review --base ${base} --head ${head} --json`;
+  const run = await runBounded([graft, "--cwd", repo, "struct", "review", "--base", base, "--head", head, "--json"], repo, opts.timeoutMs ?? GRAFT_TIMEOUT_MS, label);
+  if (!run.ok) return { failed: run.reason };
+  if (run.code !== 0) return { failed: `${label} exited ${run.code}: ${run.err.trim().split("\n")[0] || "(no message)"}` };
+  return parseStructuralReview(run.out) ?? { failed: `${label} did not answer with JSON footprint could read` };
 }
 
 /** Parse `graft struct review --json` output; null when it is not JSON. Pure, so a captured answer can be tested. */

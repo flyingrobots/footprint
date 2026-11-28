@@ -228,7 +228,7 @@ and `overlap.code` says which:
 
 | Code | When | Exit |
 | --- | --- | --- |
-| `graft.review_failed` | graft resolved but its review could not be read; `structural.available` is false | 0 |
+| `graft.review_failed` | graft resolved but its review could not be read: it failed, answered with something unreadable, or did not answer within 60 seconds and was stopped (flyingrobots/footprint#100); the problem says which. `structural.available` is false | 0 |
 | `graft.exports_failed` | graft resolved but the export surface could not be read; `exports.available` is false with the reason on the result. graft being absent entirely is not a warning — it is the `graft.not_resolved` reason and a step saying so | 0 |
 | `gh.unauthenticated`, `gh.rate_limited`, `gh.no_remote`, `gh.list_failed`, `gh.list_unreadable` | `gh` resolved but could not list the open pull requests; `overlap.available` is false. No warning when `gh` is simply absent — that is not a failure of anything footprint ran | 0 |
 | `gh.diff_failed` | `gh pr diff --name-only` would not report some pull request's files; they are in `overlap.undetermined` | 0 |
