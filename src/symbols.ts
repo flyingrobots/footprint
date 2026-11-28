@@ -35,6 +35,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { $ } from "bun";
+import { codeSpan } from "./cell.ts";
 import { extensionOf, parsableByGraft } from "./languages.ts";
 import type { ConflictEdge, PullRequest, SharedWith } from "./overlap.ts";
 import { MAX_CONTENT_BYTES, type Remote, type RemoteCompare } from "./remote.ts";
@@ -279,7 +280,7 @@ export function graftOutliner(graft: string, opts: { timeoutMs?: number } = {}):
     // hold a pipe open long after the child itself has gone.
     const outReader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
     const errReader = (proc.stderr as ReadableStream<Uint8Array>).getReader();
-    const timedOut: Failure = { code: "graft.outline_timeout", reason: `graft read outline ${path} did not answer within ${timeoutMs} ms and was stopped` };
+    const timedOut: Failure = { code: "graft.outline_timeout", reason: `graft read outline ${codeSpan(path)} did not answer within ${timeoutMs} ms and was stopped` };
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), timeoutMs); });
     const done = Promise.all([proc.exited, drain(outReader), drain(errReader)]);
@@ -293,7 +294,7 @@ export function graftOutliner(graft: string, opts: { timeoutMs?: number } = {}):
     }
     const [code, out, err] = settled;
     if (proc.signalCode !== null && proc.signalCode !== undefined) return timedOut;
-    if (code !== 0) return { code: "graft.outline_failed", reason: `graft read outline ${path} exited ${code}: ${err.trim().split("\n")[0] || "(no message)"}` };
+    if (code !== 0) return { code: "graft.outline_failed", reason: `graft read outline ${codeSpan(path)} exited ${code}: ${err.trim().split("\n")[0] || "(no message)"}` };
     return parseOutline(out);
   };
   return Object.assign(outline, {
@@ -387,7 +388,7 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
       p = (async () => {
         const content = await remote!.content(rev, path);
         if (isFailure(content)) return content;
-        if (Buffer.byteLength(content) > MAX_CONTENT_BYTES) return { code: "gh.content_too_large", reason: `${path} at ${rev.slice(0, 12)} is larger than ${MAX_CONTENT_BYTES} bytes, which footprint does not read` };
+        if (Buffer.byteLength(content) > MAX_CONTENT_BYTES) return { code: "gh.content_too_large", reason: `${codeSpan(path)} at ${rev.slice(0, 12)} is larger than ${MAX_CONTENT_BYTES} bytes, which footprint does not read` };
         if (outlinesRun >= budget) return { code: "budget.spent", reason: `the run's budget of ${budget} graft outline call${budget === 1 ? "" : "s"} was spent before this file was reached` };
         outlinesRun += 1;
         return input.outliner!(content, path);
@@ -400,7 +401,7 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
   const outlineAt = async (rev: string, path: string, viaRemote = false): Promise<readonly Span[] | Failure> => {
     if (viaRemote) return outlineRemote(rev, path);
     const blob = await git(input.repo, "rev-parse", "--verify", "--quiet", `${rev}:${path}`);
-    if (!blob.ok) return { code: "git.show_failed", reason: `${path} does not exist at ${rev.slice(0, 12)}` };
+    if (!blob.ok) return { code: "git.show_failed", reason: `${codeSpan(path)} does not exist at ${rev.slice(0, 12)}` };
     const id = blob.text.trim();
     // Keyed by blob *and* path: graft picks the grammar (and may refuse) by the path, so one blob at
     // two paths can have two outlines (flyingrobots/footprint#56).
@@ -436,14 +437,14 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
     // the working directory and treats `[`, `*` and `?` as a glob.
     if (side.compare !== undefined) return touchedRemote(side, path);
     const diff = await git(input.repo, "diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "--no-renames", side.base, side.head, "--", `:(top,literal)${path}`);
-    if (!diff.ok) return { ok: false, code: "git.diff_failed", reason: `git diff ${side.base.slice(0, 12)} ${side.head.slice(0, 12)} -- ${path} failed: ${diff.err.split("\n")[0] || "(no message)"}` };
+    if (!diff.ok) return { ok: false, code: "git.diff_failed", reason: `git diff ${side.base.slice(0, 12)} ${side.head.slice(0, 12)} -- ${codeSpan(path)} failed: ${diff.err.split("\n")[0] || "(no message)"}` };
     return attributeLines(side, path, changedLines(diff.text));
   };
 
   /** A side read over the API: its patch is the compare's, for exactly merge base..head. */
   const touchedRemote = (side: Side & { ok: true }, path: string): Promise<SideResult> => {
     const patch = side.compare!.patches.get(path);
-    if (patch === undefined) return Promise.resolve({ ok: false, code: "gh.compare_incomplete", reason: `the GitHub compare for ${side.label} did not list ${path} (its file list is capped), so its changed lines are not known` });
+    if (patch === undefined) return Promise.resolve({ ok: false, code: "gh.compare_incomplete", reason: `the GitHub compare for ${side.label} did not list ${codeSpan(path)} (its file list is capped), so its changed lines are not known` });
     if (isFailure(patch)) return Promise.resolve({ ok: false, ...patch });
     return attributeLines(side, path, changedLines(patch));
   };
@@ -451,11 +452,11 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
   const attributeLines = async (side: Side & { ok: true }, path: string, lines: ChangedLines): Promise<SideResult> => {
     const viaRemote = side.compare !== undefined;
     const from = viaRemote ? `the GitHub compare ${side.base.slice(0, 12)}...${side.head.slice(0, 12)}` : `git diff ${side.base.slice(0, 12)} ${side.head.slice(0, 12)}`;
-    if (lines.binary) return { ok: false, code: "git.binary", reason: `${path} is binary in ${side.label}'s change, so it has no symbols` };
+    if (lines.binary) return { ok: false, code: "git.binary", reason: `${codeSpan(path)} is binary in ${side.label}'s change, so it has no symbols` };
     // The file was listed as changed by this side, yet its own diff changes no line of it: the list
     // and the commits disagree (a head that moved, a base that is not the pull request's), so the
     // side is not an empty one, it is unknown.
-    if (lines.hunks === 0) return { ok: false, code: "symbols.file_unchanged", reason: `${path} is listed as changed by ${side.label}, but ${from} changes no line of it, so the file list and the commits do not describe one comparison` };
+    if (lines.hunks === 0) return { ok: false, code: "symbols.file_unchanged", reason: `${codeSpan(path)} is listed as changed by ${side.label}, but ${from} changes no line of it, so the file list and the commits do not describe one comparison` };
     // Old lines from the merge base's outline, new lines from the head's; a side with no lines on
     // one end does not need (or spend budget on) that end's outline.
     const ends: Array<[string, readonly number[], readonly number[]]> = [[side.base, lines.old, lines.blank.old], [side.head, lines.new, lines.blank.new]];

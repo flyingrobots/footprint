@@ -16,10 +16,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   through as `dir/{old => new}/file` and a path with a tab or a non-ASCII byte came through
   C-quoted. Classification, the landing plan, the unanalysed-language list and the overlap with
   other pull requests all read a path that did not exist. footprint now reads `git diff --numstat
-  -z -M` and reports each file under its post-change path; `-M` pins git's rename detection, so a
-  user's `diff.renames` setting no longer changes the figures. Paths in the `--human` report are
-  written as code spans with control characters escaped, so a file name holding a newline or a
-  backtick cannot break out into the posted comment. No schema changes.
+  -z` and reports each file under its post-change path. The figures no longer depend on the user's
+  git config: footprint passes `-M`, `--diff-algorithm=myers`, `--no-relative`, `--no-ext-diff` and
+  `--no-textconv`, so `diff.renames`, `diff.algorithm`, `diff.relative` and configured diff drivers
+  cannot change them. Every changed-file path, extension and symbol-level reason that names a path
+  is written in the `--human` report as a code span with control characters escaped, so a file
+  name holding a newline or a backtick cannot break out into the posted comment. No schema changes.
 
 ## [0.7.1] — 2026-11-24
 

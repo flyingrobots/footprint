@@ -499,7 +499,7 @@ function unanalysedSection(unanalysed: readonly UnsupportedLanguage[]): string {
     return "<sub>Every changed source file was in a language footprint recognises graft's grammars can parse.</sub>";
   }
   const total = unanalysed.reduce((n, u) => n + u.count, 0);
-  const byExtension = unanalysed.map((u) => `${u.count} \`${u.extension}\``).join(", ");
+  const byExtension = unanalysed.map((u) => `${u.count} ${codeSpan(u.extension)}`).join(", ");
   return `**${total} changed file${total === 1 ? "" : "s"} in unanalysed language${unanalysed.length === 1 ? "" : "s"}:** ${byExtension}.`;
 }
 
