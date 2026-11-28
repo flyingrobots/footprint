@@ -15,6 +15,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Fixed
 
+- **A stalled graft no longer holds the run** (flyingrobots/footprint#100). `graft struct review`
+  and `graft struct exports` were awaited with no limit, and one review call was seen to take
+  969743 ms, failing an unrelated test by timeout. Each now runs under one 60-second deadline on
+  the process and both its pipes, as `graft read outline` does. Past it the process is killed and
+  the section is stated unavailable with the reason: `graft.review_failed` and
+  `graft.exports_failed`, existing codes, so no schema changes. The review warning now carries
+  graft's own reason instead of a fixed sentence.
 - **The composition table's total share is computed** (flyingrobots/footprint#67). It was a
   literal `100%`, so a change with files but no changed lines showed `0%` on every row and `100%`
   in the total. It is now `0%` for such a change and `100%` otherwise. No schema changes: the

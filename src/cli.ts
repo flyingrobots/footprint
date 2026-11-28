@@ -152,9 +152,11 @@ async function footprint(run: Run, args: string[]): Promise<void> {
 
   const graft = await resolveGraft(process.env.FOOTPRINT_GRAFT);
   run.step(graft === null ? "structural analysis unavailable" : `structural analysis via ${graft}`, graft === null ? "graft could not be resolved through the package or PATH; the report states the limitation rather than omitting the section" : "graft resolved through the package dependency, PATH or FOOTPRINT_GRAFT");
-  const review = graft === null || changes.length === 0 || !baseRef.ok ? null : await structuralReview(graft, run.cwd, baseRef.ref, head);
+  const reviewed = graft === null || changes.length === 0 || !baseRef.ok ? null : await structuralReview(graft, run.cwd, baseRef.ref, head);
+  const review = reviewed === null || "failed" in reviewed ? null : reviewed;
   if (graft !== null && changes.length > 0 && review === null) {
-    run.warning({ code: "graft.review_failed", problem: baseRef.ok ? "graft struct review failed or returned output footprint could not read; structural analysis unavailable for this run" : `${baseRef.detail}; structural analysis unavailable for this run`, remedy: "run graft struct review --json by hand to see why", remedy_target: graft });
+    const why = reviewed !== null && "failed" in reviewed ? reviewed.failed : null;
+    run.warning({ code: "graft.review_failed", problem: baseRef.ok ? `${why ?? "graft struct review failed"}; structural analysis unavailable for this run` : `${baseRef.detail}; structural analysis unavailable for this run`, remedy: "run graft struct review --json by hand to see why", remedy_target: graft });
   }
 
   const composition = compose(changes);
