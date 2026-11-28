@@ -57,7 +57,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   whichever path the text took: quoted pull request titles, landing steps, reasons, symbol names,
   signatures, or a branch name in the range. The costs: the space copies with the text; a link
   whose address holds an `@` then points at that address with the space encoded in it; an email
-  address is no longer a `mailto:` link. A first version wrapped handles in code, and three review
+  address is no longer a `mailto:` link. Every size bound measures the escaped text, so the space
+  never takes a report past `--max-chars`. A first version wrapped handles in code, and three review
   rounds found inputs that escaped it; the test corpus holds every one, and GitHub renders none of
   them as a mention. Changelog rows posted before this change are escaped when the comment is next
   updated.

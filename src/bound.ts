@@ -7,6 +7,8 @@
 // count. The JSON Lines records are never trimmed: they carry every row the Markdown leaves out.
 
 /** GitHub's maximum comment body, in characters. */
+import { noMentions } from "./cell.ts";
+
 export const REPORT_LIMIT = 65536;
 
 /**
@@ -94,7 +96,10 @@ export function shrinkToFit<K extends string>(
   budget: number,
 ): Rendered<K> {
   let limits = { ...start };
-  let out = build(limits);
+  // Measured as posted: escaped, so the space noMentions adds after each @ counts against the
+  // budget instead of overrunning it (flyingrobots/footprint#78).
+  const escaped = (r: Rendered<K>): Rendered<K> => ({ ...r, text: noMentions(r.text) });
+  let out = escaped(build(limits));
   const keys = Object.keys(start) as K[];
   while (out.text.length > budget) {
     const open = keys.filter((k) => limits[k] > 0);
@@ -104,7 +109,7 @@ export function shrinkToFit<K extends string>(
     // An unlimited section is first cut to what it actually printed, so halving means something.
     const next = Number.isFinite(current) ? Math.floor(current / 2) : Math.max(0, Math.floor(out.sizes[largest] / 2));
     limits = { ...limits, [largest]: next };
-    out = build(limits);
+    out = escaped(build(limits));
   }
   return out;
 }
@@ -116,7 +121,9 @@ export function shrinkToFit<K extends string>(
  * is never silent. Reached only by a section that is not a list, or by lists whose cut-to-nothing
  * form is still too long.
  */
-export function clamp(text: string, max: number, what: string): string {
+export function clamp(raw: string, max: number, what: string): string {
+  // Cut as posted, escaped (flyingrobots/footprint#78); escaping again later changes nothing.
+  const text = noMentions(raw);
   if (text.length <= max) return text;
   const notice = (cut: number): string =>
     `<sub>${cut} character${cut === 1 ? "" : "s"} of ${what} omitted to keep the comment under GitHub's ${REPORT_LIMIT}-character limit.</sub>`;
