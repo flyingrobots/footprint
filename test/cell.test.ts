@@ -3,6 +3,10 @@
 // noMentions, which puts a zero width space straight after every spelling of `@`.
 import { describe, expect, test } from "bun:test";
 import { cellText, noMentions } from "../src/cell.ts";
+import { buildComment, rowLine } from "../src/comment.ts";
+import { mkdtempSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { landingPlan } from "../src/landing.ts";
 import { computeOverlap, unavailableOverlap, type PullRequest } from "../src/overlap.ts";
 import { renderLanding, renderOverlap } from "../src/render.ts";
@@ -35,6 +39,9 @@ const CORPUS = [
   "xhttps://e.com/.@octocat", "@&#111;ctocat", "&#64;&#111;ctocat", "https://@octocat", "http://.@octocat", "_@octocat_",
   "b\\`.@&#x6f;ctocat`x", "&commat;octocat", "&#x40;octocat", "[@octocat](https://e.com)", "ping @octocat.",
   "&#64@octocat", "&#x40@octocat", "ping @org/team", "@b@x", "`@1``..`", "\\\\`@a`",
+  "\\\\@octocat", "\\\\&#64;octocat", "https://a_b/.@octocat",
+  // Review round 4: repository text a backtick lets out of its code span.
+  "`` x`@octocat`y ``", "`s = `hi @octocat``", "`a` @octocat `b`",
 ];
 
 describe("no @ can start a mention in text footprint did not write (flyingrobots/footprint#78)", () => {
@@ -51,6 +58,10 @@ describe("no @ can start a mention in text footprint did not write (flyingrobots
     expect(noMentions("ping @octocat and &#64;x and &#x40;y and &commat;z")).toBe(`ping @${ZWSP}octocat and &#64;${ZWSP}x and &#x40;${ZWSP}y and &commat;${ZWSP}z`);
     expect(noMentions("&#64x &#x40y")).toBe(`&#64${ZWSP}x &#x40${ZWSP}y`);
     expect(noMentions("no at sign `here` or https://e.com/a")).toBe("no at sign `here` or https://e.com/a");
+  });
+
+  test("it is idempotent: text escaped twice is escaped once", () => {
+    for (const c of CORPUS) expect(noMentions(noMentions(c))).toBe(noMentions(c));
   });
 
   test("a reference that only starts like one for @ is not split", () => {
@@ -103,4 +114,40 @@ describe("text quoted from other pull requests and the repository names no one e
     expect(md).toContain("ask");
     expect(mentions(md)).toEqual([]);
   });
+});
+
+// Review round 4: render paths that never reach noMentions (symbol names, signatures, the range
+// built from a branch name) let a backtick free a handle. So the whole output is escaped once, as
+// the CLI emits --human and as footprint comment posts the body.
+describe("the whole report and the whole comment are escaped (flyingrobots/footprint#78, review round 4)", () => {
+  test("a posted comment carries no mention, whatever the report holds", () => {
+    const report = "## Footprint\n\n| `` x`@octocat`y `` | `s = `hi @octocat`` | `a` @octocat `b` |\n";
+    const row = rowLine({ timestamp: "t", sha: "abc1234", change: "c", reason: "r", remarks: "@octocat" });
+    const built = buildComment(report, { rows: [], dropped: 0 }, row);
+    expect(mentions(built.body)).toEqual([]);
+  });
+
+  test("the --human report on a branch named x`@octocat`y carries no mention", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "footprint-mention-"));
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z" };
+    const git = (...a: string[]) => { const r = Bun.spawnSync(["git", ...a], { cwd: repo, env, stdout: "pipe", stderr: "pipe" }); if (r.exitCode !== 0) throw new Error(r.stderr.toString()); };
+    git("init", "-q", "-b", "main");
+    git("-c", "user.name=f", "-c", "user.email=f@example.invalid", "commit", "-q", "--allow-empty", "-m", "base");
+    git("checkout", "-q", "-b", "x`@octocat`y");
+    await Bun.write(join(repo, "a.md"), "hello\n");
+    git("add", "-A");
+    git("-c", "user.name=f", "-c", "user.email=f@example.invalid", "commit", "-q", "-m", "change");
+    const bin = mkdtempSync(join(tmpdir(), "footprint-bin-"));
+    symlinkSync(Bun.which("git")!, join(bin, "git"));
+    const proc = Bun.spawn([process.execPath, resolve(import.meta.dir, "../src/cli.ts"), "main...x`@octocat`y", "--human"], {
+      cwd: repo,
+      env: { ...env, PATH: bin, FOOTPRINT_GRAFT: join(bin, "no-graft"), XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-state-")) },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [out, status] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    expect(status).toBe(0);
+    expect(out).toContain("octocat"); // the branch name is in the report
+    expect(mentions(out)).toEqual([]);
+  }, 60_000);
 });
