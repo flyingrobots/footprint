@@ -2,6 +2,7 @@ import { expect, test, describe } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { classify } from "../src/classify.ts";
+import { codeSpan } from "../src/cell.ts";
 import { compose, parseNumstat, mermaidPie } from "../src/footprint.ts";
 import { blastRadius, gutCheck, render, renderLanding } from "../src/render.ts";
 import { landingPlan } from "../src/landing.ts";
@@ -392,5 +393,19 @@ describe("no symbol-level reason puts a raw path into the report (flyingrobots/f
     const reasonLines = lines.filter((l) => /reason: `/.test(l) && l.includes("${"));
     expect(reasonLines.length).toBeGreaterThanOrEqual(8); // witnesses
     expect(reasonLines.filter((l) => /\$\{(path|ext)\}/.test(l))).toEqual([]);
+  });
+});
+
+describe("a code span shows a path with spaces at both ends exactly (flyingrobots/footprint#66, CodeRabbit review)", () => {
+  // CommonMark strips one space from each end of a code span whose content starts and ends with a
+  // space and is not all spaces, so `" a.ts "` needs one more space of padding on each side.
+  test("a path that starts and ends with a space keeps both", () => {
+    expect(codeSpan(" a.ts ")).toBe("`  a.ts  `");
+  });
+
+  test("an ordinary path, a one-sided space and an all-space name are unchanged", () => {
+    expect(codeSpan("a.ts")).toBe("`a.ts`");
+    expect(codeSpan(" a.ts")).toBe("` a.ts`");
+    expect(codeSpan("   ")).toBe("`   `");
   });
 });
