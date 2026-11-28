@@ -11,7 +11,7 @@ import { landingPlan } from "../src/landing.ts";
 import { computeOverlap, unavailableOverlap, type PullRequest } from "../src/overlap.ts";
 import { blastRadius, renderLanding, renderOverlap } from "../src/render.ts";
 import { GRAFT_EXPORTS_CONTRACT, parseExportSurface, withCallSites, type Exports } from "../src/exports.ts";
-import { BLAST_LIMITS, REPORT_LIMIT } from "../src/bound.ts";
+import { BLAST_LIMITS, REPORT_LIMIT, clamp } from "../src/bound.ts";
 
 const ZWSP = "​";
 
@@ -32,9 +32,9 @@ function mentions(markdown: string): string[] {
 }
 
 /**
- * Every input that carried a mention past an earlier version of this code, through three review
- * rounds, each confirmed by rendering through GitHub. On 2026-11-28 GitHub rendered 14 mentions
- * from the first 18 as given and none once escaped.
+ * Inputs that carried a mention past an earlier version of this code, or were suspected to, through
+ * five review rounds. Not every one is a mention as given (some only escaped a buggy wrap); on
+ * 2026-11-28 GitHub rendered 14 mentions from the first 18 as given and none once escaped.
  */
 const CORPUS = [
   "@octocat", "\\@octocat", "a\\@octocat", "@octo\\@cat", "\\&#64;octocat", "https://a_.@octocat", "https://a_/.@octocat",
@@ -168,12 +168,20 @@ describe("the size bounds count the escape (flyingrobots/footprint#78, review ro
       const md = blastRadius(atHeavy(200), [], budget, BLAST_LIMITS);
       expect([budget, md.length <= budget]).toEqual([budget, true]);
       expect(mentions(md)).toEqual([]);
+      // Fitted by trimming lists, measured escaped, not by clamp's last-resort cut of the text.
+      expect(md).not.toContain("omitted to keep the comment under");
     }
   });
 
   test("a signature that closes its own code span names no one", () => {
-    const md = blastRadius(atHeavy(1), [], REPORT_LIMIT, BLAST_LIMITS);
-    expect(md).toContain("s0(");
+    const changed = [{ filePath: "src/lib.ts", symbol: "greet", kind: "function", signature: "greet(s = `hi @octocat`, t): void", previousSignature: "greet(): void" }];
+    const parsed = parseExportSurface({ _schema: { ...GRAFT_EXPORTS_CONTRACT }, base: "a", head: "b", semverImpact: "major", added: [], removed: [], changed });
+    const md = blastRadius(withCallSites(parsed, { available: true, filesScanned: 1, skipped: { binary: 0, unreadable: 0 }, sites: new Map([["greet", []]]) }), [], REPORT_LIMIT, BLAST_LIMITS);
+    expect(md).toContain("greet(");
     expect(mentions(md)).toEqual([]);
+  });
+
+  test("clamp escapes what it cuts", () => {
+    expect(clamp("@a", 100, "the test")).toBe("@\u200ba");
   });
 });

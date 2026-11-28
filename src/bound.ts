@@ -6,9 +6,9 @@
 // other three each get a budget and trim their lists to it, *stating* every omission with its
 // count. The JSON Lines records are never trimmed: they carry every row the Markdown leaves out.
 
-/** GitHub's maximum comment body, in characters. */
 import { noMentions } from "./cell.ts";
 
+/** GitHub's maximum comment body, in characters. */
 export const REPORT_LIMIT = 65536;
 
 /**

@@ -59,8 +59,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   whose address holds an `@` then points at that address with the space encoded in it; an email
   address is no longer a `mailto:` link. Every size bound measures the escaped text, so the space
   never takes a report past `--max-chars`. A first version wrapped handles in code, and three review
-  rounds found inputs that escaped it; the test corpus holds every one, and GitHub renders none of
-  them as a mention. Changelog rows posted before this change are escaped when the comment is next
+  rounds found inputs that escaped it; the test corpus holds them, and GitHub renders none of them
+  as a mention once escaped. Changelog rows posted before this change are escaped when the comment is next
   updated.
 
 ## [0.7.1] — 2026-11-24
