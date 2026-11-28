@@ -570,7 +570,7 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
     `<sub>${n} more ${what} omitted to keep the comment under GitHub's ${REPORT_LIMIT}-character limit; the overlap result line carries every one.</sub>`;
 
   if (!o.available) {
-    out.push(`<sub>${o.summary}</sub>`);
+    out.push(`<sub>${noMentions(o.summary)}</sub>`);
     const text = out.join("\n");
     return { text, sizes: { pulls: 0 } };
   }

@@ -49,16 +49,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   control characters escaped, so a file name holding a newline or a backtick cannot break out into
   the posted comment. In the overlap result line, an edge's `reason` and a shared file's
   symbol-level `reason` now write paths and extensions in backticks; no schema changes.
-- **No bare `@handle` from quoted text reaches the Footprint comment** (flyingrobots/footprint#78).
-  Text footprint did not write (the Changelog's Change, Reason and Remarks, the Impact and Data
-  flow cells, other pull requests' titles, after-merge steps and headings quoted from `RELEASE.md`
-  and `AGENTS.md`, the before-merge notes, and the reasons and error details shown beside a
-  section) writes each mention outside a code span or a link as `<code>…</code>`. A mention is any
-  spelling of `@` GitHub's renderer links (`@`, `\@`, `&#64;`, `&#x40;`, `&commat;`) not after a
-  letter or digit, wrapped with the whole run of text after it, so a character reference inside
-  the name is covered too. A URL with a host is left as it is; an email address is not a mention.
-  Checked by rendering through GitHub: nine spellings that link as given link none once escaped.
-  Changelog rows posted before this change are carried over as they were.
+- **No `@handle` from quoted text can mention anyone in the Footprint comment**
+  (flyingrobots/footprint#78). Text footprint did not write (the Changelog's Change, Reason and
+  Remarks, the Impact and Data flow cells, other pull requests' titles, after-merge steps and
+  headings quoted from `RELEASE.md` and `AGENTS.md`, the before-merge notes, and the reasons, error
+  details and `gh` messages shown beside a section) gets an invisible zero width space (U+200B)
+  straight after every spelling of `@` (`@`, `&#64;`, `&#x40;`, `&commat;`). GitHub links a mention
+  only when a letter or digit follows the `@` directly, so none can form, whatever Markdown
+  surrounds it. The space copies with the text, and an email address or a URL holding an `@`
+  carries it too. A first version wrapped handles in code; three review rounds found inputs that
+  escaped it, all now in the test corpus, and GitHub renders none of them as a mention. Changelog
+  rows posted before this change are carried over as they were.
 
 ## [0.7.1] — 2026-11-24
 
