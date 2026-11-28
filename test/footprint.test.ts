@@ -301,7 +301,7 @@ describe("vendored code, lockfiles and generated sources are generated (flyingro
 // lockfile and generated-name rules are name rules, so they come after the test rules
 // (flyingrobots/footprint#68). Generated directories (`dist/`, `node_modules/`, `vendor/`) still
 // come first, as `node_modules/x/LICENSE` already does (test-plan row CO-7b).
-describe("a test fixture stays a test however it is named (flyingrobots/footprint#68)", () => {
+describe("a test fixture with a lockfile or generated-source name stays a test (flyingrobots/footprint#68)", () => {
   test("a lockfile or a generated-looking name under a test path is test", () => {
     for (const f of [
       "test/fixtures/Gemfile.lock", "test/fixtures/package-lock.json", "tests/data/poetry.lock",

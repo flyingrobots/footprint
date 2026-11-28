@@ -26,7 +26,8 @@ const RULES: ReadonlyArray<readonly [Category, RegExp]> = [
   ["test", /_test\.(go|py|rs)$/],
   // Lockfiles and generated-source names are name rules, so they come after the test rules: a test
   // fixture classifies as `test` before a name rule sees it (AGENTS.md; flyingrobots/footprint#68).
-  // Generated *directories* (`dist/`, `node_modules/`, `vendor/`) stay above the test rules.
+  // Above the test rules stay the generated directories (`dist/`, `node_modules/`, `vendor/`), minified
+  // files and source maps, and the `ci` rules, so `test/fixtures/x.min.js` is still `generated`.
   // Most ecosystems name their lockfile `*.lock` (Cargo, yarn, bun, Gemfile, poetry, uv, Pipfile,
   // composer, flake, mix, pubspec, Podfile); the rest by whole file name. Before the JSON and YAML
   // config rules, which would otherwise claim the .json and .yaml ones.

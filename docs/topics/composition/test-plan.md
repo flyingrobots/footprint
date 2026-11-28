@@ -37,11 +37,17 @@ Evidence lives in `test/footprint.test.ts`.
 | CO-10c | `src/api.generated.ts`, `gen/user.pb.go`, `proto/user_pb2.py`, `proto/user_pb2_grpc.py`, `lib/model.g.dart` | each `generated` | `... > common generated-source names are generated` | implemented |
 | CO-10d | `src/lock.ts`, `src/vendor.ts`, `src/generated_report.py`, `docs/locking.md` | `source`, `source`, `source`, `docs`: names that only resemble one keep their kind | `... > a name that only resembles one stays what it was` | implemented |
 | CO-10e | 900 lines under `vendor/` beside 13 hand-written lines | the generated-share flag is raised | `... > a mostly vendored change raises the generated-share flag` | implemented |
-| CO-10f | `test/fixtures/Gemfile.lock`, `test/fixtures/package-lock.json`, `tests/data/poetry.lock`, `testdata/user.pb.go`, `test/fixtures/api.generated.ts`, `test/fixtures/user_pb2.py`, `src/api.generated.test.ts` | each `test` | `a test fixture stays a test however it is named (flyingrobots/footprint#68) > a lockfile or a generated-looking name under a test path is test` | implemented |
+| CO-10f | `test/fixtures/Gemfile.lock`, `test/fixtures/package-lock.json`, `tests/data/poetry.lock`, `testdata/user.pb.go`, `test/fixtures/api.generated.ts`, `test/fixtures/user_pb2.py`, `src/api.generated.test.ts` | each `test` | `a test fixture with a lockfile or generated-source name stays a test (flyingrobots/footprint#68) > a lockfile or a generated-looking name under a test path is test` | implemented |
 | CO-10g | `test/fixtures/vendor/lib.go`, `test/fixtures/node_modules/x/index.js` | each `generated`: a generated directory still wins, as in CO-7b | `... > a generated directory under a test path is still generated` | implemented |
 
 ## Known gaps
 
+- **Rules still above the test rules** (CO-10): generated directories, minified files and source maps
+  (`test/fixtures/x.min.js` is `generated`), and the `ci` rules (`test/fixtures/Dockerfile` is `ci`).
+- **`vendor/` as a domain word** (CO-10): any `vendor/` path component is `generated`, so hand-written
+  code such as `app/models/vendor/order.rb` or `src/vendor/api.ts` is too (flyingrobots/footprint#69).
+- **A real lockfile under a test directory** (CO-10f): `tests/e2e/package-lock.json` is `test`, not
+  `generated`, because the name rules come after the test rules.
 - **Lockfiles not covered** (CO-10): `.terraform.lock.hcl`, Julia's `Manifest.toml`, `conda-lock.yml`, and
   `requirements.txt`, which the landing plan treats as a Python lockfile but which classifies as `docs`.
 - CO-6a runs against this repository's own last commit, so which categories it
