@@ -11,6 +11,7 @@ Evidence lives in `test/footprint.test.ts`.
 | CO-5 | Unrecognised files classify as `source` rather than being dropped |
 | CO-7 | A licence or notice file — `LICENSE`, `LICENSE.<anything>`, `NOTICE`, `COPYING`, at any depth — is `docs`, so it neither inflates the source share nor reads as code in an unanalysed language (flyingrobots/footprint#36) |
 | CO-8 | An agent skill is configuration an agent executes, not documentation: Markdown (`.md`, `.mdx`) under a `skills/` path component, and any file named `SKILL.md`, classify as `config`, so a change to a skill is never "documentation only" (flyingrobots/footprint#34) |
+| CO-10 | Vendored code (a `vendor/` path component), the common lockfiles of each major ecosystem and the common generated-source names are `generated`; the lockfile and name rules come after the test rules, so a fixture with such a name stays `test` (flyingrobots/footprint#68) |
 
 | ID | Case | Oracle | Evidence | Status |
 | --- | --- | --- | --- | --- |
@@ -31,8 +32,17 @@ Evidence lives in `test/footprint.test.ts`.
 | CO-8c | `compose` and `gutCheck` over a change to `skills/footprint/SKILL.md` alone; `unsupportedLanguages` over it | one `config` row, no "Documentation only" flag; no unanalysed language (why `config` and not `source`) | `classify > a skill-only change is not flagged documentation only, nor an unanalysed language` | implemented |
 | CO-9a | `spec/parley-v0.2.md`, `spec/x.mdx`, `spec/notes.txt`, `spec/a/b.rst`, `docs/spec/x.md` | each `classify()` is `docs`: a specification directory's prose is documentation | `classify > Markdown under spec/ is docs, not test` | implemented |
 | CO-9b | `spec/models/user_spec.rb`, `spec/foo.spec.ts`, `spec/helpers.ts`, `spec/fixtures/x.json`, `spec/fixtures/x.md`, `tests/spec/x.md` | each `classify()` is `test`: code and data under `spec/`, and prose under another test directory, stay test | `classify > code and fixtures under spec/ stay test` | implemented |
+| CO-10a | `vendor/github.com/x/y.go`, `app/vendor/autoload.php`, `packages/a/vendor/lib.rb` | each `generated` | `vendored code, lockfiles and generated sources are generated (flyingrobots/footprint#68) > a vendor/ directory at any depth is generated` | implemented |
+| CO-10b | `Gemfile.lock`, `poetry.lock`, `uv.lock`, `Pipfile.lock`, `composer.lock`, `flake.lock`, `mix.lock`, `pubspec.lock`, `Podfile.lock`, `npm-shrinkwrap.json`, `packages.lock.json`, `Package.resolved`, `gradle.lockfile`, `services/api/poetry.lock` | each `generated` | `... > the common lockfiles of each major ecosystem are generated` | implemented |
+| CO-10c | `src/api.generated.ts`, `gen/user.pb.go`, `proto/user_pb2.py`, `proto/user_pb2_grpc.py`, `lib/model.g.dart` | each `generated` | `... > common generated-source names are generated` | implemented |
+| CO-10d | `src/lock.ts`, `src/vendor.ts`, `src/generated_report.py`, `docs/locking.md` | `source`, `source`, `source`, `docs`: names that only resemble one keep their kind | `... > a name that only resembles one stays what it was` | implemented |
+| CO-10e | 900 lines under `vendor/` beside 13 hand-written lines | the generated-share flag is raised | `... > a mostly vendored change raises the generated-share flag` | implemented |
+| CO-10f | `test/fixtures/Gemfile.lock`, `test/fixtures/package-lock.json`, `tests/data/poetry.lock`, `testdata/user.pb.go`, `test/fixtures/api.generated.ts`, `test/fixtures/user_pb2.py`, `src/api.generated.test.ts` | each `test` | `a test fixture stays a test however it is named (flyingrobots/footprint#68) > a lockfile or a generated-looking name under a test path is test` | implemented |
+| CO-10g | `test/fixtures/vendor/lib.go`, `test/fixtures/node_modules/x/index.js` | each `generated`: a generated directory still wins, as in CO-7b | `... > a generated directory under a test path is still generated` | implemented |
 
 ## Known gaps
 
-- None recorded. CO-6a runs against this repository's own last commit, so which categories it
+- **Lockfiles not covered** (CO-10): `.terraform.lock.hcl`, Julia's `Manifest.toml`, `conda-lock.yml`, and
+  `requirements.txt`, which the landing plan treats as a Python lockfile but which classifies as `docs`.
+- CO-6a runs against this repository's own last commit, so which categories it
   names depends on that commit; the invariant it pins is the sum, not a fixed category list.

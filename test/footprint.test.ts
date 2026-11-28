@@ -266,7 +266,7 @@ describe("vendored code, lockfiles and generated sources are generated (flyingro
     for (const f of ["vendor/github.com/x/y.go", "app/vendor/autoload.php", "packages/a/vendor/lib.rb"]) expect(classify(f)).toBe("generated");
   });
 
-  test("every major ecosystem's lockfile is generated", () => {
+  test("the common lockfiles of each major ecosystem are generated", () => {
     for (const f of [
       "Gemfile.lock", "poetry.lock", "uv.lock", "Pipfile.lock", "composer.lock", "flake.lock", "mix.lock",
       "pubspec.lock", "Podfile.lock", "npm-shrinkwrap.json", "packages.lock.json", "Package.resolved",
