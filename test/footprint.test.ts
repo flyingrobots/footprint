@@ -98,9 +98,14 @@ describe("classify", () => {
   });
 });
 
+// `git diff --numstat -z` records (flyingrobots/footprint#66): `added\tremoved\tpath\0`, or for a
+// rename or copy `added\tremoved\t\0old\0new\0`. `z` writes the first form, so a fixture reads
+// as the old line-per-file text did.
+const z = (...lines: string[]) => lines.map((l) => `${l}\0`).join("");
+
 describe("parseNumstat", () => {
   test("reads counts and paths", () => {
-    const changes = parseNumstat("10\t2\tsrc/a.ts\n0\t5\tdocs/b.md\n");
+    const changes = parseNumstat(z("10\t2\tsrc/a.ts", "0\t5\tdocs/b.md"));
     expect(changes).toEqual([
       { path: "src/a.ts", added: 10, removed: 2, binary: false },
       { path: "docs/b.md", added: 0, removed: 5, binary: false },
@@ -108,18 +113,39 @@ describe("parseNumstat", () => {
   });
 
   test("a binary file reports no line counts rather than NaN", () => {
-    const [change] = parseNumstat("-\t-\tdocs/logo.png\n");
+    const [change] = parseNumstat(z("-\t-\tdocs/logo.png"));
     expect(change).toEqual({ path: "docs/logo.png", added: 0, removed: 0, binary: true });
   });
 
-  test("ignores blank lines", () => {
-    expect(parseNumstat("\n\n")).toEqual([]);
+  test("empty output yields no changes", () => {
+    expect(parseNumstat("")).toEqual([]);
+  });
+
+  test("a rename is reported under its new path, not git's {old => new} text", () => {
+    expect(parseNumstat("3\t1\t\0src/auth.ts\0src/auth/index.ts\0")).toEqual([
+      { path: "src/auth/index.ts", added: 3, removed: 1, binary: false },
+    ]);
+  });
+
+  test("a binary rename is reported under its new path", () => {
+    expect(parseNumstat("-\t-\t\0img/a.png\0assets/a.png\0")).toEqual([
+      { path: "assets/a.png", added: 0, removed: 0, binary: true },
+    ]);
+  });
+
+  test("a rename between ordinary entries keeps every record aligned", () => {
+    const out = parseNumstat(`1\t0\ta.ts\0${"0\t0\t\0lib/old.py\0docs/notes.md\0"}2\t2\tb.ts\0`);
+    expect(out.map((c) => c.path)).toEqual(["a.ts", "docs/notes.md", "b.ts"]);
+  });
+
+  test("a path holding a tab or a non-ASCII name is read verbatim, not C-quoted", () => {
+    expect(parseNumstat(z("1\t0\tdocs/a\tb.md", "1\t0\tdocs/café.md")).map((c) => c.path)).toEqual(["docs/a\tb.md", "docs/café.md"]);
   });
 });
 
 describe("compose", () => {
   const changes = parseNumstat(
-    ["100\t50\tsrc/a.ts", "20\t0\ttest/a.test.ts", "30\t0\tdocs/x.md", "-\t-\tdocs/logo.png"].join("\n"),
+    z("100\t50\tsrc/a.ts", "20\t0\ttest/a.test.ts", "30\t0\tdocs/x.md", "-\t-\tdocs/logo.png"),
   );
 
   test("totals are the sum of the parts, never estimated", () => {
@@ -154,7 +180,7 @@ describe("compose", () => {
 
 describe("mermaidPie", () => {
   test("renders a pie whose slices are the category line totals", () => {
-    const pie = mermaidPie(compose(parseNumstat("100\t50\tsrc/a.ts\n30\t0\tdocs/x.md")));
+    const pie = mermaidPie(compose(parseNumstat(z("100\t50\tsrc/a.ts", "30\t0\tdocs/x.md"))));
     expect(pie).toContain("```mermaid");
     expect(pie).toContain("pie showData");
     expect(pie).toContain('"source" : 150');
@@ -189,7 +215,7 @@ describe("structuralSummary", () => {
 });
 
 describe("render with and without graft", () => {
-  const changes = parseNumstat("10\t2\tsrc/a.ts");
+  const changes = parseNumstat(z("10\t2\tsrc/a.ts"));
   test("states the limitation when graft is unavailable rather than hiding it", () => {
     const out = render(compose(changes), changes, "a...b", null);
     expect(out).toContain("Structural analysis unavailable");

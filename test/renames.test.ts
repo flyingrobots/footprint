@@ -1,0 +1,72 @@
+// Renamed and unusually named files, read from real git (flyingrobots/footprint#66). Without -z,
+// `git diff --numstat` writes a rename as `dir/{old => new}/file` and C-quotes a path holding a
+// tab or a non-ASCII byte; footprint used to keep that text as the path. The oracle here is git
+// itself: `git diff --name-only -z` names each changed file by its real post-change path.
+import { beforeAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { parseNumstat } from "../src/footprint.ts";
+
+const ROOT = resolve(import.meta.dir, "..");
+let repo = "";
+const FIXED_DATES = { GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z" };
+
+function git(...args: string[]): string {
+  const r = Bun.spawnSync(["git", ...args], { cwd: repo, env: { ...process.env, ...FIXED_DATES }, stdout: "pipe", stderr: "pipe" });
+  if (r.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr.toString()}`);
+  return r.stdout.toString();
+}
+
+function write(path: string, text: string): void {
+  mkdirSync(join(repo, path, ".."), { recursive: true });
+  writeFileSync(join(repo, path), text);
+}
+
+// Fixed identity, dates and config, so the fixture is the same on every machine (no user config).
+beforeAll(() => {
+  repo = mkdtempSync(join(tmpdir(), "footprint-renames-"));
+  git("init", "-q", "-b", "main");
+  for (const [k, v] of [["user.name", "Fixture"], ["user.email", "fixture@example.invalid"], ["commit.gpgsign", "false"], ["core.quotepath", "true"]]) git("config", k!, v!);
+  const body = Array.from({ length: 40 }, (_, i) => `export const line${i} = ${i};`).join("\n") + "\n";
+  write("src/auth.ts", body);
+  write("lib/old.py", Array.from({ length: 40 }, (_, i) => `x${i} = ${i}`).join("\n") + "\n");
+  write("README.md", "# fixture\n");
+  git("add", "-A");
+  git("commit", "-q", "-m", "base");
+  git("tag", "base");
+  mkdirSync(join(repo, "src/auth"), { recursive: true });
+  mkdirSync(join(repo, "docs"), { recursive: true });
+  git("mv", "src/auth.ts", "src/auth/index.ts");
+  git("mv", "lib/old.py", "docs/notes.md");
+  write("docs/café.md", "accent\n");
+  write("docs/a\tb.md", "tab\n");
+  git("add", "-A");
+  git("commit", "-q", "-m", "rename");
+});
+
+describe("changed paths from real git output (flyingrobots/footprint#66)", () => {
+  test("every path parsed from git diff --numstat -z is a real path git names", () => {
+    const parsed = parseNumstat(git("diff", "--numstat", "-z", "base..HEAD")).map((c) => c.path).sort();
+    const oracle = git("diff", "--name-only", "-z", "base..HEAD").split("\0").filter((p) => p !== "").sort();
+    expect(oracle).toContain("src/auth/index.ts"); // the fixture did produce a rename
+    expect(parsed).toEqual(oracle);
+  });
+
+  test("the CLI reports a renamed file under its new path", async () => {
+    // PATH holds git only: no gh, and no node, so graft states its limitation quickly.
+    const bin = mkdtempSync(join(tmpdir(), "footprint-bin-"));
+    symlinkSync(Bun.which("git")!, join(bin, "git"));
+    const proc = Bun.spawn([process.execPath, join(ROOT, "src/cli.ts"), "base..HEAD", "--human"], {
+      cwd: repo,
+      env: { ...process.env, PATH: bin, FOOTPRINT_GRAFT: join(bin, "no-graft"), XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-state-")) },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [out, status] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    expect(status).toBe(0);
+    expect(out).toContain("`src/auth/index.ts`");
+    expect(out).toContain("`docs/café.md`");
+    expect(out).not.toContain("=>");
+  }, 60_000);
+});
