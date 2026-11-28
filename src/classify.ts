@@ -13,7 +13,15 @@ export type Category =
 /** Ordered: the first matching rule wins, so a test fixture counts as a test, not a source file. */
 const RULES: ReadonlyArray<readonly [Category, RegExp]> = [
   ["generated", /(^|\/)(dist|build|out|target|node_modules)\//],
-  ["generated", /(^|\/)(package-lock\.json|bun\.lock|bun\.lockb|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|go\.sum)$/],
+  // Vendored dependencies: checked in, but written by someone else (flyingrobots/footprint#68).
+  ["generated", /(^|\/)vendor\//],
+  // Lockfiles. Most ecosystems name theirs `*.lock` (Cargo, yarn, Gemfile, poetry, uv, Pipfile,
+  // composer, flake, mix, pubspec, Podfile); the rest by whole file name. Before the JSON and YAML
+  // config rules, which would otherwise claim the .json and .yaml ones.
+  ["generated", /\.lock$/],
+  ["generated", /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|packages\.lock\.json|bun\.lockb|pnpm-lock\.yaml|go\.sum|Package\.resolved|gradle\.lockfile)$/],
+  // Generated-source naming conventions: `.generated.`, protobuf's Go and Python output, Dart's build_runner.
+  ["generated", /(\.generated\.[^/]+|\.pb\.go|_pb2(_grpc)?\.py|\.g\.dart)$/],
   ["generated", /\.(min\.js|min\.css|map)$/],
   ["ci", /(^|\/)\.github\//],
   ["ci", /(^|\/)(Dockerfile|compose\.ya?ml|docker-compose\.ya?ml|\.dockerignore)$/],

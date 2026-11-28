@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Fixed
+
+- **Vendored code, every major ecosystem's lockfile and common generated sources classify as
+  `generated`** (flyingrobots/footprint#68). The gut check's flag names "generated or vendored"
+  lines, but nothing classified as vendored, and lockfiles outside JavaScript, Rust and Go fell
+  through to `source`. New rules: a `vendor/` path component; any `*.lock` file, plus
+  `npm-shrinkwrap.json`, `packages.lock.json`, `Package.resolved` and `gradle.lockfile`; and the
+  names `*.generated.*`, `*.pb.go`, `*_pb2.py`, `*_pb2_grpc.py` and `*.g.dart`. No schema changes.
+
 ## [0.7.1] — 2026-11-24
 
 ### Changed
