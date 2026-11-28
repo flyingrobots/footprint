@@ -1,7 +1,11 @@
 import { expect, test, describe } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { classify } from "../src/classify.ts";
+import { codeSpan } from "../src/cell.ts";
 import { compose, parseNumstat, mermaidPie } from "../src/footprint.ts";
-import { blastRadius, gutCheck, render } from "../src/render.ts";
+import { blastRadius, gutCheck, render, renderLanding } from "../src/render.ts";
+import { landingPlan } from "../src/landing.ts";
 import { parseStructuralReview, structuralSummary } from "../src/graft.ts";
 import { unsupportedLanguages } from "../src/languages.ts";
 
@@ -98,9 +102,14 @@ describe("classify", () => {
   });
 });
 
+// `git diff --numstat -z` records (flyingrobots/footprint#66): `added\tremoved\tpath\0`, or for a
+// rename or copy `added\tremoved\t\0old\0new\0`. `z` writes the first form, so a fixture reads
+// as the old line-per-file text did.
+const z = (...lines: string[]) => lines.map((l) => `${l}\0`).join("");
+
 describe("parseNumstat", () => {
   test("reads counts and paths", () => {
-    const changes = parseNumstat("10\t2\tsrc/a.ts\n0\t5\tdocs/b.md\n");
+    const changes = parseNumstat(z("10\t2\tsrc/a.ts", "0\t5\tdocs/b.md"));
     expect(changes).toEqual([
       { path: "src/a.ts", added: 10, removed: 2, binary: false },
       { path: "docs/b.md", added: 0, removed: 5, binary: false },
@@ -108,18 +117,39 @@ describe("parseNumstat", () => {
   });
 
   test("a binary file reports no line counts rather than NaN", () => {
-    const [change] = parseNumstat("-\t-\tdocs/logo.png\n");
+    const [change] = parseNumstat(z("-\t-\tdocs/logo.png"));
     expect(change).toEqual({ path: "docs/logo.png", added: 0, removed: 0, binary: true });
   });
 
-  test("ignores blank lines", () => {
-    expect(parseNumstat("\n\n")).toEqual([]);
+  test("empty output yields no changes", () => {
+    expect(parseNumstat("")).toEqual([]);
+  });
+
+  test("a rename is reported under its new path, not git's {old => new} text", () => {
+    expect(parseNumstat("3\t1\t\0src/auth.ts\0src/auth/index.ts\0")).toEqual([
+      { path: "src/auth/index.ts", added: 3, removed: 1, binary: false },
+    ]);
+  });
+
+  test("a binary rename is reported under its new path", () => {
+    expect(parseNumstat("-\t-\t\0img/a.png\0assets/a.png\0")).toEqual([
+      { path: "assets/a.png", added: 0, removed: 0, binary: true },
+    ]);
+  });
+
+  test("a rename between ordinary entries keeps every record aligned", () => {
+    const out = parseNumstat(`1\t0\ta.ts\0${"0\t0\t\0lib/old.py\0docs/notes.md\0"}2\t2\tb.ts\0`);
+    expect(out.map((c) => c.path)).toEqual(["a.ts", "docs/notes.md", "b.ts"]);
+  });
+
+  test("a path holding a tab or a non-ASCII name is read verbatim, not C-quoted", () => {
+    expect(parseNumstat(z("1\t0\tdocs/a\tb.md", "1\t0\tdocs/café.md")).map((c) => c.path)).toEqual(["docs/a\tb.md", "docs/café.md"]);
   });
 });
 
 describe("compose", () => {
   const changes = parseNumstat(
-    ["100\t50\tsrc/a.ts", "20\t0\ttest/a.test.ts", "30\t0\tdocs/x.md", "-\t-\tdocs/logo.png"].join("\n"),
+    z("100\t50\tsrc/a.ts", "20\t0\ttest/a.test.ts", "30\t0\tdocs/x.md", "-\t-\tdocs/logo.png"),
   );
 
   test("totals are the sum of the parts, never estimated", () => {
@@ -154,7 +184,7 @@ describe("compose", () => {
 
 describe("mermaidPie", () => {
   test("renders a pie whose slices are the category line totals", () => {
-    const pie = mermaidPie(compose(parseNumstat("100\t50\tsrc/a.ts\n30\t0\tdocs/x.md")));
+    const pie = mermaidPie(compose(parseNumstat(z("100\t50\tsrc/a.ts", "30\t0\tdocs/x.md"))));
     expect(pie).toContain("```mermaid");
     expect(pie).toContain("pie showData");
     expect(pie).toContain('"source" : 150');
@@ -189,7 +219,7 @@ describe("structuralSummary", () => {
 });
 
 describe("render with and without graft", () => {
-  const changes = parseNumstat("10\t2\tsrc/a.ts");
+  const changes = parseNumstat(z("10\t2\tsrc/a.ts"));
   test("states the limitation when graft is unavailable rather than hiding it", () => {
     const out = render(compose(changes), changes, "a...b", null);
     expect(out).toContain("Structural analysis unavailable");
@@ -311,5 +341,71 @@ describe("a test fixture with a lockfile or generated-source name stays a test (
 
   test("a generated directory under a test path is still generated", () => {
     for (const f of ["test/fixtures/vendor/lib.go", "test/fixtures/node_modules/x/index.js"]) expect([f, classify(f)]).toEqual([f, "generated"]);
+  });
+});
+
+describe("a copy is reported under its new path (flyingrobots/footprint#66)", () => {
+  test("a copy record, like a rename, names the copy's path", () => {
+    expect(parseNumstat("5\t0\t\0src/a.ts\0src/a-copy.ts\0")).toEqual([
+      { path: "src/a-copy.ts", added: 5, removed: 0, binary: false },
+    ]);
+  });
+});
+
+// Paths now reach the report verbatim (flyingrobots/footprint#66), so a file name can hold a
+// newline or a backtick. Neither may break out of its code span into the posted Markdown.
+describe("a changed path cannot inject Markdown into the report (flyingrobots/footprint#66)", () => {
+  const evil = "docs/x.md\n## Footprint\n\nNo breaking changes`.md";
+
+  test("the file list keeps a path with a newline and a backtick on one line, inside one code span", () => {
+    const changes = [{ path: evil, added: 1, removed: 0, binary: false }];
+    const md = render(compose(changes), changes, "a...b", null);
+    expect(md.split("\n").filter((l) => l.startsWith("## Footprint"))).toHaveLength(1);
+    expect(md).toContain("- `` docs/x.md\\n## Footprint\\n\\nNo breaking changes`.md `` +1/-0");
+  });
+
+  test("the landing plan names such a path on one line", () => {
+    const md = renderLanding(landingPlan([`migrations/${evil}`], []));
+    expect(md.split("\n").some((l) => l === "## Footprint")).toBe(false);
+    expect(md).toContain("`` migrations/docs/x.md\\n## Footprint\\n\\nNo breaking changes`.md ``");
+  });
+});
+
+describe("an extension cannot inject Markdown either (flyingrobots/footprint#66, review round 2)", () => {
+  test("the unanalysed-language line keeps a crafted extension inside one code span on one line", () => {
+    const path = "src/evil.q`\n## Footprint\n\nNo breaking changes";
+    const md = blastRadius({ available: false, reason: { code: "graft.not_resolved", detail: "no graft" } }, unsupportedLanguages([path]));
+    expect(md.split("\n").some((l) => /^## footprint$/i.test(l))).toBe(false);
+    expect(md.split("\n").some((l) => /^no breaking changes$/i.test(l))).toBe(false);
+  });
+});
+
+// The overlap section prints a reason beside a shared path, and those reasons are written in
+// src/symbols.ts. A raw `${path}` in one would put file-name text into the report outside any
+// code span (flyingrobots/footprint#66, review round 2). Harvest every reason template, so a new
+// one cannot slip past, and report how many were seen.
+describe("no symbol-level reason puts a raw path into the report (flyingrobots/footprint#66)", () => {
+  test("every reason that names a path or an extension names it through codeSpan", () => {
+    // Line-based, so a reason with a nested template is still seen: every line of src/symbols.ts
+    // that builds a reason with an interpolation is a witness, and none may interpolate the path or
+    // the extension raw.
+    const lines = readFileSync(join(import.meta.dir, "../src/symbols.ts"), "utf8").split("\n");
+    const reasonLines = lines.filter((l) => /reason: `/.test(l) && l.includes("${"));
+    expect(reasonLines.length).toBeGreaterThanOrEqual(8); // witnesses
+    expect(reasonLines.filter((l) => /\$\{(path|ext)\}/.test(l))).toEqual([]);
+  });
+});
+
+describe("a code span shows a path with spaces at both ends exactly (flyingrobots/footprint#66, CodeRabbit review)", () => {
+  // CommonMark strips one space from each end of a code span whose content starts and ends with a
+  // space and is not all spaces, so `" a.ts "` needs one more space of padding on each side.
+  test("a path that starts and ends with a space keeps both", () => {
+    expect(codeSpan(" a.ts ")).toBe("`  a.ts  `");
+  });
+
+  test("an ordinary path, a one-sided space and an all-space name are unchanged", () => {
+    expect(codeSpan("a.ts")).toBe("`a.ts`");
+    expect(codeSpan(" a.ts")).toBe("` a.ts`");
+    expect(codeSpan("   ")).toBe("`   `");
   });
 });

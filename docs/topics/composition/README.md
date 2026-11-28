@@ -126,4 +126,10 @@ the pull request's diff, a much larger monorepo should be measured before assumi
 - **No call-site analysis yet.** Graft has the primitives — `struct exports`, `symbol blame`,
   `symbol difficulty` — but footprint does not use them yet.
 - **Thresholds are fixed.** The 40-file and 50% figures are not configurable.
-- **No rename detection.** A renamed file is counted at its new path with its real line delta.
+- **Renames are git's.** The numstat call pins the config settings known to change its counts to
+  git's defaults (`-M`, `-l1000`, `--diff-algorithm=myers`, `--no-relative`, `--no-ext-diff`,
+  `--no-textconv`, `--ignore-submodules=none`, `core.bigFileThreshold=512m`,
+  `core.attributesFile=/dev/null`); other settings, `safe.directory` among them, are read as usual.
+  The repository's `.gitattributes` and `.git/info/attributes` still apply, with `diff.<driver>.binary`
+  for a driver they name, and so does `core.useReplaceRefs`. For renames: a renamed file is counted once, at its new path, with the lines
+  git says changed (`0/0` for a pure rename). A copy is not detected; it counts as a new file.

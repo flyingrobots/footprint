@@ -77,7 +77,7 @@ describe("the conflict graph", () => {
         a: 7,
         b: 9,
         sharedFiles: ["a.ts", "b.ts"],
-        reason: "#7 and #9 both change a.ts and b.ts; the symbol level is undetermined, so the edge separates waves as a file-level one does",
+        reason: "#7 and #9 both change `a.ts` and `b.ts`; the symbol level is undetermined, so the edge separates waves as a file-level one does",
         symbolLevel: notAnalysed(["a.ts", "b.ts"]),
       },
     ]);
@@ -229,5 +229,14 @@ describe("overlap with this change > the pull request under review", () => {
   test("self is required by the overlap schema", () => {
     const available = (OVERLAP_SCHEMA as { properties: { overlap: { oneOf: Array<{ required: string[] }> } } }).properties.overlap.oneOf[0]!;
     expect(available.required).toContain("self");
+  });
+});
+
+describe("an edge reason names its shared paths as code (flyingrobots/footprint#66, review round 3)", () => {
+  test("a shared path with Markdown characters is a code span in the reason, never bare", () => {
+    const o = computeOverlap(["src/**bold**.ts"], [pr(7, ["src/**bold**.ts"]), pr(8, ["src/**bold**.ts"])]);
+    const reasons = [...o.conflicts.map((c) => c.reason)];
+    expect(reasons.length).toBeGreaterThan(0);
+    for (const r of reasons) expect(r).toContain("`src/**bold**.ts`");
   });
 });

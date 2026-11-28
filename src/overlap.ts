@@ -18,6 +18,7 @@
 // reported and does not separate waves; an overlapping or undetermined one separates them as a
 // file-level edge always did.
 
+import { codeSpan } from "./cell.ts";
 import { edgeKey, undeterminedLevel, type SymbolAnalysis, type SymbolLevel, type Symbols } from "./symbols.ts";
 
 /** A pull request as the overlap computation needs it. `files` is null when gh did not report them. */
@@ -195,11 +196,11 @@ function notAnalysed(files: readonly string[]): SymbolLevel {
 
 /** Why the edge exists, and what the symbol level says about it, in prose. */
 function edgeReason(a: number, b: number, shared: readonly string[], level: SymbolLevel): string {
-  const base = `#${a} and #${b} both change ${list(shared)}`;
+  const base = `#${a} and #${b} both change ${list(shared.map(codeSpan))}`;
   if (level.level === "symbol-disjoint") return `${base}, but different symbols in ${shared.length === 1 ? "it" : "each"}, so the edge does not separate waves`;
   if (level.level === "symbol-overlapping") {
     const same = level.files.filter((f) => f.level === "symbol-overlapping").map((f) => f.path);
-    return `${base}, and the same symbols in ${list(same)}`;
+    return `${base}, and the same symbols in ${list(same.map(codeSpan))}`;
   }
   return `${base}; the symbol level is undetermined, so the edge separates waves as a file-level one does`;
 }
