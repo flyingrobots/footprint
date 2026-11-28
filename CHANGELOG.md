@@ -30,6 +30,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   `tests/e2e/package-lock.json`. Any `vendor/` path component is `generated`, including hand-written
   code in a directory named `vendor`. Not covered: `.terraform.lock.hcl`, Julia's `Manifest.toml`,
   `conda-lock.yml`. No schema changes.
+- **A renamed or unusually named file is reported under its real path**
+  (flyingrobots/footprint#66). footprint read `git diff --numstat` without `-z`, so a rename came
+  through as `dir/{old => new}/file` and a path with a tab or a non-ASCII byte came through
+  C-quoted. Classification, the landing plan, the unanalysed-language list and the overlap with
+  other pull requests all read a path that did not exist. footprint now reads `git diff --numstat
+  -z` and reports each file under its post-change path. The config settings known to change
+  numstat's counts are pinned to git's defaults, whether the user's config or the repository's sets
+  them: `diff.renames` (`-M`), `diff.renameLimit` (`-l1000`), `diff.algorithm`
+  (`--diff-algorithm=myers`), `diff.relative` (`--no-relative`), external diff and textconv
+  commands (`--no-ext-diff`, `--no-textconv`), `diff.ignoreSubmodules` (`--ignore-submodules=none`),
+  `core.bigFileThreshold` (`512m`) and the user's attributes file (`core.attributesFile=/dev/null`).
+  Other settings are read as usual, `safe.directory` among them. The repository's committed
+  `.gitattributes` and the clone's `.git/info/attributes` still apply, and so does
+  `diff.<driver>.binary` for a driver those attributes name, as does `core.useReplaceRefs`.
+  Every changed-file path, extension, call-site system name (in both call-site tables),
+  symbol-level reason and overlap edge reason that names a path writes it as a code span with
+  control characters escaped, so a file name holding a newline or a backtick cannot break out into
+  the posted comment. In the overlap result line, an edge's `reason` and a shared file's
+  symbol-level `reason` now write paths and extensions in backticks; no schema changes.
 - **No bare `@handle` from quoted text reaches the Footprint comment** (flyingrobots/footprint#78).
   Text footprint did not write (the Changelog's Change, Reason and Remarks, the Impact and Data
   flow cells, other pull requests' titles, and after-merge steps quoted from `RELEASE.md` and

@@ -226,3 +226,25 @@ describe("the impact columns through the CLI", () => {
     expect(bounded.stdout).toContain("### Open pull requests");
   }, 240_000);
 });
+
+describe("a system name cannot inject Markdown (flyingrobots/footprint#66, review round 3)", () => {
+  test("a call site under a directory whose name holds a newline keeps the table title and mitigation on one line", () => {
+    const evil = "evil\n## Footprint\n\nNo breaking changes";
+    const md = blastRadius(surface({ alpha: [{ file: "src/lib.ts", line: 1 }, { file: `${evil}/x.ts`, line: 2 }] }), []);
+    expect(md.split("\n").some((l) => /^## footprint$/i.test(l))).toBe(false);
+    expect(md.split("\n").some((l) => /^no breaking changes$/i.test(l))).toBe(false);
+  });
+});
+
+describe("a system name cannot inject Markdown in the summarised table either (flyingrobots/footprint#66, review round 4)", () => {
+  test("a symbol with more than 50 call sites, some under a directory whose name holds a newline, keeps every line its own", () => {
+    const evil = "evil\n## Footprint\n\nNo breaking changes";
+    const many: CallSite[] = Array.from({ length: 60 }, (_, i) => ({ file: `${i % 2 === 0 ? "src" : evil}/f${i}.ts`, line: i + 1 }));
+    for (const impact of [undefined, index([])]) {
+      const md = blastRadius(surface({ wide: many }), [], REPORT_LIMIT, BLAST_LIMITS, impact);
+      expect(md).toContain("Symbols with more than"); // the summarised table is the one under test
+      expect(md.split("\n").some((l) => /^## footprint$/i.test(l))).toBe(false);
+      expect(md.split("\n").some((l) => /^no breaking changes$/i.test(l))).toBe(false);
+    }
+  });
+});
