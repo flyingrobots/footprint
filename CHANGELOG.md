@@ -38,11 +38,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   -z` and reports each file under its post-change path. The config settings known to change
   numstat's counts are pinned to git's defaults, whether the user's config or the repository's sets
   them: `diff.renames` (`-M`), `diff.renameLimit` (`-l1000`), `diff.algorithm`
-  (`--diff-algorithm=myers`), `diff.relative` (`--no-relative`), diff drivers (`--no-ext-diff`,
-  `--no-textconv`), `diff.ignoreSubmodules` (`--ignore-submodules=none`), `core.bigFileThreshold`
-  (`512m`) and the user's attributes file (`core.attributesFile=/dev/null`). Other settings are read
-  as usual, `safe.directory` among them. The repository's committed `.gitattributes` and the clone's
-  `.git/info/attributes` still apply.
+  (`--diff-algorithm=myers`), `diff.relative` (`--no-relative`), external diff and textconv
+  commands (`--no-ext-diff`, `--no-textconv`), `diff.ignoreSubmodules` (`--ignore-submodules=none`),
+  `core.bigFileThreshold` (`512m`) and the user's attributes file (`core.attributesFile=/dev/null`).
+  Other settings are read as usual, `safe.directory` among them. The repository's committed
+  `.gitattributes` and the clone's `.git/info/attributes` still apply, and so does
+  `diff.<driver>.binary` for a driver those attributes name, as does `core.useReplaceRefs`.
   Every changed-file path, extension, call-site system name (in both call-site tables),
   symbol-level reason and overlap edge reason that names a path writes it as a code span with
   control characters escaped, so a file name holding a newline or a backtick cannot break out into

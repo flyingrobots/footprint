@@ -129,13 +129,15 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   // Config settings known to change numstat's counts are pinned to git's defaults, against the
   // user's and the repository's config alike (flyingrobots/footprint#66): -M (diff.renames),
   // -l1000 (diff.renameLimit), --diff-algorithm=myers (diff.algorithm), --no-relative
-  // (diff.relative), --no-ext-diff and --no-textconv (diff drivers), --ignore-submodules=none
-  // (diff.ignoreSubmodules), core.bigFileThreshold=512m, and core.attributesFile=/dev/null (the
-  // user's attributes file, $XDG_CONFIG_HOME/git/attributes by default). Every other setting is
-  // read as usual: the user's global config must still be read, because git takes safe.directory
-  // only from there, and a container checkout depends on it. The repository's own attributes, its
-  // committed .gitattributes and the clone's .git/info/attributes, still apply. -z gives each path
-  // verbatim, a rename under its new path.
+  // (diff.relative), --no-ext-diff and --no-textconv (external diff and textconv commands),
+  // --ignore-submodules=none (diff.ignoreSubmodules), core.bigFileThreshold=512m, and
+  // core.attributesFile=/dev/null (the user's attributes file, $XDG_CONFIG_HOME/git/attributes by
+  // default). Every other setting is read as usual: the user's global config must still be read,
+  // because git takes safe.directory only from global, system or command-line config, and a
+  // container checkout depends on it. The repository's own attributes, its committed .gitattributes
+  // and the clone's .git/info/attributes, still apply, and with them diff.<driver>.binary for a
+  // driver they name; so does core.useReplaceRefs. -z gives each path verbatim, a rename under its
+  // new path.
   const diff = await $`git -c core.attributesFile=/dev/null -c core.bigFileThreshold=512m diff --numstat -z -M -l1000 --diff-algorithm=myers --no-relative --no-ext-diff --no-textconv --ignore-submodules=none ${pinned}`.quiet().nothrow();
   if (diff.exitCode !== 0) {
     run.error({ code: "git.diff_failed", problem: `git diff --numstat ${range} exited ${diff.exitCode}: ${diff.stderr.toString().trim() || "(no message)"}`, remedy: "pass a range git can resolve", remedy_target: range });

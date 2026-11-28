@@ -115,7 +115,7 @@ describe("changed paths from real git output (flyingrobots/footprint#66)", () =>
     writeFileSync(config, `[diff]\n\talgorithm = histogram\n\trelative = true\n\trenameLimit = 1\n[core]\n\tattributesFile = ${attributes}\n\tbigFileThreshold = 10\n`);
     // Command-level config (GIT_CONFIG_COUNT), which no GIT_CONFIG_GLOBAL setting drops: it stands
     // in for a repository's own .git/config, so the explicit -l1000 and bigFileThreshold pins are
-    // what keep the figures, not the dropped global file.
+    // what keep the figures against it.
     const command = {
       GIT_CONFIG_COUNT: "3",
       GIT_CONFIG_KEY_0: "diff.renameLimit", GIT_CONFIG_VALUE_0: "1",

@@ -129,6 +129,7 @@ the pull request's diff, a much larger monorepo should be measured before assumi
 - **Renames are git's.** The numstat call pins the config settings known to change its counts to
   git's defaults (`-M`, `-l1000`, `--diff-algorithm=myers`, `--no-relative`, `--no-ext-diff`,
   `--no-textconv`, `--ignore-submodules=none`, `core.bigFileThreshold=512m`,
-  `core.attributesFile=/dev/null`); other settings, `safe.directory` among them, are read as usual,
-  and the repository's `.gitattributes` and `.git/info/attributes` still apply. For renames: a renamed file is counted once, at its new path, with the lines
+  `core.attributesFile=/dev/null`); other settings, `safe.directory` among them, are read as usual.
+  The repository's `.gitattributes` and `.git/info/attributes` still apply, with `diff.<driver>.binary`
+  for a driver they name, and so does `core.useReplaceRefs`. For renames: a renamed file is counted once, at its new path, with the lines
   git says changed (`0/0` for a pure rename). A copy is not detected; it counts as a new file.
