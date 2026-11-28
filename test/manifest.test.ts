@@ -103,3 +103,13 @@ describe("the git-footprint binary (flyingrobots/footprint#74)", () => {
     expect(errors.map((e) => e.code)).toContain("args.invalid");
   });
 });
+
+// npm records the root package's own manifest in package-lock.json, bin included, and footprint's
+// landing plan flags a package.json change with no lockfile beside it. flyingrobots/footprint#74
+// changed bin and left the lockfile stale until footprint's own report said so.
+describe("package-lock.json records the manifest's bin (flyingrobots/footprint#74)", () => {
+  test("the lockfile's root package has the same bin entries as package.json", () => {
+    const lock = readJson(join(ROOT, "package-lock.json")) as { packages: Record<string, { bin?: unknown }> };
+    expect(lock.packages[""]?.bin).toEqual(readJson(join(ROOT, "package.json")).bin);
+  });
+});
