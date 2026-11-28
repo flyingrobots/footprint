@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Fixed
+
+- **The composition table's total share is computed** (flyingrobots/footprint#67). It was a
+  literal `100%`, so a change with files but no changed lines showed `0%` on every row and `100%`
+  in the total. It is now `0%` for such a change and `100%` otherwise. No schema changes: the
+  total share appears in the `--human` report only.
+
 ## [0.7.1] — 2026-11-24
 
 ### Changed
