@@ -15,10 +15,12 @@ import { renderLanding, renderOverlap } from "../src/render.ts";
  * gh api markdown: `@` not after a letter or digit, then a letter or digit.
  */
 function bareMentions(markdown: string): string[] {
-  let t = markdown.replace(/<code>[\s\S]*?<\/code>/g, " ");
-  t = t.replace(/\\`/g, " ");
+  const t = markdown.replace(/<code>[\s\S]*?<\/code>/g, " ");
   let out = "";
   for (let i = 0; i < t.length; ) {
+    // Outside a span, a backslash escapes the next character (an escaped backtick opens no span);
+    // inside one it is literal, which the span skip below already gives.
+    if (t[i] === "\\" && t[i + 1] === "`") { out += " "; i += 2; continue; }
     const run = /^`+/.exec(t.slice(i))?.[0];
     if (run !== undefined && t[i - 1] !== "`") {
       const close = t.slice(i + run.length).search(new RegExp(`(?<!\`)${run}(?!\`)`));
@@ -60,7 +62,7 @@ describe("no bare @handle reaches a comment (flyingrobots/footprint#78)", () => 
   });
 
   test("every other spelling GitHub reads as a mention is wrapped too", () => {
-    expect(cellText("_@octocat_")).toBe("_<code>@octocat</code>_");
+    expect(cellText("_@octocat_")).toBe("_<code>@octocat_</code>"); // the whole run is wrapped
     expect(cellText("\\@octocat")).toBe("<code>@octocat</code>");
     expect(cellText("&#64;octocat &#x40;octocat &commat;octocat")).toBe("<code>@octocat</code> <code>@octocat</code> <code>@octocat</code>");
   });

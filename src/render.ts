@@ -186,15 +186,15 @@ function landingSection(l: Landing, limit: number): Rendered<"rows"> {
   // Markdown blocks run together without one.
   const out: string[] = ["", "## Before merge", ""];
   if (l.before_merge.unguarded) {
-    out.push("> [!WARNING]", `> **Nothing in this change guards it.** ${l.before_merge.unguarded_because}`, "");
+    out.push("> [!WARNING]", `> **Nothing in this change guards it.** ${noMentions(l.before_merge.unguarded_because)}`, "");
   }
-  for (const item of l.before_merge.items.slice(0, limit)) out.push(`- **${BEFORE_MERGE_LABEL[item.kind]}** ${item.says}`);
+  for (const item of l.before_merge.items.slice(0, limit)) out.push(`- **${BEFORE_MERGE_LABEL[item.kind]}** ${noMentions(item.says)}`);
   const itemsLeft = l.before_merge.items.length - Math.min(limit, l.before_merge.items.length);
   if (itemsLeft > 0) out.push(`- <sub>${itemsLeft} more before-merge item${itemsLeft === 1 ? "" : "s"} omitted to keep the comment under GitHub's ${REPORT_LIMIT}-character limit; the landing result line carries every one.</sub>`);
   if (l.before_merge.items.length > 0) out.push("");
-  if (!l.before_merge.unguarded && l.before_merge.items.length === 0) out.push(`- ${l.before_merge.unguarded_because}`, "");
+  if (!l.before_merge.unguarded && l.before_merge.items.length === 0) out.push(`- ${noMentions(l.before_merge.unguarded_because)}`, "");
 
-  out.push("## After merge", "", l.after_merge.statement, "");
+  out.push("## After merge", "", noMentions(l.after_merge.statement), "");
   const mark = out.length;
   for (const s of l.after_merge.steps.slice(0, limit)) out.push(`- [ ] ${noMentions(s.step)} <sub>— \`${s.file}\` › ${noMentions(s.heading)}</sub>`);
   const left = l.after_merge.steps.slice(limit);
@@ -240,7 +240,7 @@ function blastSections(exports: Exports, unanalysed: readonly UnsupportedLanguag
   const sizes = { symbols: 0, sites: 0 };
   if (!exports.available) {
     out.push(
-      `<sub>Export-surface diff unavailable (\`${exports.reason.code}\`): ${exports.reason.detail}.</sub>`,
+      `<sub>Export-surface diff unavailable (\`${exports.reason.code}\`): ${noMentions(exports.reason.detail)}.</sub>`,
       "",
       FROM_GRAFT,
       "",
@@ -293,7 +293,7 @@ function blastSections(exports: Exports, unanalysed: readonly UnsupportedLanguag
   // (flyingrobots/footprint#11). Collapsed, because this is the longest part of the comment, and
   // stated when the scan could not run: an absent list would read as a symbol nothing calls.
   if (!scan.available) {
-    out.push(`<sub>Call sites not listed (\`${scan.reason.code}\`): ${scan.reason.detail}.</sub>`, "");
+    out.push(`<sub>Call sites not listed (\`${scan.reason.code}\`): ${noMentions(scan.reason.detail)}.</sub>`, "");
   } else if (rows.length > 0) {
     const siteRows = surfaceCallSiteRows(s);
     const groups = groupBySystem(siteRows);
@@ -556,7 +556,7 @@ function symbolLines(level: SymbolLevel, a: string, b: string, limit: number, in
     const via = f.github === undefined ? "" : ` <sub>(${f.github.map((x) => (x === "a" ? a : b)).join(" and ")} read over the GitHub API)</sub>`;
     if (f.level === "symbol-disjoint") return `${indent}- ${codeSpan(f.path)}: different symbols — ${a} ${names(f.a!.symbols)}; ${b} ${names(f.b!.symbols)}${via}`;
     if (f.level === "symbol-overlapping") return `${indent}- ${codeSpan(f.path)}: the same symbols — ${names(f.shared!)}${via}`;
-    return `${indent}- ${codeSpan(f.path)}: symbol level undetermined — ${f.reason}`;
+    return `${indent}- ${codeSpan(f.path)}: symbol level undetermined — ${noMentions(f.reason)}`;
   });
   const left = level.files.length - Math.min(level.files.length, cap);
   if (left > 0) out.push(`${indent}- <sub>${left} more shared file${left === 1 ? "" : "s"} at the symbol level omitted; the overlap result line carries every one.</sub>`);
@@ -589,7 +589,7 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
   if (o.overlapping.length > limit) out.push("", omitted(o.overlapping.length - limit, `pull request${o.overlapping.length - limit === 1 ? "" : "s"}`));
   if (o.overlapping.length > 0) out.push("");
 
-  for (const u of o.undetermined.slice(0, limit)) out.push(`- **#${u.number}** ${noMentions(u.title)} — files unknown: ${u.reason}`);
+  for (const u of o.undetermined.slice(0, limit)) out.push(`- **#${u.number}** ${noMentions(u.title)} — files unknown: ${noMentions(u.reason)}`);
   if (o.undetermined.length > limit) out.push("", omitted(o.undetermined.length - limit, `pull requests whose files are unknown`));
   if (o.undetermined.length > 0) out.push("");
 
@@ -600,7 +600,7 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
       .join("\n\n");
     const edges = o.conflicts.length === 0
       ? "No two open pull requests change the same file, so they can land in any order."
-      : o.conflicts.slice(0, limit).map((c) => [`- ${c.reason}`, ...symbolLines(c.symbolLevel, `#${c.a}`, `#${c.b}`, limit, "  ")].join("\n")).join("\n");
+      : o.conflicts.slice(0, limit).map((c) => [`- ${noMentions(c.reason)}`, ...symbolLines(c.symbolLevel, `#${c.a}`, `#${c.b}`, limit, "  ")].join("\n")).join("\n");
     const notes = [
       ...(o.waves.length > limit ? [omitted(o.waves.length - limit, `wave${o.waves.length - limit === 1 ? "" : "s"}`)] : []),
       ...(o.conflicts.length > limit ? [omitted(o.conflicts.length - limit, `conflict${o.conflicts.length - limit === 1 ? "" : "s"}`)] : []),

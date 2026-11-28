@@ -51,12 +51,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   symbol-level `reason` now write paths and extensions in backticks; no schema changes.
 - **No bare `@handle` from quoted text reaches the Footprint comment** (flyingrobots/footprint#78).
   Text footprint did not write (the Changelog's Change, Reason and Remarks, the Impact and Data
-  flow cells, other pull requests' titles, and after-merge steps quoted from `RELEASE.md` and
-  `AGENTS.md`) writes every mention outside a code span or URL as `<code>@handle</code>`, so it
-  notifies no one. A mention is any spelling GitHub's renderer links: `@`, `\@`, `&#64;`, `&#x40;`
-  or `&commat;`, not after a letter or digit (`_@x_` is one). `<code>` rather than backticks,
-  because a backtick fence next to an existing code span merges with it. An email address and a
-  URL are left as they are.
+  flow cells, other pull requests' titles, after-merge steps and headings quoted from `RELEASE.md`
+  and `AGENTS.md`, the before-merge notes, and the reasons and error details shown beside a
+  section) writes each mention outside a code span or a link as `<code>…</code>`. A mention is any
+  spelling of `@` GitHub's renderer links (`@`, `\@`, `&#64;`, `&#x40;`, `&commat;`) not after a
+  letter or digit, wrapped with the whole run of text after it, so a character reference inside
+  the name is covered too. A URL with a host is left as it is; an email address is not a mention.
+  Checked by rendering through GitHub: nine spellings that link as given link none once escaped.
+  Changelog rows posted before this change are carried over as they were.
 
 ## [0.7.1] — 2026-11-24
 
