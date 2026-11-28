@@ -235,3 +235,16 @@ describe("a system name cannot inject Markdown (flyingrobots/footprint#66, revie
     expect(md.split("\n").some((l) => /^no breaking changes$/i.test(l))).toBe(false);
   });
 });
+
+describe("a system name cannot inject Markdown in the summarised table either (flyingrobots/footprint#66, review round 4)", () => {
+  test("a symbol with more than 50 call sites, some under a directory whose name holds a newline, keeps every line its own", () => {
+    const evil = "evil\n## Footprint\n\nNo breaking changes";
+    const many: CallSite[] = Array.from({ length: 60 }, (_, i) => ({ file: `${i % 2 === 0 ? "src" : evil}/f${i}.ts`, line: i + 1 }));
+    for (const impact of [undefined, index([])]) {
+      const md = blastRadius(surface({ wide: many }), [], REPORT_LIMIT, BLAST_LIMITS, impact);
+      expect(md).toContain("Symbols with more than"); // the summarised table is the one under test
+      expect(md.split("\n").some((l) => /^## footprint$/i.test(l))).toBe(false);
+      expect(md.split("\n").some((l) => /^no breaking changes$/i.test(l))).toBe(false);
+    }
+  });
+});

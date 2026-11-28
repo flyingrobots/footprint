@@ -49,6 +49,9 @@ beforeAll(() => {
   mkdirSync(join(repo, "docs"), { recursive: true });
   git("mv", "src/auth.ts", "src/auth/index.ts");
   git("mv", "lib/old.py", "docs/notes.md");
+  // Inexact renames: diff.renameLimit applies only to these, so the config test depends on -l1000.
+  writeFileSync(join(repo, "src/auth/index.ts"), body + "export const added = 1;\n");
+  writeFileSync(join(repo, "docs/notes.md"), Array.from({ length: 40 }, (_, i) => `x${i} = ${i}`).join("\n") + "\nx40 = 40\n");
   writeFileSync(join(repo, "src/copy.ts"), body);
   const moved = [7, 1, 5, 3, 0, 6, 2, 4].flatMap((i) => BLOCKS[i]!);
   moved[9] = "edited";
@@ -101,11 +104,16 @@ describe("changed paths from real git output (flyingrobots/footprint#66)", () =>
     // that changes both settings, and starts in a subdirectory, where diff.relative would narrow it.
     expect(git("-c", "diff.algorithm=histogram", "diff", "--numstat", "base..HEAD", "--", "src/alg.txt")).not.toBe(git("diff", "--numstat", "base..HEAD", "--", "src/alg.txt"));
     const config = join(mkdtempSync(join(tmpdir(), "footprint-gitconfig-")), "config");
-    // Also diff.renameLimit, which would turn the fixture's renames into deletions and additions,
-    // and a user attributes file marking source -diff, which would turn its counts into "-".
+    // Also diff.renameLimit, which would turn the fixture's inexact renames into deletions and
+    // additions, a user attributes file marking source -diff and a tiny core.bigFileThreshold, each
+    // of which turns counts into "-".
     const attributes = join(config, "..", "attributes");
     writeFileSync(attributes, "*.ts -diff\n*.txt -diff\n");
-    writeFileSync(config, `[diff]\n\talgorithm = histogram\n\trelative = true\n\trenameLimit = 1\n[core]\n\tattributesFile = ${attributes}\n`);
+    writeFileSync(config, `[diff]\n\talgorithm = histogram\n\trelative = true\n\trenameLimit = 1\n[core]\n\tattributesFile = ${attributes}\n\tbigFileThreshold = 10\n`);
+    // Command-level config (GIT_CONFIG_COUNT), which no GIT_CONFIG_GLOBAL setting drops: it stands
+    // in for a repository's own .git/config, so the explicit -l1000 and bigFileThreshold pins are
+    // what keep the figures, not the dropped global file.
+    const command = { GIT_CONFIG_COUNT: "2", GIT_CONFIG_KEY_0: "diff.renameLimit", GIT_CONFIG_VALUE_0: "1", GIT_CONFIG_KEY_1: "core.bigFileThreshold", GIT_CONFIG_VALUE_1: "10" };
     const bin = mkdtempSync(join(tmpdir(), "footprint-bin-"));
     symlinkSync(Bun.which("git")!, join(bin, "git"));
     const composition = async (cwd: string, extra: Record<string, string>) => {
@@ -123,5 +131,6 @@ describe("changed paths from real git output (flyingrobots/footprint#66)", () =>
     const hermetic = await composition(repo, {});
     expect(hermetic).toBeDefined();
     expect(await composition(join(repo, "src"), { GIT_CONFIG_GLOBAL: config })).toEqual(hermetic);
+    expect(await composition(repo, command)).toEqual(hermetic);
   }, 120_000);
 });
