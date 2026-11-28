@@ -58,7 +58,10 @@ function table(c: Composition): string {
   const rows = c.byCategory.map(
     (r) => `| ${r.category} | ${r.files} | +${r.added}/-${r.removed} | ${r.share}% |`,
   );
-  const total = `| **total** | **${c.files}** | **+${c.added}/-${c.removed}** | **100%** |`;
+  // Computed like each row's share (flyingrobots/footprint#67): a change with no changed lines
+  // has 0% of nothing, not 100%.
+  const totalShare = c.added + c.removed === 0 ? 0 : 100;
+  const total = `| **total** | **${c.files}** | **+${c.added}/-${c.removed}** | **${totalShare}%** |`;
   return [head, ...rows, total].join("\n");
 }
 
