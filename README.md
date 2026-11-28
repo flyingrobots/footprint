@@ -19,9 +19,9 @@ bun src/cli.ts --help             # what it emits, as JSON Lines
 ```
 
 - **From a clone:** run `bun src/cli.ts`, as above.
-- **Installed:** `git footprint` takes the same arguments. The package ships a `git-footprint` binary, which git runs as a subcommand. For help, run `git-footprint --help`: git turns `git footprint --help` into a man-page lookup. The package runs on Bun, not Node.
+- **Installed** (`bun add -g @flyingrobots/footprint`): `git footprint` takes the same arguments. The package ships a `git-footprint` binary, which git runs as a subcommand. For help, run `git-footprint --help`: git turns `git footprint --help` into a man-page lookup. The package runs on Bun, not Node.
 - **From npm (once published):** `bunx @flyingrobots/footprint` also takes the same arguments.
-- **On macOS:** use `git footprint`, never a bare `footprint`. `/usr/bin/footprint` is an unrelated Apple memory tool that comes first on `PATH`.
+- **On macOS:** never type a bare `footprint`; use `git footprint` when installed, or `bun src/cli.ts` from a clone. `/usr/bin/footprint` is an unrelated Apple memory tool that comes first on `PATH`.
 - **For agents:** a skill covers the whole workflow for reviewing a pull request: [`skills/footprint/SKILL.md`](skills/footprint/SKILL.md).
 
 ### Output

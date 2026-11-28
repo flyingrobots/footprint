@@ -10,8 +10,9 @@ repeat them.
 
 1. **Finds the program** without ever running a bare `footprint`, because on macOS
    `/usr/bin/footprint` is an unrelated Apple memory tool that comes first on `PATH`. It uses
+   `git footprint` when the package is installed (`command -v git-footprint`), otherwise
    `bunx @flyingrobots/footprint` once the package is on npm, and before then `bun <clone>/src/cli.ts`
-   from a clone of this repository, named by a shell function `fp` rather than a variable, so the
+   from a clone of this repository (flyingrobots/footprint#74). Each is named by a shell function `fp` rather than a variable, so the
    same commands run in bash and in zsh, which does not word-split an unquoted variable
    (flyingrobots/footprint#37). It checks that `node` is on `PATH`, which graft needs.
 2. **Resolves the range** as `origin/<base>...origin/<head>` after `git fetch`, or the fetched
