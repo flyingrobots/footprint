@@ -16,8 +16,18 @@ No build step. One runtime dependency, `@flyingrobots/parley-emit`; Bun runs the
 `git diff --numstat`. A footprint that estimates is worse than no footprint, because it is
 believed. There is a test asserting the category rows sum to the reported total; do not delete it.
 
-**Report, never judge.** Flags are observations. The moment this becomes a merge gate, people will
-shape diffs to satisfy it.
+**Evidence, not authority.** footprint is informational. It is not a gate, and it never says
+whether a change may merge: it lays out what the change touches and what else is moving, and the
+reader decides. Flags are observations. The moment the output is built to be a merge gate, people
+will shape diffs to satisfy it, and it stops meaning anything.
+
+So footprint adds nothing whose purpose is to gate: no severity levels, no scores, no pass/fail
+fields, no thresholds a consumer could switch on. Someone may still read its JSON Lines inside their
+own policy; that is their decision, made outside footprint, and footprint does not court it.
+
+Where the stance is written for people (the README), it is written in the voice and style of the
+Sherlock Holmes stories, as the maintainer decided in flyingrobots/footprint#75: the detective lays
+out the facts and the inference, and leaves the arrest to Lestrade.
 
 ## Output
 
@@ -167,4 +177,4 @@ being a failed install.
 - Do not weaken a test to go green.
 - Do not invoke `graft serve` or `graft daemon`.
 - Do not add a dependency without a reason the README can state.
-- Do not make the output a gate.
+- Do not make the output a gate, and do not add a field, flag or score whose purpose is gating.
