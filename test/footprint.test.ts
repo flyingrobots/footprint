@@ -384,11 +384,13 @@ describe("an extension cannot inject Markdown either (flyingrobots/footprint#66,
 // code span (flyingrobots/footprint#66, review round 2). Harvest every reason template, so a new
 // one cannot slip past, and report how many were seen.
 describe("no symbol-level reason puts a raw path into the report (flyingrobots/footprint#66)", () => {
-  test("every reason template that names the path names it through codeSpan", () => {
-    const src = readFileSync(join(import.meta.dir, "../src/symbols.ts"), "utf8");
-    const reasons = [...src.matchAll(/reason: `([^`]*(?:\$\{[^}]*\}[^`]*)*)`/g)].map((m) => m[1]!);
-    const naming = reasons.filter((r) => /\$\{[^}]*\bpath\b[^}]*\}/.test(r));
-    expect(naming.length).toBeGreaterThanOrEqual(5); // witnesses: the reasons that name a path
-    expect(naming.filter((r) => /\$\{path\}/.test(r))).toEqual([]);
+  test("every reason that names a path or an extension names it through codeSpan", () => {
+    // Line-based, so a reason with a nested template is still seen: every line of src/symbols.ts
+    // that builds a reason with an interpolation is a witness, and none may interpolate the path or
+    // the extension raw.
+    const lines = readFileSync(join(import.meta.dir, "../src/symbols.ts"), "utf8").split("\n");
+    const reasonLines = lines.filter((l) => /reason: `/.test(l) && l.includes("${"));
+    expect(reasonLines.length).toBeGreaterThanOrEqual(8); // witnesses
+    expect(reasonLines.filter((l) => /\$\{(path|ext)\}/.test(l))).toEqual([]);
   });
 });

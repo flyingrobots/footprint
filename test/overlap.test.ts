@@ -231,3 +231,12 @@ describe("overlap with this change > the pull request under review", () => {
     expect(available.required).toContain("self");
   });
 });
+
+describe("an edge reason names its shared paths as code (flyingrobots/footprint#66, review round 3)", () => {
+  test("a shared path with Markdown characters is a code span in the reason, never bare", () => {
+    const o = computeOverlap(["src/**bold**.ts"], [pr(7, ["src/**bold**.ts"]), pr(8, ["src/**bold**.ts"])]);
+    const reasons = [...o.conflicts.map((c) => c.reason)];
+    expect(reasons.length).toBeGreaterThan(0);
+    for (const r of reasons) expect(r).toContain("`src/**bold**.ts`");
+  });
+});

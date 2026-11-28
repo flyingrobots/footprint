@@ -96,12 +96,16 @@ describe("changed paths from real git output (flyingrobots/footprint#66)", () =>
     expect(out).not.toContain("=>");
   }, 60_000);
 
-  test("a user's diff.algorithm and diff.relative settings do not change the composition", async () => {
+  test("a user's diff.algorithm, diff.relative, diff.renameLimit and attributes file do not change the composition", async () => {
     // The oracle is the hermetic run from the repository root; the other run has a user config
     // that changes both settings, and starts in a subdirectory, where diff.relative would narrow it.
     expect(git("-c", "diff.algorithm=histogram", "diff", "--numstat", "base..HEAD", "--", "src/alg.txt")).not.toBe(git("diff", "--numstat", "base..HEAD", "--", "src/alg.txt"));
     const config = join(mkdtempSync(join(tmpdir(), "footprint-gitconfig-")), "config");
-    writeFileSync(config, "[diff]\n\talgorithm = histogram\n\trelative = true\n");
+    // Also diff.renameLimit, which would turn the fixture's renames into deletions and additions,
+    // and a user attributes file marking source -diff, which would turn its counts into "-".
+    const attributes = join(config, "..", "attributes");
+    writeFileSync(attributes, "*.ts -diff\n*.txt -diff\n");
+    writeFileSync(config, `[diff]\n\talgorithm = histogram\n\trelative = true\n\trenameLimit = 1\n[core]\n\tattributesFile = ${attributes}\n`);
     const bin = mkdtempSync(join(tmpdir(), "footprint-bin-"));
     symlinkSync(Bun.which("git")!, join(bin, "git"));
     const composition = async (cwd: string, extra: Record<string, string>) => {
