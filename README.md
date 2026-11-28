@@ -2,124 +2,104 @@
 
 <img width="1774" height="887" alt="footprint-git" src="https://github.com/user-attachments/assets/94ac676b-b63f-4ccc-afae-f128a1249344" />
 
-**See what a change actually touches.**
+**Know what you're about to merge.**
 
-`footprint` reads a diff and reports its composition: how many files changed, what kind they are, and what share of the change each kind accounts for. You can tell at a glance whether the change has the shape you expect.
+`footprint` reads a pull request's diff and answers two questions:
 
-## Usage
+- **What does this change touch?** Its composition by file kind, the exported symbols it adds, removes or re-signs and where each is called from, and what landing it takes.
+- **What else is moving?** The other open pull requests that change the same files, whether they touch the same symbols there, and an order they could land in.
+
+Every figure comes from git, graft or `gh` and is computed, never estimated. footprint reports what it finds; the decision stays with you.
+
+## Run it
 
 ```bash
-bun src/cli.ts                    # compare the default branch to HEAD; JSON Lines on stdout
-bun src/cli.ts origin/main        # explicit base
-bun src/cli.ts abc123..def456     # explicit range
-bun src/cli.ts --human > report.md                       # the Markdown comment
-bun src/cli.ts comment 42 --report report.md --change "First report" --reason "Pull request opened"
-                                  # post it as pull request 42's one Footprint comment, updated in place
-bun src/cli.ts --help             # what it emits, as JSON Lines
+git footprint                          # compare the default branch to HEAD; JSON Lines on stdout
+git footprint origin/main              # an explicit base, compared from the merge base
+git footprint abc123..def456           # an explicit range
+git footprint --human > report.md      # the Markdown report
+git footprint comment 42 --report report.md --change "First report" --reason "Pull request opened"
+                                       # post it as pull request 42's one Footprint comment
+git-footprint --help                   # every command and what it emits, as JSON Lines
 ```
 
-- **From a clone:** run `bun src/cli.ts`, as above.
-- **Installed** (`bun add -g @flyingrobots/footprint`): `git footprint` takes the same arguments. The package ships a `git-footprint` binary, which git runs as a subcommand. For help, run `git-footprint --help`: git turns `git footprint --help` into a man-page lookup. The package runs on Bun, not Node.
-- **From npm (once published):** `bunx @flyingrobots/footprint` also takes the same arguments.
-- **On macOS:** never type a bare `footprint`; use `git footprint` when installed, or `bun src/cli.ts` from a clone. `/usr/bin/footprint` is an unrelated Apple memory tool that comes first on `PATH`.
-- **For agents:** a skill covers the whole workflow for reviewing a pull request: [`skills/footprint/SKILL.md`](skills/footprint/SKILL.md).
+_Listing 1. The commands. `git footprint` is the installed form; the clone form is `bun src/cli.ts` with the same arguments._
 
-### Output
+| How you have it | Run |
+| --- | --- |
+| Installed with `bun add -g @flyingrobots/footprint` | `git footprint`, which git finds as the `git-footprint` binary |
+| Not installed | `bunx @flyingrobots/footprint` |
+| A clone of this repository | `bun src/cli.ts` |
 
-footprint follows the [Parley output protocol](https://github.com/flyingrobots/parley):
+_Table 1. Three ways to run footprint. All three take the same arguments; footprint runs on Bun, not Node._
 
-- **stdout:** four `result` lines.
-  1. The composition, with its gut check, structural summary and digest.
-  2. The landing plan.
-  3. The blast radius.
-  4. The cross-pull-request overlap.
-- **stderr:** errors, as structured lines.
-- **Receipts:** each run writes a receipt to `.parley/receipts/`, with every decision and the file listing.
-- **Prose:** `--human` opts in.
+- **Help:** run `git-footprint --help`. git turns `git footprint --help` into a man-page lookup that never reaches footprint.
+- **macOS:** never type a bare `footprint`. `/usr/bin/footprint` is an unrelated Apple memory tool that comes first on `PATH`.
+- **Agents:** the skill in [`skills/footprint/SKILL.md`](skills/footprint/SKILL.md) covers the whole pull-request workflow, from the run to the posted comment.
 
-See [`docs/topics/output/README.md`](docs/topics/output/README.md). `footprint comment` keeps one Footprint comment per pull request, with a Changelog of its runs: [`docs/topics/comment/README.md`](docs/topics/comment/README.md).
+## What it reports
 
-## Why
+One run writes four results, each its own JSON Lines record with its own schema, and `--human` renders each as a section of one Markdown comment.
 
-Both reasons come from real failures.
+| Result | Section | What it says |
+| --- | --- | --- |
+| `footprint.composition` | Composition | Files and changed lines by kind (source, test, docs, config, CI, generated, assets), the gut-check flags, and graft's structural summary |
+| `footprint.landing` | Before merge, After merge | Migrations, generated files and manifests without their lockfile; then the after-merge steps quoted from the repository's own `RELEASE.md` and `AGENTS.md` |
+| `footprint.blast_radius` | Blast radius | The exported symbols added, removed or re-signed, each with its call sites grouped by system |
+| `footprint.overlap` | Open pull requests | The open pull requests that share a file with this one, each shared file compared at the symbol level, and proposed merge waves |
 
-**Branches balloon unnoticed.** Working fast, a branch can grow to hundreds of files and nothing tells you. One look at the composition does.
+_Table 2. The four results of one run. Each states its own limits: a section that could not be computed says why, rather than disappearing._
 
-**Scrutiny should match blast radius.** That judgment needs an instrument. A docs-only change and a migration carry different risk, and "it looked small" is not evidence.
+The details live in the topic docs: [composition](docs/topics/composition/README.md), [landing](docs/topics/landing/README.md), [blast radius](docs/topics/blast-radius/README.md), [overlap](docs/topics/overlap/README.md), [output](docs/topics/output/README.md) and [the comment](docs/topics/comment/README.md).
 
-## What it does not do
+### What else is moving
 
-It reports; it does not judge. A large change isn't automatically risky, and a one-line change to an auth check outweighs a thousand lines of prose. Use the output as input to a decision, never as a gate. A gate gets gamed.
+The overlap result compares this change with every open pull request. Where two share a file, footprint attributes each side's changed lines to the top-level symbols graft finds there, and reports the file as `symbol-disjoint`, `symbol-overlapping` or `undetermined`. Overlapping and undetermined files put the two pull requests in different waves; disjoint ones do not.
 
-## Every figure is computed
+```mermaid
+flowchart LR
+  A["Wave 1: #71"] -->|"CHANGELOG.md, test/footprint.test.ts"| B["Wave 2: #72"]
+  B -->|"CHANGELOG.md, test/footprint.test.ts"| C["Wave 3: #73"]
+```
 
-Nothing is estimated. Totals come from `git diff --numstat`, and a test requires the category rows to sum to the reported total. This rule exists because the original hand-written version reported `+151` for a `+157` change, with hand-estimated shares.
+_Figure 1. The waves footprint proposed for three of its own pull requests, #71, #72 and #73. All three shared two files it could not compare by symbol, so it placed them one after another._
 
-## How it lands
+Overlap is evidence of possible interference, not proof of a conflict: nothing is merged or rebased to find it. Open pull requests and their files come from `gh`. If `gh` is absent or cannot answer, the result says so with `gh`'s own message, because an empty section would read as "nothing overlaps".
 
-Merging is not landing, so footprint also reports what it takes to land a change.
+### What this change touches
 
-**Before merge** covers what the changed-file list itself shows:
-- Migrations and their ordering constraint.
-- Generated files.
-- A manifest whose lockfile is missing.
-- A loud warning when a source change carries no migration, flag or version entry to gate or record it.
+- **Composition.** Totals come from `git diff --numstat`, and a test holds the category rows to the reported total. The rule exists because the first, hand-written version reported `+151` for a `+157` change.
+- **Blast radius.** The symbols come from graft's `struct exports` contract. The call sites are footprint's own: every whole-word occurrence of the name in the tracked files, which is `grep -w`'s rule. That count includes the declaration, comments and prose, and cannot see dynamic dispatch, so it is evidence a reviewer can check with one `grep`, not a call graph.
+- **Landing.** Merging is not landing. Before merge, footprint names what the changed paths show by documented patterns. After merge, it quotes the steps a repository declares, citing file and heading, and invents none.
 
-**After merge** lists steps *read out of the repository's own `RELEASE.md` and `AGENTS.md`*, each citing the file and heading it came from. If neither document declares any, it says so rather than guessing. If the change touches no executable surface, it says there is nothing to do.
+graft is optional. Without it, the report says the structural and blast-radius sections are unavailable and why, instead of leaving them out. Both `bun install` and `npm install` get it; this repository's `.npmrc` skips a native build graft's dependency chain cannot complete on newer Node, and nothing footprint uses needs it.
 
-The guard rule behind the warning is documented path patterns, never a judgement: [`docs/topics/landing/README.md`](docs/topics/landing/README.md).
+## Evidence, not authority
 
-## Blast radius: which exports moved
+> "You see, but you do not observe," the detective remarked, laying the report upon the table.
+> "Here are the files the change has handled, the symbols it has moved, and the other hands at
+> work upon the same papers. I have set down what the ground shows, and no more. Whether the man
+> is to be taken up is a matter for the inspector."
 
-When graft is available, a run also reports its **export surface**. This is the exported symbols the change added, removed or re-signed. Each entry gives the file, the name, and **where it is called from**. It appears as the third result line (`footprint.blast_radius` 1.1.0) and as a `## Blast radius` section in the Markdown comment. A renamed export shows up as a removal plus an addition.
+footprint is that report, and never the arrest. It has no severity, no score, no pass or fail, and no threshold a pipeline could switch on. A large change is not automatically risky, and a one-line change to an authorisation check outweighs a thousand lines of prose. Read the evidence, then decide. A report built to be a gate gets gamed, and stops meaning anything.
 
-- **Symbols:** they come from graft's CLI contract, `graft struct exports <base-ref> <head-ref> --json`, passed through verbatim. A three-dot range is compared from the merge base.
-- **When graft can't answer:** if graft is absent, failing, or speaking a contract version footprint doesn't read, the result says so with a reason. It never silently omits the section.
-- **Call sites:** these are footprint's own, because no graft contract returns a call site's line. They are every whole-word occurrence of the symbol's name in the tracked, non-binary files of the working tree, which is `grep -w`'s rule and nothing cleverer.
-- **Unreferenced symbols:** they are listed with an empty list, not dropped.
-- **Limits:** the count includes the declaration, comments and prose. It can't see dynamic dispatch or a re-export under another name. It is evidence a reviewer can check with one `grep`, not a call graph, and the test suite checks it against exactly that.
+## Direction
 
-See [`docs/topics/blast-radius/README.md`](docs/topics/blast-radius/README.md).
+Not shipped yet, each tracked by an issue:
 
-## Cross-pull-request overlap
-
-The fourth result names the **open pull requests** that change a file this change also changes, by number and title. It proposes an order the open pull requests could land in, as waves, with the shared files named for every edge.
-
-Each shared file is also compared at the **symbol level**. Each side's changed lines are attributed to the top-level symbols graft finds in the file. The file is then reported as one of:
-- `symbol-disjoint`, with the symbols named.
-- `symbol-overlapping`.
-- `undetermined`, with the reason.
-
-A symbol-disjoint edge is reported but does not put two pull requests in different waves. An undetermined edge does split them, as a file-level edge does.
-
-Open pull requests come from `gh pr list` and their files from `gh pr diff --name-only`. Nothing is merged or rebased, so the order is a proposal, not a gate. If `gh` is absent or can't answer, the result says so with a code and `gh`'s own message, and the run still succeeds. An omitted section would read as "nothing overlaps."
-
-See [`docs/topics/overlap/README.md`](docs/topics/overlap/README.md).
-
-## Structural analysis is optional
-
-With [graft](https://github.com/flyingrobots/graft) available, the report adds what paths can't tell you: whether a source file's **symbols** actually moved, or whether the diff was only formatting.
-
-Both `bun install` and `npm install` get it. A transitive native dependency of graft has no prebuild on newer Node, so this repo's `.npmrc` skips dependency install scripts. Nothing on the structural path needs that native module. graft is also declared optional, so an install that can't read that `.npmrc` still succeeds.
-
-If graft is unavailable, the report says the structural section is unavailable instead of quietly omitting it. A degraded run should never read as a clean one.
+- Whether each overlapping pair of pull requests actually merges cleanly, from `git merge-tree` ([#79](https://github.com/flyingrobots/footprint/issues/79), [#80](https://github.com/flyingrobots/footprint/issues/80)).
+- Each changed symbol's call sites counted as test and non-test ([#81](https://github.com/flyingrobots/footprint/issues/81)).
+- The CODEOWNERS of each system a changed symbol is called from ([#85](https://github.com/flyingrobots/footprint/issues/85)).
+- Open pull requests that add a call to a symbol this change removes or re-signs ([#88](https://github.com/flyingrobots/footprint/issues/88)).
 
 ## Status
 
-**v0.7.1** includes:
-- Composition.
-- The landing plan.
-- The export-surface diff, with each changed symbol's call sites grouped by system.
-- Unanalysed languages.
-- Cross-pull-request overlap down to the symbol level.
-- The single Footprint comment per pull request.
-
-All of it is emitted as JSON Lines through the Parley output protocol. A release is published on GitHub when its tag is pushed. The npm package `@flyingrobots/footprint` is staged for the owner to approve (see [the release workflow](docs/workflows/release/README.md)).
+**v0.7.1** is published on npm as `@flyingrobots/footprint`. A release is published on GitHub when its tag is pushed, and the npm version is staged for the owner to approve ([the release workflow](docs/workflows/release/README.md)). Changes since the release are in the [changelog](CHANGELOG.md).
 
 ## Docs
 
-- Documentation: [`docs/README.md`](docs/README.md)
-- Working agreement: [`AGENTS.md`](AGENTS.md)
+- [Documentation index](docs/README.md)
+- [Working agreement](AGENTS.md)
 
 ## License
 
