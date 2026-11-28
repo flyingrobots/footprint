@@ -8,7 +8,7 @@ import { structuralSummary, type StructuralReview } from "./graft.ts";
 import type { BeforeMergeKind, Landing } from "./landing.ts";
 import type { Exports, ExportedSymbol } from "./exports.ts";
 import { surfaceCallSiteRows } from "./exports.ts";
-import { MITIGATION_RULE, NONE_NEEDED, SYSTEM_RULE_DETAIL, groupBySystem, type SystemGroup, type SystemRow } from "./systems.ts";
+import { MITIGATION_RULE, NONE_NEEDED, SYSTEM_RULE_DETAIL, groupBySystem, mitigationFor, type SystemGroup, type SystemRow } from "./systems.ts";
 import type { UnsupportedLanguage } from "./languages.ts";
 import type { Overlap } from "./overlap.ts";
 import type { SymbolLevel } from "./symbols.ts";
@@ -433,8 +433,8 @@ function systemTable(group: SystemGroup, limit: number, skip: ReadonlySet<string
     const a = impact.forRow(row.symbol, row.site.system, row.site.file);
     return ` ${cellText(a?.impact ?? NOT_ASSESSED)} | ${cellText(a?.dataFlow ?? NOT_ASSESSED)} |`;
   };
-  const body = kept.map((row) => `| \`${row.symbol}\` | ${pipes(codeSpan(`${row.site.file}:${row.site.line}`))} | ${pipes(row.site.mitigation)} |${assessed(row)}`);
-  const title = `**\`${group.system}\`** — ${group.rows.length} call site${group.rows.length === 1 ? "" : "s"}`;
+  const body = kept.map((row) => `| \`${row.symbol}\` | ${pipes(codeSpan(`${row.site.file}:${row.site.line}`))} | ${pipes(mitigationCell(row))} |${assessed(row)}`);
+  const title = `**${codeSpan(group.system)}** — ${group.rows.length} call site${group.rows.length === 1 ? "" : "s"}`;
   const notes: string[] = [];
   // One note per capped symbol, up to NOTES_SHOWN of them and never more than the row limit; the
   // symbols past that are counted together, so the total of omitted sites stays exact.
@@ -480,6 +480,17 @@ function unreferenced(symbols: readonly ExportedSymbol[], limit: number): string
 }
 
 /** A table cell cannot carry a pipe. Mitigations are derived from paths, which may hold one. */
+/**
+ * A row's mitigation as the --human table shows it. The result line carries the sentence verbatim
+ * (a shipped contract); here the system named in it, a path's first directory read verbatim from
+ * git, is written as a code span so it cannot leave its cell or its line (flyingrobots/footprint#66).
+ */
+function mitigationCell(row: SystemRow): string {
+  const m = row.site.mitigation;
+  if (m !== mitigationFor("other_system", row.site.system)) return m;
+  return `Call site in ${codeSpan(row.site.system)}, outside the changed file.`;
+}
+
 function pipes(text: string): string {
   return text.replace(/\|/g, "\\|");
 }

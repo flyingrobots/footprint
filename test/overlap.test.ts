@@ -77,7 +77,7 @@ describe("the conflict graph", () => {
         a: 7,
         b: 9,
         sharedFiles: ["a.ts", "b.ts"],
-        reason: "#7 and #9 both change a.ts and b.ts; the symbol level is undetermined, so the edge separates waves as a file-level one does",
+        reason: "#7 and #9 both change `a.ts` and `b.ts`; the symbol level is undetermined, so the edge separates waves as a file-level one does",
         symbolLevel: notAnalysed(["a.ts", "b.ts"]),
       },
     ]);

@@ -161,7 +161,7 @@ and what [`classify()`](../composition/README.md) calls that file:
 | --- | --- | --- |
 | `declaring_file` | The call site is in the very file the symbol is exported from | `None needed` |
 | `test_file` | `classify()` calls the call site's file a `test` | `None needed` |
-| `other_system` | Any other call site, inside a system | `Call site in <system>, outside the changed file.` |
+| `other_system` | Any other call site, inside a system | `Call site in <system>, outside the changed file.` (the `--human` table writes `<system>` as a code span; the result line carries the sentence as shown) |
 | `unassigned` | Any other call site, in no system | `Call site outside every known system, outside the changed file.` |
 
 The order is load-bearing. The declaring file wins over everything, because a symbol declared in a
@@ -211,14 +211,14 @@ elisions are marked. Line numbers are of the working tree as checked out, so the
 
 | Symbol | Call site | Mitigation |
 | --- | --- | --- |
-| `render` | `docs/topics/blast-radius/README.md:97` | Call site in docs, outside the changed file. |
-| `render` | `docs/topics/blast-radius/README.md:98` | Call site in docs, outside the changed file. |
-| `render` | `docs/topics/blast-radius/README.md:125` | Call site in docs, outside the changed file. |
-| `render` | `docs/topics/output/test-plan.md:112` | Call site in docs, outside the changed file. |
-| `render` | `docs/topics/output/test-plan.md:117` | Call site in docs, outside the changed file. |
-| `render` | `docs/topics/output/test-plan.md:122` | Call site in docs, outside the changed file. |
-| `render` | `docs/topics/output/test-plan.md:133` | Call site in docs, outside the changed file. |
-| `StructuralReview` | `docs/topics/output/test-plan.md:112` | Call site in docs, outside the changed file. |
+| `render` | `docs/topics/blast-radius/README.md:97` | Call site in `docs`, outside the changed file. |
+| `render` | `docs/topics/blast-radius/README.md:98` | Call site in `docs`, outside the changed file. |
+| `render` | `docs/topics/blast-radius/README.md:125` | Call site in `docs`, outside the changed file. |
+| `render` | `docs/topics/output/test-plan.md:112` | Call site in `docs`, outside the changed file. |
+| `render` | `docs/topics/output/test-plan.md:117` | Call site in `docs`, outside the changed file. |
+| `render` | `docs/topics/output/test-plan.md:122` | Call site in `docs`, outside the changed file. |
+| `render` | `docs/topics/output/test-plan.md:133` | Call site in `docs`, outside the changed file. |
+| `StructuralReview` | `docs/topics/output/test-plan.md:112` | Call site in `docs`, outside the changed file. |
 
 **`src`** — 28 call sites
 

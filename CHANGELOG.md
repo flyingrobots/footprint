@@ -28,11 +28,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   C-quoted. Classification, the landing plan, the unanalysed-language list and the overlap with
   other pull requests all read a path that did not exist. footprint now reads `git diff --numstat
   -z` and reports each file under its post-change path. The figures no longer depend on the user's
-  git config: footprint passes `-M`, `--diff-algorithm=myers`, `--no-relative`, `--no-ext-diff` and
-  `--no-textconv`, so `diff.renames`, `diff.algorithm`, `diff.relative` and configured diff drivers
-  cannot change them. Every changed-file path, extension and symbol-level reason that names a path
-  is written in the `--human` report as a code span with control characters escaped, so a file
-  name holding a newline or a backtick cannot break out into the posted comment. No schema changes.
+  git config: footprint passes `-M`, `-l1000`, `--diff-algorithm=myers`, `--no-relative`,
+  `--no-ext-diff`, `--no-textconv` and `-c core.attributesFile=/dev/null`, so `diff.renames`,
+  `diff.renameLimit`, `diff.algorithm`, `diff.relative`, configured diff drivers and the user's own
+  attributes file cannot change them; the repository's `.gitattributes` still applies. Every
+  changed-file path, extension, call-site system name, symbol-level reason and overlap edge reason
+  that names a path writes it as a code span with control characters escaped, so a file name
+  holding a newline or a backtick cannot break out into the posted comment. An overlap edge's
+  `reason` in the result line now writes its shared paths in backticks; no other result text
+  changes, and no schema changes.
 
 ## [0.7.1] — 2026-11-24
 

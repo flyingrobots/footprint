@@ -476,7 +476,7 @@ export async function analyseSymbols(input: AnalyseInput): Promise<Symbols> {
   const fileLevel = async (path: string, a: () => Promise<Side>, b: () => Promise<Side>): Promise<FileSymbols> => {
     if (!parsableByGraft(path)) {
       const ext = extensionOf(path);
-      return { path, level: "undetermined", code: "language.unsupported", reason: `graft has no grammar for ${ext === "" ? "files without an extension" : `${ext} files`}, so the file has no symbols to compare` };
+      return { path, level: "undetermined", code: "language.unsupported", reason: `graft has no grammar for ${ext === "" ? "files without an extension" : `${codeSpan(ext)} files`}, so the file has no symbols to compare` };
     }
     if (input.outliner === null) return { path, level: "undetermined", code: "graft.not_resolved", reason: "graft could not be resolved through the package dependency, PATH or FOOTPRINT_GRAFT, so the file is compared by name only" };
     // Sequential, and the second side is not resolved once the first fails: resolving a side may
