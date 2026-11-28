@@ -142,7 +142,7 @@ const ajv = new Ajv2020({ strict: false, allErrors: true });
 addFormats(ajv);
 const byPair = new Map<string, ReturnType<typeof ajv.compile>>();
 for (const s of SCHEMAS) byPair.set(`${s.id}@${s.version}`, ajv.compile(s.schema));
-for (const [id, version] of [["composition", "1.0.0"], ["landing", "1.0.0"], ["blast_radius", "1.1.0"], ["overlap", "2.2.0"]] as const) {
+for (const [id, version] of [["composition", "1.0.0"], ["landing", "1.0.0"], ["blast_radius", "1.1.0"], ["overlap", "2.3.0"]] as const) {
   byPair.set(`footprint.${id}@${version}`, ajv.compile(JSON.parse(readFileSync(join(ROOT, `schemas/footprint.${id}.schema.json`), "utf8"))));
 }
 type Line = Record<string, unknown> & { _schema: { id: string; version: string } };

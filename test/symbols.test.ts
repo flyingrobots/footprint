@@ -268,10 +268,10 @@ describe("symbol-level overlap, computed", () => {
   });
 });
 
-describe("the overlap schema 2.2.0", () => {
+describe("the overlap schema 2.3.0", () => {
   const schema = JSON.parse(readFileSync(join(ROOT, "schemas/footprint.overlap.schema.json"), "utf8")) as Record<string, unknown>;
   const validate = new Ajv2020({ strict: false, allErrors: true }).compile(schema);
-  const record = (overlap: unknown) => ({ event: "result", t: 1, seq: 2, run: "r", range: "a...b", overlap, digest: "0".repeat(64), _schema: { id: "footprint.overlap", version: "2.2.0" } });
+  const record = (overlap: unknown) => ({ event: "result", t: 1, seq: 2, run: "r", range: "a...b", overlap, digest: "0".repeat(64), _schema: { id: "footprint.overlap", version: "2.3.0" } });
   const prs = [{ number: 1, title: "1", isDraft: false, files: ["x.ts"] }, { number: 2, title: "2", isDraft: false, files: ["x.ts"] }];
 
   test("every undetermined code src/symbols.ts can produce is one the schema accepts", () => {
@@ -280,6 +280,26 @@ describe("the overlap schema 2.2.0", () => {
     const defs = (schema as { $defs: { fileLevel: { properties: { code: { enum: string[] } } } } }).$defs;
     expect(produced.length).toBeGreaterThan(10);
     for (const code of produced) expect(defs.fileLevel.properties.code.enum).toContain(code);
+  });
+
+  test("a result whose edges, overlaps and base carry a merge result validates; one without does not (flyingrobots/footprint#80)", () => {
+    const o = computeOverlap(["x.ts"], prs);
+    expect(validate(record(o))).toBe(true);
+    expect(validate(record({ ...o, conflicts: o.conflicts.map(({ merge: _, ...rest }) => rest) }))).toBe(false);
+    expect(validate(record({ ...o, overlapping: o.overlapping.map(({ merge: _, ...rest }) => rest) }))).toBe(false);
+    const { baseMerge: _b, ...noBase } = o;
+    expect(validate(record(noBase))).toBe(false);
+    expect(validate(record({ ...o, baseMerge: { result: "conflicted", paths: ["x.ts"] } }))).toBe(true);
+    expect(validate(record({ ...o, baseMerge: { result: "unavailable", code: "git.merge_tree_unsupported", reason: "old git" } }))).toBe(true);
+  });
+
+  test("every unavailable code src/mergetree.ts can produce is one the schema accepts", () => {
+    const source = readFileSync(join(ROOT, "src/mergetree.ts"), "utf8");
+    const declared = [...source.matchAll(/\| "((?:merge|git)\.[a-z_]+)"/g)].map((m) => m[1]!);
+    const defs = (schema as { $defs: { merge: { oneOf: Array<{ properties: { code?: { enum: string[] } } }> } } }).$defs;
+    const codes = defs.merge.oneOf.flatMap((o) => o.properties.code?.enum ?? []);
+    expect(declared.length).toBeGreaterThanOrEqual(8);
+    expect([...declared].sort()).toEqual([...codes].sort());
   });
 
   test("a result whose edges carry symbolLevel validates; an edge without it does not", () => {
