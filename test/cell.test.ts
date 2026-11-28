@@ -9,7 +9,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { landingPlan } from "../src/landing.ts";
 import { computeOverlap, unavailableOverlap, type PullRequest } from "../src/overlap.ts";
-import { renderLanding, renderOverlap } from "../src/render.ts";
+import { blastRadius, renderLanding, renderOverlap } from "../src/render.ts";
+import { GRAFT_EXPORTS_CONTRACT, parseExportSurface, withCallSites, type Exports } from "../src/exports.ts";
+import { BLAST_LIMITS, REPORT_LIMIT } from "../src/bound.ts";
 
 const ZWSP = "​";
 
@@ -150,4 +152,28 @@ describe("the whole report and the whole comment are escaped (flyingrobots/footp
     expect(out).toContain("octocat"); // the branch name is in the report
     expect(mentions(out)).toEqual([]);
   }, 60_000);
+});
+
+// Review round 5: the escape adds a character per @, so every size bound must measure the escaped
+// text, or a report with many @ grows past --max-chars and footprint comment refuses to post it.
+describe("the size bounds count the escape (flyingrobots/footprint#78, review round 5)", () => {
+  const atHeavy = (n: number): Exports => {
+    const changed = Array.from({ length: n }, (_, i) => ({ filePath: "src/lib.ts", symbol: `s${i}`, kind: "function", signature: `s${i}(a = "${"@x ".repeat(40)}"): void`, previousSignature: `s${i}(): void` }));
+    const parsed = parseExportSurface({ _schema: { ...GRAFT_EXPORTS_CONTRACT }, base: "a", head: "b", semverImpact: "major", added: [], removed: [], changed });
+    return withCallSites(parsed, { available: true, filesScanned: 1, skipped: { binary: 0, unreadable: 0 }, sites: new Map(changed.map((c) => [c.symbol, []])) });
+  };
+
+  test("a blast radius full of @ stays within its budget, and carries no mention", () => {
+    for (const budget of [4000, 20000]) {
+      const md = blastRadius(atHeavy(200), [], budget, BLAST_LIMITS);
+      expect([budget, md.length <= budget]).toEqual([budget, true]);
+      expect(mentions(md)).toEqual([]);
+    }
+  });
+
+  test("a signature that closes its own code span names no one", () => {
+    const md = blastRadius(atHeavy(1), [], REPORT_LIMIT, BLAST_LIMITS);
+    expect(md).toContain("s0(");
+    expect(mentions(md)).toEqual([]);
+  });
 });
