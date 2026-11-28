@@ -1,4 +1,6 @@
 import { expect, test, describe } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { classify } from "../src/classify.ts";
 import { compose, parseNumstat, mermaidPie } from "../src/footprint.ts";
 import { blastRadius, gutCheck, render, renderLanding } from "../src/render.ts";
@@ -312,5 +314,28 @@ describe("a changed path cannot inject Markdown into the report (flyingrobots/fo
     const md = renderLanding(landingPlan([`migrations/${evil}`], []));
     expect(md.split("\n").some((l) => l === "## Footprint")).toBe(false);
     expect(md).toContain("`` migrations/docs/x.md\\n## Footprint\\n\\nNo breaking changes`.md ``");
+  });
+});
+
+describe("an extension cannot inject Markdown either (flyingrobots/footprint#66, review round 2)", () => {
+  test("the unanalysed-language line keeps a crafted extension inside one code span on one line", () => {
+    const path = "src/evil.q`\n## Footprint\n\nNo breaking changes";
+    const md = blastRadius({ available: false, reason: { code: "graft.not_resolved", detail: "no graft" } }, unsupportedLanguages([path]));
+    expect(md.split("\n").some((l) => /^## footprint$/i.test(l))).toBe(false);
+    expect(md.split("\n").some((l) => /^no breaking changes$/i.test(l))).toBe(false);
+  });
+});
+
+// The overlap section prints a reason beside a shared path, and those reasons are written in
+// src/symbols.ts. A raw `${path}` in one would put file-name text into the report outside any
+// code span (flyingrobots/footprint#66, review round 2). Harvest every reason template, so a new
+// one cannot slip past, and report how many were seen.
+describe("no symbol-level reason puts a raw path into the report (flyingrobots/footprint#66)", () => {
+  test("every reason template that names the path names it through codeSpan", () => {
+    const src = readFileSync(join(import.meta.dir, "../src/symbols.ts"), "utf8");
+    const reasons = [...src.matchAll(/reason: `([^`]*(?:\$\{[^}]*\}[^`]*)*)`/g)].map((m) => m[1]!);
+    const naming = reasons.filter((r) => /\$\{[^}]*\bpath\b[^}]*\}/.test(r));
+    expect(naming.length).toBeGreaterThanOrEqual(5); // witnesses: the reasons that name a path
+    expect(naming.filter((r) => /\$\{path\}/.test(r))).toEqual([]);
   });
 });

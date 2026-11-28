@@ -10,6 +10,7 @@ import { parseNumstat } from "../src/footprint.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 let repo = "";
+const BLOCKS = [..."abcdefgh"].map((b) => [0, 1, 2, 3].map((i) => `${b}${i} = ${b}${i}`));
 // Hermetic: no global or system git config can turn rename detection off, or anything else on.
 const HERMETIC = {
   GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z",
@@ -38,6 +39,9 @@ beforeAll(() => {
   write("src/auth.ts", body);
   write("lib/old.py", Array.from({ length: 40 }, (_, i) => `x${i} = ${i}`).join("\n") + "\n");
   write("README.md", "# fixture\n");
+  // Eight 4-line blocks; the head reorders them and edits one line. git's diff algorithms disagree
+  // on this file (myers 20/20, histogram 28/28), so it shows whether user config moves the figures.
+  write("src/alg.txt", BLOCKS.flat().join("\n") + "\n");
   git("add", "-A");
   git("commit", "-q", "-m", "base");
   git("tag", "base");
@@ -46,6 +50,9 @@ beforeAll(() => {
   git("mv", "src/auth.ts", "src/auth/index.ts");
   git("mv", "lib/old.py", "docs/notes.md");
   writeFileSync(join(repo, "src/copy.ts"), body);
+  const moved = [7, 1, 5, 3, 0, 6, 2, 4].flatMap((i) => BLOCKS[i]!);
+  moved[9] = "edited";
+  write("src/alg.txt", moved.join("\n") + "\n");
   write("docs/café.md", "accent\n");
   write("docs/a\tb.md", "tab\n");
   git("add", "-A");
@@ -88,4 +95,29 @@ describe("changed paths from real git output (flyingrobots/footprint#66)", () =>
     expect(out).toContain("`docs/café.md`");
     expect(out).not.toContain("=>");
   }, 60_000);
+
+  test("a user's diff.algorithm and diff.relative settings do not change the composition", async () => {
+    // The oracle is the hermetic run from the repository root; the other run has a user config
+    // that changes both settings, and starts in a subdirectory, where diff.relative would narrow it.
+    expect(git("-c", "diff.algorithm=histogram", "diff", "--numstat", "base..HEAD", "--", "src/alg.txt")).not.toBe(git("diff", "--numstat", "base..HEAD", "--", "src/alg.txt"));
+    const config = join(mkdtempSync(join(tmpdir(), "footprint-gitconfig-")), "config");
+    writeFileSync(config, "[diff]\n\talgorithm = histogram\n\trelative = true\n");
+    const bin = mkdtempSync(join(tmpdir(), "footprint-bin-"));
+    symlinkSync(Bun.which("git")!, join(bin, "git"));
+    const composition = async (cwd: string, extra: Record<string, string>) => {
+      const proc = Bun.spawn([process.execPath, join(ROOT, "src/cli.ts"), "base..HEAD"], {
+        cwd,
+        env: { ...process.env, ...HERMETIC, ...extra, PATH: bin, FOOTPRINT_GRAFT: join(bin, "no-graft"), XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-state-")) },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [out, status] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+      expect(status).toBe(0);
+      const line = out.split("\n").filter((l) => l !== "").map((l) => JSON.parse(l) as { _schema: { id: string }; composition?: unknown }).find((l) => l._schema.id === "footprint.composition");
+      return line?.composition;
+    };
+    const hermetic = await composition(repo, {});
+    expect(hermetic).toBeDefined();
+    expect(await composition(join(repo, "src"), { GIT_CONFIG_GLOBAL: config })).toEqual(hermetic);
+  }, 120_000);
 });
