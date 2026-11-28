@@ -30,6 +30,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   `tests/e2e/package-lock.json`. Any `vendor/` path component is `generated`, including hand-written
   code in a directory named `vendor`. Not covered: `.terraform.lock.hcl`, Julia's `Manifest.toml`,
   `conda-lock.yml`. No schema changes.
+- **No bare `@handle` reaches the Footprint comment** (flyingrobots/footprint#78). Every cell of
+  text footprint did not write (the Changelog's Change, Reason and Remarks, and the Impact and Data
+  flow columns) writes an `@user` or `@org/team` outside a code span as `<code>@handle</code>`, so
+  the comment, edited on every run, notifies no one. `<code>` rather than backticks, because a
+  backtick fence next to an existing code span merges with it; GitHub's renderer links neither.
+  An email address is left as it is.
 
 ## [0.7.1] — 2026-11-24
 

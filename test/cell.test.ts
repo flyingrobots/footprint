@@ -1,6 +1,6 @@
 // A bare @handle in a GitHub comment notifies that user or team, and footprint edits its one
 // comment on every run (flyingrobots/footprint#78). Every cell of text footprint did not write goes
-// through cellText, so that is where a handle is wrapped in backticks.
+// through cellText, so that is where a handle is wrapped as code.
 import { describe, expect, test } from "bun:test";
 import { cellText } from "../src/cell.ts";
 
@@ -12,17 +12,18 @@ const BARE = /(?<!\w)@[A-Za-z0-9]/;
  * (\`) is literal and opens no span; an unmatched backtick is literal too, so it stays outside.
  */
 function outsideCode(text: string): string {
-  return text.replace(/\\`/g, " ").split(/(`+)([^`]*?[^`])\1(?!`)/).filter((_, i) => i % 3 === 0).join(" ");
+  const spans = text.replace(/\\`/g, " ").replace(/<code>[^<]*<\/code>/g, " ");
+  return spans.split(/(`+)([^`]*?[^`])\1(?!`)/).filter((_, i) => i % 3 === 0).join(" ");
 }
 
 describe("no bare @handle reaches a comment (flyingrobots/footprint#78)", () => {
-  test("a user and a team handle are wrapped in backticks", () => {
-    expect(cellText("ping @octocat and @org/team")).toBe("ping `@octocat` and `@org/team`");
+  test("a user and a team handle are wrapped in <code>", () => {
+    expect(cellText("ping @octocat and @org/team")).toBe("ping <code>@octocat</code> and <code>@org/team</code>");
   });
 
   test("a handle at either end of a cell is wrapped", () => {
-    expect(cellText("@a-b did it")).toBe("`@a-b` did it");
-    expect(cellText("done by @a")).toBe("done by `@a`");
+    expect(cellText("@a-b did it")).toBe("<code>@a-b</code> did it");
+    expect(cellText("done by @a")).toBe("done by <code>@a</code>");
   });
 
   test("a handle already in a code span is left alone, and never double-wrapped", () => {
@@ -30,7 +31,11 @@ describe("no bare @handle reaches a comment (flyingrobots/footprint#78)", () => 
   });
 
   test("a stray backtick before a handle cannot shield it, and is escaped", () => {
-    expect(cellText("`@octocat")).toBe("\\``@octocat`");
+    expect(cellText("`@octocat")).toBe("\\`<code>@octocat</code>");
+  });
+
+  test("a handle right before an existing code span leaves the span as it was", () => {
+    expect(cellText("@1`..`")).toBe("<code>@1</code>`..`");
   });
 
   test("an email address and a lone @ are not mentions and are left as they are", () => {
