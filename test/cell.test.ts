@@ -8,20 +8,34 @@ import { computeOverlap, type PullRequest } from "../src/overlap.ts";
 import { renderLanding, renderOverlap } from "../src/render.ts";
 
 /**
- * A bare mention as GitHub's renderer reads one (checked with gh api markdown, review round 1):
- * `@`, `\@`, `&#64;`, `&#x40;` or `&commat;`, not after a letter or digit, then a name. `_@x_`
- * is one, because the underscores become emphasis; `a_@x` is not, but footprint wraps it anyway.
+ * An oracle that shares no pattern with src/cell.ts. It does what a renderer does first: it drops
+ * <code> elements and complete code spans (CommonMark's rule: a backtick run, then content, then a
+ * run of the same length), drops real links (a scheme, then a host starting with a letter or
+ * digit), and decodes character references. Then it applies GitHub's mention rule, checked with
+ * gh api markdown: `@` not after a letter or digit, then a letter or digit.
  */
-const BARE = /(?<![A-Za-z0-9])(?:\\?@|&#0*64;|&#[xX]0*40;|&commat;)[A-Za-z0-9]/;
-
-/**
- * The text outside code spans, which is where a mention can notify anyone. An escaped backtick
- * (\`) is literal and opens no span; an unmatched backtick is literal too, so it stays outside.
- */
-function outsideCode(text: string): string {
-  const spans = text.replace(/https?:\/\/[^\s<>|`]+/g, " ").replace(/\\`/g, " ").replace(/<code>[^<]*<\/code>/g, " ");
-  return spans.split(/(`+)([^`]*?[^`])\1(?!`)/).filter((_, i) => i % 3 === 0).join(" ");
+function bareMentions(markdown: string): string[] {
+  let t = markdown.replace(/<code>[\s\S]*?<\/code>/g, " ");
+  t = t.replace(/\\`/g, " ");
+  let out = "";
+  for (let i = 0; i < t.length; ) {
+    const run = /^`+/.exec(t.slice(i))?.[0];
+    if (run !== undefined && t[i - 1] !== "`") {
+      const close = t.slice(i + run.length).search(new RegExp(`(?<!\`)${run}(?!\`)`));
+      if (close > 0) { out += " "; i += run.length + close + run.length; continue; }
+      out += run; i += run.length; continue;
+    }
+    out += t[i]; i++;
+  }
+  out = out.replace(/https?:\/\/[A-Za-z0-9][^\s<>]*/g, " ");
+  out = out.replace(/&#[xX]([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)));
+  out = out.replace(/&#([0-9]+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)));
+  out = out.replace(/&commat;/g, "@").replace(/\\@/g, "@");
+  return [...out.matchAll(/(?<![A-Za-z0-9])@[A-Za-z0-9][-A-Za-z0-9]*/g)].map((m) => m[0]);
 }
+
+const BARE = { test: (text: string) => bareMentions(text).length > 0 };
+const outsideCode = (text: string) => text;
 
 describe("no bare @handle reaches a comment (flyingrobots/footprint#78)", () => {
   test("a user and a team handle are wrapped in <code>", () => {
@@ -51,6 +65,16 @@ describe("no bare @handle reaches a comment (flyingrobots/footprint#78)", () => 
     expect(cellText("&#64;octocat &#x40;octocat &commat;octocat")).toBe("<code>@octocat</code> <code>@octocat</code> <code>@octocat</code>");
   });
 
+  test("a character reference inside the name, or a URL with no host, cannot carry a mention (review round 2)", () => {
+    for (const t of ["@&#111;ctocat", "&#64;&#111;ctocat", "https://@octocat", "http://.@octocat"]) {
+      expect([t, bareMentions(cellText(t))]).toEqual([t, []]);
+    }
+  });
+
+  test("a code span holding a backtick is left exactly as written", () => {
+    expect(cellText("see `` a`b `` here")).toBe("see `` a`b `` here");
+  });
+
   test("a URL is left as it is: GitHub makes no mention inside a link", () => {
     expect(cellText("see https://www.npmjs.com/package/@flyingrobots/footprint")).toBe("see https://www.npmjs.com/package/@flyingrobots/footprint");
   });
@@ -65,7 +89,7 @@ describe("no bare @handle reaches a comment (flyingrobots/footprint#78)", () => 
     // characters that matter here.
     let seed = 0x5eed;
     const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff);
-    const alphabet = ["@", "@", "@", "`", "`", " ", "a", "b", "-", "/", ".", "_", "\n", "|", "x", "1", "é", "\\", "&#64;", "&#x40;", "&commat;", "https://e.com/"];
+    const alphabet = ["@", "@", "@", "`", "`", " ", "a", "b", "o", "-", "/", ".", "_", "\n", "|", "x", "1", "é", "\\", "&#64;", "&#x40;", "&commat;", "&#111;", "&#x6f;", "https://e.com/", "https://", "http://."];
     let witnesses = 0;
     for (let n = 0; n < 2000; n++) {
       const text = Array.from({ length: 1 + (next() % 24) }, () => alphabet[next() % alphabet.length]).join("");
@@ -83,13 +107,27 @@ describe("text quoted from other pull requests and the repository names no one e
     const pr = { number: 7, title: "Ping @octocat about it", isDraft: false, files: ["a.ts"], headCommit: "c", baseBranch: "main" } as PullRequest;
     const md = renderOverlap(computeOverlap(["a.ts"], [pr]));
     expect(md).toContain("Ping <code>@octocat</code> about it");
-    expect(BARE_IN(md)).toEqual([]);
+    expect(bareMentions(md)).toEqual([]);
+  });
+
+  test("a landing heading quoted when its section lists no steps names no one", () => {
+    const release = "# Release\n\n## Release (owner @octocat)\n\nSee the wiki.\n";
+    const md = renderLanding(landingPlan(["src/a.ts"], [{ file: "RELEASE.md", text: release }, { file: "AGENTS.md", text: null }]));
+    expect(md).toContain("owner");
+    expect(bareMentions(md)).toEqual([]);
+  });
+
+  test("a symbol-level reason that quotes a file name names no one", () => {
+    const pr7 = { number: 7, title: "a", isDraft: false, files: ["@octocat notes.md"], headCommit: "c", baseBranch: "main" } as PullRequest;
+    const pr8 = { ...pr7, number: 8 };
+    const md = renderOverlap(computeOverlap(["@octocat notes.md"], [pr7, pr8]));
+    expect(bareMentions(md)).toEqual([]);
   });
 
   test("an after-merge step quoted from RELEASE.md is written with its handles as code", () => {
     const release = "# Release\n\n## After merge\n\n- Tell @org/release-team the tag is out.\n";
     const md = renderLanding(landingPlan(["src/a.ts"], [{ file: "RELEASE.md", text: release }, { file: "AGENTS.md", text: null }]));
     expect(md).toContain("Tell <code>@org/release-team</code> the tag is out.");
-    expect(BARE_IN(md)).toEqual([]);
+    expect(bareMentions(md)).toEqual([]);
   });
 });
