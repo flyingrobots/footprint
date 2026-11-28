@@ -13,7 +13,7 @@ import type { UnsupportedLanguage } from "./languages.ts";
 import type { Overlap } from "./overlap.ts";
 import type { SymbolLevel } from "./symbols.ts";
 import { IMPACT_COLUMNS, IMPACT_NOTE, NOT_ASSESSED, type ImpactIndex } from "./impact.ts";
-import { cellText } from "./cell.ts";
+import { cellText, codeSpan } from "./cell.ts";
 import { BLAST_LIMITS, COMPOSITION_BUDGET, LANDING_BUDGET, REPORT_LIMIT, clamp, shrinkToFit, type BlastLimits, type Rendered } from "./bound.ts";
 
 export interface GutCheck {
@@ -113,7 +113,7 @@ function renderComposition(
     if (formatting.length > 0) {
       const shown = formatting.slice(0, Math.max(0, formattingLimit));
       const left = formatting.length - shown.length;
-      const names = shown.map((f) => `\`${f.path}\``).join(", ") +
+      const names = shown.map((f) => codeSpan(f.path)).join(", ") +
         (left > 0 ? `${shown.length > 0 ? ", and " : ""}${left} more formatting-labelled file${left === 1 ? "" : "s"} omitted (the \`files\` field of the receipt and graft's own output name every one)` : "");
       const note =
         `- graft's label, not footprint's claim: it saw no symbol added, removed or changed in ` +
@@ -148,7 +148,7 @@ function renderComposition(
     const shown = fs.slice(0, Math.max(0, room));
     room -= shown.length;
     if (shown.length === 0) continue;
-    groups.push(`**${k}**\n\n${shown.map((f) => `- \`${f.path}\` ${f.binary ? "(binary)" : `+${f.added}/-${f.removed}`}`).join("\n")}`);
+    groups.push(`**${k}**\n\n${shown.map((f) => `- ${codeSpan(f.path)} ${f.binary ? "(binary)" : `+${f.added}/-${f.removed}`}`).join("\n")}`);
   }
   const omitted = Math.max(0, changes.length - filesLimit);
   if (omitted > 0) {
@@ -272,7 +272,7 @@ function blastSections(exports: Exports, unanalysed: readonly UnsupportedLanguag
     // then removed, then added -- and prints them in the order the full table would.
     const kept = keepFirst(rows, limits.symbols, ([change]) => (change === "signature-changed" ? 0 : change === "removed" ? 1 : 2));
     const body = kept.map(([change, x]) =>
-      `| ${change} | \`${x.symbol}\` | \`${x.file}\` | ${x.kind ?? ""} | ` +
+      `| ${change} | \`${x.symbol}\` | ${pipes(codeSpan(x.file))} | ${x.kind ?? ""} | ` +
       (scan.available ? `${x.callSites === undefined ? "—" : x.callSites.length} | ` : "") +
       `${cell(x.previousSignature === undefined ? x.signature : `${x.previousSignature} → ${x.signature ?? ""}`)} |`,
     );
@@ -433,7 +433,7 @@ function systemTable(group: SystemGroup, limit: number, skip: ReadonlySet<string
     const a = impact.forRow(row.symbol, row.site.system, row.site.file);
     return ` ${cellText(a?.impact ?? NOT_ASSESSED)} | ${cellText(a?.dataFlow ?? NOT_ASSESSED)} |`;
   };
-  const body = kept.map((row) => `| \`${row.symbol}\` | \`${row.site.file}:${row.site.line}\` | ${pipes(row.site.mitigation)} |${assessed(row)}`);
+  const body = kept.map((row) => `| \`${row.symbol}\` | ${pipes(codeSpan(`${row.site.file}:${row.site.line}`))} | ${pipes(row.site.mitigation)} |${assessed(row)}`);
   const title = `**\`${group.system}\`** — ${group.rows.length} call site${group.rows.length === 1 ? "" : "s"}`;
   const notes: string[] = [];
   // One note per capped symbol, up to NOTES_SHOWN of them and never more than the row limit; the
@@ -543,9 +543,9 @@ function symbolLines(level: SymbolLevel, a: string, b: string, limit: number, in
   };
   const out = level.files.slice(0, cap).map((f) => {
     const via = f.github === undefined ? "" : ` <sub>(${f.github.map((x) => (x === "a" ? a : b)).join(" and ")} read over the GitHub API)</sub>`;
-    if (f.level === "symbol-disjoint") return `${indent}- \`${f.path}\`: different symbols — ${a} ${names(f.a!.symbols)}; ${b} ${names(f.b!.symbols)}${via}`;
-    if (f.level === "symbol-overlapping") return `${indent}- \`${f.path}\`: the same symbols — ${names(f.shared!)}${via}`;
-    return `${indent}- \`${f.path}\`: symbol level undetermined — ${f.reason}`;
+    if (f.level === "symbol-disjoint") return `${indent}- ${codeSpan(f.path)}: different symbols — ${a} ${names(f.a!.symbols)}; ${b} ${names(f.b!.symbols)}${via}`;
+    if (f.level === "symbol-overlapping") return `${indent}- ${codeSpan(f.path)}: the same symbols — ${names(f.shared!)}${via}`;
+    return `${indent}- ${codeSpan(f.path)}: symbol level undetermined — ${f.reason}`;
   });
   const left = level.files.length - Math.min(level.files.length, cap);
   if (left > 0) out.push(`${indent}- <sub>${left} more shared file${left === 1 ? "" : "s"} at the symbol level omitted; the overlap result line carries every one.</sub>`);
@@ -569,7 +569,7 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
   const files = (fs: readonly string[]): string => {
     const shown = fs.slice(0, Math.min(limit, SHARED_FILES_SHOWN));
     const left = fs.length - shown.length;
-    return shown.map((f) => `\`${f}\``).join(", ") + (left > 0 ? ` and ${left} more file${left === 1 ? "" : "s"}` : "");
+    return shown.map((f) => codeSpan(f)).join(", ") + (left > 0 ? ` and ${left} more file${left === 1 ? "" : "s"}` : "");
   };
   for (const p of o.overlapping.slice(0, limit)) {
     out.push(`- **#${p.number}** ${p.title}${p.isDraft ? " _(draft)_" : ""} — ${files(p.sharedFiles)}`);

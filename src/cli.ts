@@ -126,9 +126,11 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   const headId = await commitOf(ends.head);
   const pinned = baseId !== null && headId !== null ? `${baseId}${ends.threeDot ? "..." : ".."}${headId}` : range;
 
-  const diff = await $`git diff --numstat -z ${pinned}`.quiet().nothrow();
+  // -M pins git's default rename detection, so a user's diff.renames setting cannot change the
+  // figures; -z gives each path verbatim, a rename under its new path (flyingrobots/footprint#66).
+  const diff = await $`git diff --numstat -z -M ${pinned}`.quiet().nothrow();
   if (diff.exitCode !== 0) {
-    run.error({ code: "git.diff_failed", problem: `git diff --numstat ${range} exited ${diff.exitCode}: ${diff.stderr.toString().trim() || "(no message)"}`, remedy: "pass a range git can resolve", remedy_target: range });
+    run.error({ code: "git.diff_failed", problem: `git diff --numstat -z -M ${range} exited ${diff.exitCode}: ${diff.stderr.toString().trim() || "(no message)"}`, remedy: "pass a range git can resolve", remedy_target: range });
     return;
   }
   const changes = parseNumstat(diff.text());

@@ -4,6 +4,21 @@
 /** What a cell says when it was given nothing: a dash, never a blank cell. */
 const EMPTY_CELL = "—";
 
+/**
+ * Text footprint did not write -- a changed file's path, above all -- as one Markdown code span
+ * (flyingrobots/footprint#66). Paths come from `git diff -z` verbatim, so one can hold a newline or
+ * a backtick: a control character is written as a visible escape (`\n`, `\t`, `\x1b`), and a
+ * backtick lengthens the fence, so the text can never leave its span or its line.
+ */
+export function codeSpan(text: string): string {
+  const named: Record<string, string> = { "\n": "\\n", "\r": "\\r", "\t": "\\t" };
+  const visible = text.replace(/[\u0000-\u001f\u007f]/g, (c) => named[c] ?? `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
+  const longest = Math.max(0, ...(visible.match(/`+/g) ?? []).map((run) => run.length));
+  if (longest === 0) return `\`${visible}\``;
+  const fence = "`".repeat(longest + 1);
+  return `${fence} ${visible} ${fence}`;
+}
+
 /** `|` escaped, every newline a `<br>`, never empty. */
 export function cellText(text: string): string {
   const t = text.trim().replace(/\r\n|\r|\n/g, "<br>").replace(/\|/g, "\\|");

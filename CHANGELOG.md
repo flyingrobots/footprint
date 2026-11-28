@@ -11,12 +11,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   literal `100%`, so a change with files but no changed lines showed `0%` on every row and `100%`
   in the total. It is now `0%` for such a change and `100%` otherwise. No schema changes: the
   total share appears in the `--human` report only.
-- **A renamed, copied or unusually named file is reported under its real path**
+- **A renamed or unusually named file is reported under its real path**
   (flyingrobots/footprint#66). footprint read `git diff --numstat` without `-z`, so a rename came
   through as `dir/{old => new}/file` and a path with a tab or a non-ASCII byte came through
   C-quoted. Classification, the landing plan, the unanalysed-language list and the overlap with
   other pull requests all read a path that did not exist. footprint now reads `git diff --numstat
-  -z` and reports each file under its post-change path. No schema changes.
+  -z -M` and reports each file under its post-change path; `-M` pins git's rename detection, so a
+  user's `diff.renames` setting no longer changes the figures. Paths in the `--human` report are
+  written as code spans with control characters escaped, so a file name holding a newline or a
+  backtick cannot break out into the posted comment. No schema changes.
 
 ## [0.7.1] — 2026-11-24
 

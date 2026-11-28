@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { classify } from "./classify.ts";
+import { codeSpan } from "./cell.ts";
 
 /** The documents footprint reads, in the order it reads them. */
 export const LANDING_DOCUMENTS = ["RELEASE.md", "AGENTS.md"] as const;
@@ -204,7 +205,7 @@ export function readLandingDocs(dir: string): LandingDoc[] {
 }
 
 function list(paths: readonly string[]): string {
-  return paths.map((p) => `\`${p}\``).join(", ");
+  return paths.map((p) => codeSpan(p)).join(", ");
 }
 
 function beforeMerge(paths: readonly string[]): BeforeMerge {
@@ -257,7 +258,7 @@ function beforeMerge(paths: readonly string[]): BeforeMerge {
       "by path, nothing in this change gates it, switches it off, or records that it happened."
     : sources.length === 0
       ? "The guard rule does not apply, because no source file changed."
-      : `${guards.length} changed file${guards.length === 1 ? "" : "s"} match the guard rule: ${guards.map((g) => `\`${g.path}\` (${g.kind})`).join(", ")}.`;
+      : `${guards.length} changed file${guards.length === 1 ? "" : "s"} match the guard rule: ${guards.map((g) => `${codeSpan(g.path)} (${g.kind})`).join(", ")}.`;
 
   return { items, guards, unguarded, unguarded_because };
 }
