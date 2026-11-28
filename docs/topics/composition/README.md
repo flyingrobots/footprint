@@ -46,6 +46,18 @@ Licence and notice texts are `docs` by whole file name, at any depth: `LICENSE`,
 they would count as source and read as code in an unanalysed language. One under a generated or
 test path keeps that category, because those rules come first.
 
+Vendored code and generated files are `generated` (flyingrobots/footprint#68): a `dist/`, `build/`,
+`out/`, `target/`, `node_modules/` or `vendor/` path component; any file ending `.lock`, plus
+`package-lock.json`, `npm-shrinkwrap.json`, `packages.lock.json`, `bun.lockb`, `pnpm-lock.yaml`,
+`go.sum`, `Package.resolved` and `gradle.lockfile`; and the names `*.generated.*`, `*.pb.go`,
+`*_pb2.py`, `*_pb2_grpc.py` and `*.g.dart`, as well as minified files and source maps. The directory rules and the
+minified and source-map rules come before the test rules, so `test/fixtures/node_modules/...` and
+`test/fixtures/x.min.js` are `generated`; the lockfile and name rules come after them, so
+`test/fixtures/Gemfile.lock` is `test`, and so is a real lockfile under a test directory such as
+`tests/e2e/package-lock.json`. Any `vendor/` path component is `generated`, hand-written code in a
+directory named `vendor` included. Not every lockfile is covered:
+`.terraform.lock.hcl` is `source`, and Julia's `Manifest.toml` and `conda-lock.yml` are `config`.
+
 Unrecognised files fall through to `source` on purpose — an unknown file should look like code that
 needs review rather than disappear.
 
