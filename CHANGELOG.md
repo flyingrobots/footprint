@@ -11,6 +11,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   literal `100%`, so a change with files but no changed lines showed `0%` on every row and `100%`
   in the total. It is now `0%` for such a change and `100%` otherwise. No schema changes: the
   total share appears in the `--human` report only.
+- **Vendored code, the common lockfiles of each major ecosystem and common generated sources
+  classify as `generated`** (flyingrobots/footprint#68). The gut check's flag names "generated or
+  vendored" lines, but nothing classified as vendored, and most lockfiles outside JavaScript, Rust and
+  Go fell through to `source` (`packages.lock.json` and `npm-shrinkwrap.json` to `config`). New rules: a `vendor/` path component; any `*.lock` file, plus
+  `npm-shrinkwrap.json`, `packages.lock.json`, `Package.resolved` and `gradle.lockfile`; and the
+  names `*.generated.*`, `*.pb.go`, `*_pb2.py`, `*_pb2_grpc.py` and `*.g.dart`. The lockfile and
+  name rules now come after the test rules, so a fixture such as `test/fixtures/package-lock.json`
+  is `test`, where it was `generated`; so is a real lockfile under a test directory, such as
+  `tests/e2e/package-lock.json`. Any `vendor/` path component is `generated`, including hand-written
+  code in a directory named `vendor`. Not covered: `.terraform.lock.hcl`, Julia's `Manifest.toml`,
+  `conda-lock.yml`. No schema changes.
 - **A renamed or unusually named file is reported under its real path**
   (flyingrobots/footprint#66). footprint read `git diff --numstat` without `-z`, so a rename came
   through as `dir/{old => new}/file` and a path with a tab or a non-ASCII byte came through
