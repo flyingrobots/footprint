@@ -4,7 +4,7 @@
 // no command. These cases hold the manifest to npm's own normalization, and hold the release
 // workflow's sanity check to failing on any correction npm reports.
 import { describe, expect, test } from "bun:test";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { manifestChanges, publishCorrections } from "../scripts/manifest-check.ts";
@@ -74,4 +74,29 @@ describe("the published manifest", () => {
     expect(lines).toEqual([expect.objectContaining({ kind: "manifest_check", ok: true })]);
     expect(code).toBe(0);
   }, 60_000);
+});
+
+// flyingrobots/footprint#74: `footprint` collides with macOS's /usr/bin/footprint, so the package
+// also ships `git-footprint`, which git runs as `git footprint`. Both names stay: existing
+// `bunx @flyingrobots/footprint` calls resolve the one named after the package.
+describe("the git-footprint binary (flyingrobots/footprint#74)", () => {
+  test("package.json declares git-footprint beside footprint, both the CLI", () => {
+    const bin = readJson(join(ROOT, "package.json")).bin as Record<string, string>;
+    expect(bin["git-footprint"]).toBe(bin.footprint);
+    expect(bin.footprint).toBe("src/cli.ts");
+  });
+
+  test("git runs it as `git footprint`", () => {
+    // A PATH holding git, bun and a git-footprint link to the CLI, as an install leaves it; git
+    // finds a `git-<name>` executable on PATH for `git <name>`.
+    const dir = mkdtempSync(join(tmpdir(), "footprint-gitbin-"));
+    for (const exe of ["git", "bun"]) symlinkSync(Bun.which(exe)!, join(dir, exe));
+    const bin = readJson(join(ROOT, "package.json")).bin as Record<string, string>;
+    // With no git-footprint entry the link points at nothing, and git reports no such command.
+    symlinkSync(join(ROOT, bin["git-footprint"] ?? "no-git-footprint-in-package-json"), join(dir, "git-footprint"));
+    const r = Bun.spawnSync(["git", "footprint", "--help"], { cwd: ROOT, env: { ...process.env, PATH: dir, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-state-")) }, stdout: "pipe", stderr: "pipe" });
+    expect(r.exitCode).toBe(0);
+    const first = JSON.parse(r.stdout.toString().split("\n")[0]!) as { _schema: { id: string } };
+    expect(first._schema.id).toMatch(/^parley\./);
+  });
 });
