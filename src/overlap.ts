@@ -19,6 +19,7 @@
 // file-level edge always did.
 
 import { codeSpan } from "./cell.ts";
+import { notRun, type MergeAnalysis, type MergeResult } from "./mergetree.ts";
 import { edgeKey, undeterminedLevel, type SymbolAnalysis, type SymbolLevel, type Symbols } from "./symbols.ts";
 
 /** A pull request as the overlap computation needs it. `files` is null when gh did not report them. */
@@ -78,6 +79,8 @@ export interface SharedWith {
   readonly sharedFiles: readonly string[];
   /** The shared files at the symbol level; side `a` is this change, side `b` this pull request. */
   readonly symbolLevel: SymbolLevel;
+  /** git merge-tree on this change's head and this pull request's (flyingrobots/footprint#80). */
+  readonly merge: MergeResult;
 }
 
 /** One edge of the conflict graph: two open pull requests that change the same files. */
@@ -88,6 +91,16 @@ export interface ConflictEdge {
   readonly reason: string;
   /** The shared files at the symbol level; sides `a` and `b` are the edge's own. */
   readonly symbolLevel: SymbolLevel;
+  /** git merge-tree on the two heads (flyingrobots/footprint#80): a conflict separates waves, a clean merge does not. */
+  readonly merge: MergeResult;
+}
+
+/** The merge results of one run, by edge, by overlapping pull request, and for this change against its base. */
+export interface Merges {
+  readonly edges: ReadonlyMap<string, MergeResult>;
+  readonly overlapping: ReadonlyMap<number, MergeResult>;
+  readonly base: MergeResult;
+  readonly analysis: MergeAnalysis;
 }
 
 /**
@@ -120,6 +133,10 @@ export interface OverlapAvailable {
   readonly undetermined: readonly Undetermined[];
   /** How the symbol level was bounded this run. */
   readonly symbolAnalysis: SymbolAnalysis;
+  /** git merge-tree on this change's head and the current base (flyingrobots/footprint#80). */
+  readonly baseMerge: MergeResult;
+  /** How the merges were bounded this run, and whether missing heads were fetched. */
+  readonly mergeAnalysis: MergeAnalysis;
   readonly summary: string;
 }
 
@@ -155,7 +172,7 @@ function placeable(prs: readonly PullRequest[]): Array<PullRequest & { files: re
  * Every unordered pair of open pull requests that change the same file, with the files named.
  * These are the edges the merge order has to respect.
  */
-export function conflictGraph(prs: readonly PullRequest[], symbols?: Symbols): ConflictEdge[] {
+export function conflictGraph(prs: readonly PullRequest[], symbols?: Symbols, merges?: Merges): ConflictEdge[] {
   const known = placeable(prs);
   const edges: ConflictEdge[] = [];
   for (let i = 0; i < known.length; i += 1) {
@@ -164,7 +181,8 @@ export function conflictGraph(prs: readonly PullRequest[], symbols?: Symbols): C
       const shared = sharedFiles(a.files, b.files);
       if (shared.length === 0) continue;
       const symbolLevel = symbols?.edges.get(edgeKey(a.number, b.number)) ?? notAnalysed(shared);
-      edges.push({ a: a.number, b: b.number, sharedFiles: shared, reason: edgeReason(a.number, b.number, shared, symbolLevel), symbolLevel });
+      const merge = merges?.edges.get(edgeKey(a.number, b.number)) ?? notRun();
+      edges.push({ a: a.number, b: b.number, sharedFiles: shared, reason: edgeReason(a.number, b.number, shared, symbolLevel, merge), symbolLevel, merge });
     }
   }
   return edges;
@@ -176,11 +194,18 @@ export function conflictGraph(prs: readonly PullRequest[], symbols?: Symbols): C
  * proposal, not an optimum — greedy colouring can use more waves than the graph needs — and it is
  * deterministic because the input is sorted by number first.
  */
-export function mergeWaves(prs: readonly PullRequest[], symbols?: Symbols): Wave[] {
+export function mergeWaves(prs: readonly PullRequest[], symbols?: Symbols, merges?: Merges): Wave[] {
   const groups: Array<Array<PullRequest & { files: readonly string[] }>> = [];
-  // Two pull requests are kept apart when they share a file, unless that edge is symbol-disjoint.
-  const apart = (x: PullRequest & { files: readonly string[] }, y: PullRequest & { files: readonly string[] }): boolean =>
-    sharedFiles(x.files, y.files).length > 0 && symbols?.edges.get(edgeKey(x.number, y.number))?.level !== "symbol-disjoint";
+  // Two pull requests that share a file are kept apart when git merge-tree conflicts on them, and
+  // placed together when it merges them cleanly (flyingrobots/footprint#80). With no merge result,
+  // the symbol level decides as before: apart unless the edge is symbol-disjoint.
+  const apart = (x: PullRequest & { files: readonly string[] }, y: PullRequest & { files: readonly string[] }): boolean => {
+    if (sharedFiles(x.files, y.files).length === 0) return false;
+    const merge = merges?.edges.get(edgeKey(x.number, y.number));
+    if (merge?.result === "conflicted") return true;
+    if (merge?.result === "clean") return false;
+    return symbols?.edges.get(edgeKey(x.number, y.number))?.level !== "symbol-disjoint";
+  };
   for (const pr of placeable(prs)) {
     const fits = groups.find((g) => g.every((other) => !apart(other, pr)));
     if (fits === undefined) groups.push([pr]);
@@ -195,8 +220,11 @@ function notAnalysed(files: readonly string[]): SymbolLevel {
 }
 
 /** Why the edge exists, and what the symbol level says about it, in prose. */
-function edgeReason(a: number, b: number, shared: readonly string[], level: SymbolLevel): string {
+function edgeReason(a: number, b: number, shared: readonly string[], level: SymbolLevel, merge: MergeResult): string {
   const base = `#${a} and #${b} both change ${list(shared.map(codeSpan))}`;
+  // A merge result decides the waves (flyingrobots/footprint#80); the symbol level only describes.
+  if (merge.result === "conflicted") return `${base}, and git merge-tree conflicts in ${list(merge.paths.map(codeSpan))}, so the edge separates waves`;
+  if (merge.result === "clean") return `${base}, and git merge-tree merges them cleanly (textually: not a guarantee they work together), so the edge does not separate waves`;
   if (level.level === "symbol-disjoint") return `${base}, but different symbols in ${shared.length === 1 ? "it" : "each"}, so the edge does not separate waves`;
   if (level.level === "symbol-overlapping") {
     const same = level.files.filter((f) => f.level === "symbol-overlapping").map((f) => f.path);
@@ -223,7 +251,7 @@ function plural(n: number, one: string, many: string): string {
 export function computeOverlap(
   changed: readonly string[],
   prs: readonly PullRequest[],
-  opts: { readonly self?: number | null; readonly limit?: number; readonly symbols?: Symbols } = {},
+  opts: { readonly self?: number | null; readonly limit?: number; readonly symbols?: Symbols; readonly merges?: Merges } = {},
 ): OverlapAvailable {
   const self = opts.self ?? null;
   const limit = opts.limit ?? LIST_LIMIT;
@@ -234,7 +262,8 @@ export function computeOverlap(
     const shared = [...new Set(p.files.filter((f) => mine.has(f)))].sort();
     if (shared.length === 0) return [];
     const symbolLevel = opts.symbols?.overlapping.get(p.number) ?? notAnalysed(shared);
-    return [{ number: p.number, title: p.title, isDraft: p.isDraft, sharedFiles: shared, symbolLevel }];
+    const merge = opts.merges?.overlapping.get(p.number) ?? notRun();
+    return [{ number: p.number, title: p.title, isDraft: p.isDraft, sharedFiles: shared, symbolLevel, merge }];
   });
 
   const undetermined = byNumber(prs).flatMap((p) =>
@@ -248,10 +277,12 @@ export function computeOverlap(
     limit,
     truncated: prs.length >= limit,
     overlapping,
-    conflicts: conflictGraph(prs, opts.symbols),
-    waves: mergeWaves(prs, opts.symbols),
+    conflicts: conflictGraph(prs, opts.symbols, opts.merges),
+    waves: mergeWaves(prs, opts.symbols, opts.merges),
     undetermined,
     symbolAnalysis: opts.symbols?.analysis ?? { outlinesRun: 0, outlineBudget: 0, outlineTimeoutMs: 0, remoteCalls: 0, remoteBudget: 0, remoteTimeoutMs: 0 },
+    baseMerge: opts.merges?.base ?? notRun(),
+    mergeAnalysis: opts.merges?.analysis ?? { fetch: false, mergesRun: 0, mergeBudget: 0, mergeTimeoutMs: 0, fetched: 0, fetchBudget: 0, fetchTimeoutMs: 0 },
     summary: summarize(prs.length, overlapping.length, undetermined.length, self !== null && prs.some((p) => p.number === self)),
   };
 }

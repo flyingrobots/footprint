@@ -32,7 +32,7 @@ for (const s of SCHEMAS) byPair.set(`${s.id}@${s.version}`, ajv.compile(s.schema
 byPair.set("footprint.composition@1.0.0", ajv.compile(COMPOSITION));
 byPair.set("footprint.landing@1.0.0", ajv.compile(LANDING));
 byPair.set("footprint.blast_radius@1.1.0", ajv.compile(BLAST_RADIUS));
-byPair.set("footprint.overlap@2.2.0", ajv.compile(OVERLAP));
+byPair.set("footprint.overlap@2.3.0", ajv.compile(OVERLAP));
 
 // No test here depends on the network or on this repository having open pull requests: every run
 // below gets a PATH holding nothing but the `git` the CLI needs, so `gh` is absent and the overlap
@@ -293,7 +293,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     expect(r.status).toBe(0);
     const out = validateAll(r.stdout, "stdout");
     const results = out.filter((o) => o.event === "result");
-    expect(results.map((o) => `${o._schema.id}@${o._schema.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.1.0", "footprint.overlap@2.2.0"]);
+    expect(results.map((o) => `${o._schema.id}@${o._schema.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.1.0", "footprint.overlap@2.3.0"]);
     const landing = results[1] as Line & {
       before_merge: { unguarded: boolean; guards: unknown[]; unguarded_because: string; items: unknown[] };
       after_merge: { read: { file: string; present: boolean }[]; steps: unknown[]; declared: boolean; nothing_to_do: boolean; statement: string };
@@ -324,7 +324,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     const h = validateAll(help.stdout, "stdout");
     expect(h[0]!.event).toBe("run"); expect(h.at(-1)!.event).toBe("end");
     expect(h.filter((o) => o.event === "command").map((o) => o.name)).toEqual(["footprint"]);
-    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.1.0", "footprint.overlap@2.2.0", "parley.error@2.0.0", "parley.startup.failed@1.0.0"]);
+    expect(h.filter((o) => o.event === "schema").map((o) => `${o.id}@${o.version}`)).toEqual(["footprint.composition@1.0.0", "footprint.landing@1.0.0", "footprint.blast_radius@1.1.0", "footprint.overlap@2.3.0", "parley.error@2.0.0", "parley.startup.failed@1.0.0"]);
     const schema = await cli(["--schema"]);
     const s = validateAll(schema.stdout, "stdout");
     expect(s.filter((o) => o.event === "schema").length).toBeGreaterThan(2);
@@ -337,7 +337,7 @@ describe("the CLI speaks the Parley output protocol", () => {
     const out = validateAll(r.stdout, "stdout");
     expect(out.filter((o) => o.event === "result").map((o) => o._schema.id)).toEqual(["footprint.composition", "footprint.landing", "footprint.blast_radius", "footprint.overlap"]);
     const overlap = out.filter((o) => o.event === "result")[3] as Line & { overlap: { available: boolean; code: string; reason: string; summary: string }; digest: string };
-    expect(overlap._schema).toEqual({ id: "footprint.overlap", version: "2.2.0" });
+    expect(overlap._schema).toEqual({ id: "footprint.overlap", version: "2.3.0" });
     expect(overlap.overlap.available).toBe(false);
     expect(overlap.overlap.code).toBe("gh.not_found");
     expect(overlap.overlap.reason).toContain("gh");

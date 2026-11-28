@@ -10,6 +10,9 @@ function notAnalysed(files: string[]) {
   return { level: "undetermined", files: files.map((path) => ({ path, level: "undetermined", code: "symbols.not_analysed", reason: "symbol-level analysis was not run" })) };
 }
 
+/** What an overlap or an edge carries when no merge results were passed in (footprint.overlap 2.3.0). */
+const NOT_RUN = { result: "unavailable", code: "merge.not_run", reason: "the merge was not attempted" };
+
 function pr(number: number, files: readonly string[] | null, extra: Partial<PullRequest> = {}): PullRequest {
   return { number, title: `pull request ${number}`, isDraft: false, files, ...extra };
 }
@@ -20,7 +23,7 @@ describe("overlap with this change", () => {
     expect(o.available).toBe(true);
     expect(o.openPullRequests).toBe(1);
     expect(o.overlapping).toEqual([
-      { number: 7, title: "pull request 7", isDraft: false, sharedFiles: ["src/audit.ts"], symbolLevel: notAnalysed(["src/audit.ts"]) },
+      { number: 7, title: "pull request 7", isDraft: false, sharedFiles: ["src/audit.ts"], symbolLevel: notAnalysed(["src/audit.ts"]), merge: NOT_RUN },
     ]);
     expect(o.summary).toBe("1 of 1 open pull request touches a file this change touches.");
   });
@@ -79,6 +82,7 @@ describe("the conflict graph", () => {
         sharedFiles: ["a.ts", "b.ts"],
         reason: "#7 and #9 both change `a.ts` and `b.ts`; the symbol level is undetermined, so the edge separates waves as a file-level one does",
         symbolLevel: notAnalysed(["a.ts", "b.ts"]),
+        merge: NOT_RUN,
       },
     ]);
   });
@@ -238,5 +242,44 @@ describe("an edge reason names its shared paths as code (flyingrobots/footprint#
     const reasons = [...o.conflicts.map((c) => c.reason)];
     expect(reasons.length).toBeGreaterThan(0);
     for (const r of reasons) expect(r).toContain("`src/**bold**.ts`");
+  });
+});
+
+// flyingrobots/footprint#80: each edge, each overlapping pull request and this change against its
+// base carry a git merge-tree result. A clean merge does not separate waves; a conflict does, even
+// where the symbol level calls the edge disjoint.
+describe("merge results on the overlap (flyingrobots/footprint#80)", () => {
+  const clean = { result: "clean" } as const;
+  const conflicted = { result: "conflicted", paths: ["g.ts"] } as const;
+  const two = [pr(3, ["g.ts"]), pr(4, ["g.ts"])];
+  const merges = (edge: unknown, extra: Record<string, unknown> = {}) => ({
+    edges: new Map([["3-4", edge]]), overlapping: new Map(), base: clean,
+    analysis: { fetch: true, mergesRun: 1, mergeBudget: 300, mergeTimeoutMs: 10000, fetched: 0, fetchBudget: 100, fetchTimeoutMs: 30000 }, ...extra,
+  }) as never;
+
+  test("a pair that merges cleanly lands in one wave, though the symbol level is undetermined", () => {
+    const o = computeOverlap([], two, { merges: merges(clean) });
+    expect(o.waves).toEqual([{ wave: 1, pullRequests: [3, 4] }]);
+    expect(o.conflicts[0]!.merge).toEqual(clean);
+  });
+
+  test("a pair that conflicts is kept apart", () => {
+    const o = computeOverlap([], two, { merges: merges(conflicted) });
+    expect(o.waves).toEqual([{ wave: 1, pullRequests: [3] }, { wave: 2, pullRequests: [4] }]);
+    expect(o.conflicts[0]!.reason).toContain("conflict");
+  });
+
+  test("without merge results every edge says the merge was not run, and the waves are as before", () => {
+    const o = computeOverlap([], two);
+    expect(o.conflicts[0]!.merge).toMatchObject({ result: "unavailable", code: "merge.not_run" });
+    expect(o.waves).toEqual([{ wave: 1, pullRequests: [3] }, { wave: 2, pullRequests: [4] }]);
+    expect(o.baseMerge).toMatchObject({ result: "unavailable", code: "merge.not_run" });
+  });
+
+  test("this change against its base, and against each overlapping pull request, carry a result", () => {
+    const o = computeOverlap(["g.ts"], two, { merges: merges(clean, { base: conflicted, overlapping: new Map([[3, clean], [4, conflicted]]) }) });
+    expect(o.baseMerge).toEqual(conflicted);
+    expect(o.overlapping.map((p) => [p.number, p.merge])).toEqual([[3, clean], [4, conflicted]]);
+    expect(o.mergeAnalysis).toMatchObject({ fetch: true, mergesRun: 1 });
   });
 });

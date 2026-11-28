@@ -8,9 +8,10 @@ import { compose, parseNumstat } from "./footprint.ts";
 import { blastRadius, gutCheck, render, renderLanding, renderOverlap } from "./render.ts";
 import { resolveGraft, structuralReview } from "./graft.ts";
 import { landingPlan, readLandingDocs, LANDING_DOCUMENTS } from "./landing.ts";
-import { computeOverlap, underReview, unavailableOverlap, type Overlap, type RangeHead } from "./overlap.ts";
+import { computeOverlap, underReview, unavailableOverlap, type Merges, type Overlap, type RangeHead } from "./overlap.ts";
+import { mergeRunner, notRun, type MergeResult, type Side } from "./mergetree.ts";
 import { isFailure, listOpenPullRequests, resolveGh } from "./pulls.ts";
-import { analyseSymbols, graftOutliner, type Symbols } from "./symbols.ts";
+import { analyseSymbols, edgeKey, graftOutliner, type Symbols } from "./symbols.ts";
 import { ghRemote } from "./remote.ts";
 import { COMPOSITION_SCHEMA, COMPOSITION_TYPE, compositionRecord, LANDING_SCHEMA, LANDING_TYPE, landingRecord, OVERLAP_SCHEMA, OVERLAP_TYPE, overlapRecord } from "./report.ts";
 import { BLAST_RADIUS_SCHEMA, BLAST_RADIUS_TYPE, attachCallSites, exportSurface, rangeBase, rangeEnds, exportsRecord, surfaceCallSiteRows, surfaceSymbols } from "./exports.ts";
@@ -36,7 +37,9 @@ const tool = defineTool({
       intent: "Report what a change touches: its composition by file kind, the gut-check flags, which exported symbols moved and where they are called from, how it lands -- what the diff puts before a reviewer, and the after-merge steps read from the repository's own RELEASE.md and AGENTS.md -- and which open pull requests it overlaps",
       // The network is read-only and optional: `gh` for the open pull requests, nothing else.
       // The working tree itself is read for the call sites of the changed symbols (#10).
-      effects: { reads: ["<cwd>/.git", "<cwd>"], writes: [], network: true, idempotent: true },
+      // A pull request head the clone lacks is fetched read-only into refs/footprint/ for git
+      // merge-tree (flyingrobots/footprint#80); --no-fetch writes nothing.
+      effects: { reads: ["<cwd>/.git", "<cwd>"], writes: ["<cwd>/.git: refs/footprint/pull/<n> and the objects it reaches, fetched from origin (none with --no-fetch)"], network: true, idempotent: true },
       // No secret reaches footprint: `gh` holds its own credential and footprint never reads it.
       secrets: [],
       emits: [{ ...COMPOSITION_TYPE, schema: COMPOSITION_SCHEMA }, { ...LANDING_TYPE, schema: LANDING_SCHEMA }, { ...BLAST_RADIUS_TYPE, schema: BLAST_RADIUS_SCHEMA }, { ...OVERLAP_TYPE, schema: OVERLAP_SCHEMA }],
@@ -72,10 +75,10 @@ async function defaultBase(): Promise<string | null> {
   return null;
 }
 
-const USAGE = "footprint [<range>] [--max-chars <n>] [--impact <file.jsonl>]";
+const USAGE = "footprint [<range>] [--max-chars <n>] [--impact <file.jsonl>] [--no-fetch]";
 
 async function footprint(run: Run, args: string[]): Promise<void> {
-  const parsed = parseArgs(args, ["--max-chars", "--impact"]);
+  const parsed = parseArgs(args, ["--max-chars", "--impact"], ["--no-fetch"]);
   if (!parsed.ok || parsed.positionals.length > 1) {
     run.error({ code: "args.invalid", problem: parsed.ok ? `expected at most one range, got ${JSON.stringify(parsed.positionals)}` : parsed.problem, remedy: `usage: ${USAGE}` });
     return;
@@ -217,7 +220,8 @@ async function footprint(run: Run, args: string[]): Promise<void> {
   run.result(exportsRecord(range, surface, unanalysed), BLAST_RADIUS_TYPE, { markdown: blastMarkdown });
 
   // Cross-pull-request overlap: the fourth result in the same run, after the blast radius.
-  const overlap = await crossPullRequest(run, changes.map((c) => c.path), { ref: ends.head, commit: headId }, baseRef, graft);
+  const fetchHeads = parsed.flags["--no-fetch"] === undefined;
+  const overlap = await crossPullRequest(run, changes.map((c) => c.path), { ref: ends.head, commit: headId }, baseRef, graft, { baseTip: baseId, fetch: fetchHeads });
   overlapMarkdown = renderOverlap(overlap, OVERLAP_BUDGET);
   run.result(overlapRecord(range, overlap), OVERLAP_TYPE, { markdown: overlapMarkdown });
 }
@@ -233,6 +237,7 @@ async function crossPullRequest(
   headRef: { readonly ref: string; readonly commit: string | null },
   baseRef: { ok: true; ref: string } | { ok: false; detail: string },
   graft: string | null,
+  mergeOpts: { readonly baseTip: string | null; readonly fetch: boolean },
 ): Promise<Overlap> {
   const gh = resolveGh();
   if (gh === null) {
@@ -247,6 +252,19 @@ async function crossPullRequest(
   }
   const self = underReview(pulls.pullRequests, await rangeHead(headRef.ref, headRef.commit));
   const fileLevel = computeOverlap(changed, pulls.pullRequests, { self, limit: pulls.limit });
+  // git merge-tree on every edge (flyingrobots/footprint#80). The heads it needs are made local
+  // first, fetched read-only unless --no-fetch, so the symbol level below reads them locally too.
+  const runner = mergeRunner({ repo: run.cwd, fetch: mergeOpts.fetch });
+  const byNumber = new Map(pulls.pullRequests.map((p) => [p.number, p]));
+  const sideOf = (n: number): Side | null => {
+    const commit = byNumber.get(n)?.headCommit;
+    return commit === undefined ? null : { commit, pr: n };
+  };
+  const involved = new Set([...fileLevel.conflicts.flatMap((c) => [c.a, c.b]), ...fileLevel.overlapping.map((o) => o.number)]);
+  for (const n of [...involved].sort((x, y) => x - y)) {
+    const side = sideOf(n);
+    if (side !== null) await runner.ensure(side);
+  }
   // The symbol level of every shared file (flyingrobots/footprint#33), bounded: only the shared
   // files of pairs that share one, an outline budget per run and a timeout per graft call.
   const outliner = graft === null ? null : graftOutliner(graft);
@@ -271,7 +289,24 @@ async function crossPullRequest(
     const cleanup = outliner?.dispose() ?? null;
     if (cleanup !== null) run.warning({ code: cleanup.code, problem: cleanup.reason, remedy: "remove the directory by hand; the overlap result is unaffected" });
   }
-  const overlap = computeOverlap(changed, pulls.pullRequests, { self, limit: pulls.limit, symbols });
+  const noHead = (n: number): MergeResult => ({ result: "unavailable", code: "git.head_missing", reason: `gh did not report the head commit of #${n}` });
+  const mergeOf = async (a: Side | null, an: number, b: Side | null, bn: number): Promise<MergeResult> =>
+    a === null ? noHead(an) : b === null ? noHead(bn) : runner.merge(a, b);
+  const mine: Side | null = headRef.commit === null ? null : { commit: headRef.commit };
+  const edges = new Map<string, MergeResult>();
+  for (const c of fileLevel.conflicts) edges.set(edgeKey(c.a, c.b), await mergeOf(sideOf(c.a), c.a, sideOf(c.b), c.b));
+  const overlapping = new Map<number, MergeResult>();
+  for (const o of fileLevel.overlapping) {
+    overlapping.set(o.number, mine === null ? notRun("this change's head is not a commit") : await mergeOf(mine, 0, sideOf(o.number), o.number));
+  }
+  const base = mine === null || mergeOpts.baseTip === null ? notRun("this change has no head and base commit to merge") : await runner.merge({ commit: mergeOpts.baseTip }, mine);
+  const merges: Merges = { edges, overlapping, base, analysis: runner.analysis() };
+  const overlap = computeOverlap(changed, pulls.pullRequests, { self, limit: pulls.limit, symbols, merges });
+  const counted2 = (r: string) => [...edges.values()].filter((m) => m.result === r).length;
+  run.step(
+    `merge results of ${edges.size} edge${edges.size === 1 ? "" : "s"}: ${counted2("clean")} clean, ${counted2("conflicted")} conflicted, ${counted2("unavailable")} unavailable; this change against its base: ${base.result}`,
+    `git merge-tree --write-tree on each pair of heads and on this change's head and its base's tip; ${merges.analysis.mergesRun} of at most ${merges.analysis.mergeBudget} merges, each stopped after ${merges.analysis.mergeTimeoutMs} ms; ${mergeOpts.fetch ? `${merges.analysis.fetched} missing head${merges.analysis.fetched === 1 ? "" : "s"} fetched read-only into refs/footprint/ (at most ${merges.analysis.fetchBudget})` : "--no-fetch: a head not in the clone is reported unavailable"}; a conflicted edge separates waves and a clean one does not`,
+  );
   const counted = (lv: string) => overlap.conflicts.filter((c) => c.symbolLevel.level === lv).length;
   if (symbols !== undefined) run.step(
     `symbol level of ${overlap.conflicts.length} edge${overlap.conflicts.length === 1 ? "" : "s"}: ${counted("symbol-disjoint")} disjoint, ${counted("symbol-overlapping")} overlapping, ${counted("undetermined")} undetermined`,
@@ -312,7 +347,7 @@ async function rangeHead(ref: string, commit: string | null): Promise<RangeHead>
 async function resolved(args: string[], command: string): Promise<Record<string, unknown>> {
   // Never throws: an argument the handler will refuse is still recorded, so the refusal is an
   // error line with exit 2 rather than a startup failure.
-  const parsed = parseArgs(args, command === "comment" ? ["--report", "--change", "--reason", "--remarks"] : ["--max-chars", "--impact"]);
+  const parsed = parseArgs(args, command === "comment" ? ["--report", "--change", "--reason", "--remarks"] : ["--max-chars", "--impact"], command === "comment" ? [] : ["--no-fetch"]);
   const flags = parsed.ok ? parsed.flags : {};
   if (command === "comment") {
     return { command, pull_request: parsed.ok ? parsed.positionals[0] ?? null : null, report: flags["--report"] ?? null, change: flags["--change"] ?? null, reason: flags["--reason"] ?? null, remarks: flags["--remarks"] ?? null };
@@ -327,12 +362,13 @@ async function resolved(args: string[], command: string): Promise<Record<string,
     // Only when given, so a run without them resolves exactly as it did before they existed.
     ...(flags["--max-chars"] === undefined ? {} : { max_chars: flags["--max-chars"] }),
     ...(flags["--impact"] === undefined ? {} : { impact: flags["--impact"] }),
+    ...(flags["--no-fetch"] === undefined ? {} : { no_fetch: true }),
   };
 }
 
 /** The files a run reads besides the repository: the report a comment posts, the impact entries a report renders. */
 function inputs(args: string[], command: string): { path: string }[] {
-  const parsed = parseArgs(args, command === "comment" ? ["--report", "--change", "--reason", "--remarks"] : ["--max-chars", "--impact"]);
+  const parsed = parseArgs(args, command === "comment" ? ["--report", "--change", "--reason", "--remarks"] : ["--max-chars", "--impact"], command === "comment" ? [] : ["--no-fetch"]);
   if (!parsed.ok) return [];
   const path = command === "comment" ? parsed.flags["--report"] : parsed.flags["--impact"];
   return path === undefined ? [] : [{ path }];

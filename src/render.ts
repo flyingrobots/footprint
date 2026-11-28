@@ -8,6 +8,7 @@ import { structuralSummary, type StructuralReview } from "./graft.ts";
 import type { BeforeMergeKind, Landing } from "./landing.ts";
 import type { Exports, ExportedSymbol } from "./exports.ts";
 import { surfaceCallSiteRows } from "./exports.ts";
+import type { MergeResult } from "./mergetree.ts";
 import { MITIGATION_RULE, NONE_NEEDED, SYSTEM_RULE_DETAIL, groupBySystem, mitigationFor, type SystemGroup, type SystemRow } from "./systems.ts";
 import type { UnsupportedLanguage } from "./languages.ts";
 import type { Overlap } from "./overlap.ts";
@@ -563,6 +564,17 @@ function symbolLines(level: SymbolLevel, a: string, b: string, limit: number, in
   return out;
 }
 
+/** A merge result in prose (flyingrobots/footprint#80): what git merge-tree said, or why it said nothing. */
+function mergeText(m: MergeResult, limit: number): string {
+  if (m.result === "clean") return "git merge-tree merges them cleanly";
+  if (m.result === "conflicted") {
+    const shown = m.paths.slice(0, Math.min(limit, SHARED_FILES_SHOWN));
+    const left = m.paths.length - shown.length;
+    return `git merge-tree conflicts in ${shown.map((f) => codeSpan(f)).join(", ")}${left > 0 ? ` and ${left} more file${left === 1 ? "" : "s"}` : ""}`;
+  }
+  return `merge result unavailable (\`${m.code}\`): ${noMentions(m.reason)}`;
+}
+
 function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
   // The leading blank line keeps the heading off the end of the composition section above it.
   const out: string[] = ["", "### Open pull requests", ""];
@@ -576,6 +588,7 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
   }
 
   out.push(`**${o.summary}**`, "");
+  out.push(`This change against its base: ${mergeText(o.baseMerge, limit)}.`, "");
 
   const files = (fs: readonly string[]): string => {
     const shown = fs.slice(0, Math.min(limit, SHARED_FILES_SHOWN));
@@ -583,7 +596,7 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
     return shown.map((f) => codeSpan(f)).join(", ") + (left > 0 ? ` and ${left} more file${left === 1 ? "" : "s"}` : "");
   };
   for (const p of o.overlapping.slice(0, limit)) {
-    out.push(`- **#${p.number}** ${noMentions(p.title)}${p.isDraft ? " _(draft)_" : ""} — ${files(p.sharedFiles)}`);
+    out.push(`- **#${p.number}** ${noMentions(p.title)}${p.isDraft ? " _(draft)_" : ""} — ${files(p.sharedFiles)} · ${mergeText(p.merge, limit)}`);
     out.push(...symbolLines(p.symbolLevel, "this change", `#${p.number}`, limit, "  "));
   }
   if (o.overlapping.length > limit) out.push("", omitted(o.overlapping.length - limit, `pull request${o.overlapping.length - limit === 1 ? "" : "s"}`));
@@ -600,7 +613,7 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
       .join("\n\n");
     const edges = o.conflicts.length === 0
       ? "No two open pull requests change the same file, so they can land in any order."
-      : o.conflicts.slice(0, limit).map((c) => [`- ${noMentions(c.reason)}`, ...symbolLines(c.symbolLevel, `#${c.a}`, `#${c.b}`, limit, "  ")].join("\n")).join("\n");
+      : o.conflicts.slice(0, limit).map((c) => [`- ${noMentions(c.reason)}`, ...(c.merge.result === "unavailable" ? [`  - ${mergeText(c.merge, limit)}`] : []), ...symbolLines(c.symbolLevel, `#${c.a}`, `#${c.b}`, limit, "  ")].join("\n")).join("\n");
     const notes = [
       ...(o.waves.length > limit ? [omitted(o.waves.length - limit, `wave${o.waves.length - limit === 1 ? "" : "s"}`)] : []),
       ...(o.conflicts.length > limit ? [omitted(o.conflicts.length - limit, `conflict${o.conflicts.length - limit === 1 ? "" : "s"}`)] : []),
@@ -612,7 +625,8 @@ function overlapSection(o: Overlap, limit: number): Rendered<"pulls"> {
 
   if (o.truncated) out.push(`<sub>The pull-request list came back at the ${o.limit}-request limit; there may be more.</sub>`, "");
   out.push("<sub>Pull requests from `gh pr list`; their files from `gh pr diff --name-only`; the symbols of a shared file from `git diff -U0` against each side's merge base and the top-level symbols of `graft read outline` at both ends" +
-    ` (${o.symbolAnalysis.outlinesRun} of at most ${o.symbolAnalysis.outlineBudget} outline calls${o.symbolAnalysis.remoteCalls > 0 ? ` and ${o.symbolAnalysis.remoteCalls} read-only \`gh api\` calls for pull requests not in the clone` : ""} this run). Merge waves are greedy first-fit over the conflict graph: a proposal, not a minimum, and not a gate.</sub>`);
+    ` (${o.symbolAnalysis.outlinesRun} of at most ${o.symbolAnalysis.outlineBudget} outline calls${o.symbolAnalysis.remoteCalls > 0 ? ` and ${o.symbolAnalysis.remoteCalls} read-only \`gh api\` calls for pull requests not in the clone` : ""} this run); merge results from \`git merge-tree --write-tree\` on the two heads` +
+    ` (${o.mergeAnalysis.mergesRun} of at most ${o.mergeAnalysis.mergeBudget} merges; ${o.mergeAnalysis.fetch ? `${o.mergeAnalysis.fetched} missing head${o.mergeAnalysis.fetched === 1 ? "" : "s"} fetched read-only into \`refs/footprint/\`` : "\`--no-fetch\`: no head was fetched"}), textual evidence and not a guarantee the changes work together. A conflicted edge separates waves and a clean one does not. Merge waves are greedy first-fit over the conflict graph: a proposal, not a minimum, and not a gate.</sub>`);
   const text = out.join("\n");
   return { text, sizes: { pulls: text.length } };
 }
