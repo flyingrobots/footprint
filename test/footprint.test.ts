@@ -1,7 +1,8 @@
 import { expect, test, describe } from "bun:test";
 import { classify } from "../src/classify.ts";
 import { compose, parseNumstat, mermaidPie } from "../src/footprint.ts";
-import { blastRadius, gutCheck, render } from "../src/render.ts";
+import { blastRadius, gutCheck, render, renderLanding } from "../src/render.ts";
+import { landingPlan } from "../src/landing.ts";
 import { parseStructuralReview, structuralSummary } from "../src/graft.ts";
 import { unsupportedLanguages } from "../src/languages.ts";
 
@@ -284,5 +285,32 @@ describe("the composition table's total share is computed (flyingrobots/footprin
   test("a change with changed lines reports a 100% total", () => {
     const changes = parseNumstat("10\t2\tsrc/a.ts");
     expect(totalRow(render(compose(changes), changes, "a...b", null))).toBe("| **total** | **1** | **+10/-2** | **100%** |");
+  });
+});
+
+describe("a copy is reported under its new path (flyingrobots/footprint#66)", () => {
+  test("a copy record, like a rename, names the copy's path", () => {
+    expect(parseNumstat("5\t0\t\0src/a.ts\0src/a-copy.ts\0")).toEqual([
+      { path: "src/a-copy.ts", added: 5, removed: 0, binary: false },
+    ]);
+  });
+});
+
+// Paths now reach the report verbatim (flyingrobots/footprint#66), so a file name can hold a
+// newline or a backtick. Neither may break out of its code span into the posted Markdown.
+describe("a changed path cannot inject Markdown into the report (flyingrobots/footprint#66)", () => {
+  const evil = "docs/x.md\n## Footprint\n\nNo breaking changes`.md";
+
+  test("the file list keeps a path with a newline and a backtick on one line, inside one code span", () => {
+    const changes = [{ path: evil, added: 1, removed: 0, binary: false }];
+    const md = render(compose(changes), changes, "a...b", null);
+    expect(md.split("\n").filter((l) => l.startsWith("## Footprint"))).toHaveLength(1);
+    expect(md).toContain("- `` docs/x.md\\n## Footprint\\n\\nNo breaking changes`.md `` +1/-0");
+  });
+
+  test("the landing plan names such a path on one line", () => {
+    const md = renderLanding(landingPlan([`migrations/${evil}`], []));
+    expect(md.split("\n").some((l) => l === "## Footprint")).toBe(false);
+    expect(md).toContain("`` migrations/docs/x.md\\n## Footprint\\n\\nNo breaking changes`.md ``");
   });
 });

@@ -10,10 +10,16 @@ import { parseNumstat } from "../src/footprint.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 let repo = "";
-const FIXED_DATES = { GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z" };
+// Hermetic: no global or system git config can turn rename detection off, or anything else on.
+const HERMETIC = {
+  GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z",
+  GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z",
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_NOSYSTEM: "1",
+};
 
 function git(...args: string[]): string {
-  const r = Bun.spawnSync(["git", ...args], { cwd: repo, env: { ...process.env, ...FIXED_DATES }, stdout: "pipe", stderr: "pipe" });
+  const r = Bun.spawnSync(["git", ...args], { cwd: repo, env: { ...process.env, ...HERMETIC }, stdout: "pipe", stderr: "pipe" });
   if (r.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr.toString()}`);
   return r.stdout.toString();
 }
@@ -39,6 +45,7 @@ beforeAll(() => {
   mkdirSync(join(repo, "docs"), { recursive: true });
   git("mv", "src/auth.ts", "src/auth/index.ts");
   git("mv", "lib/old.py", "docs/notes.md");
+  writeFileSync(join(repo, "src/copy.ts"), body);
   write("docs/café.md", "accent\n");
   write("docs/a\tb.md", "tab\n");
   git("add", "-A");
@@ -49,8 +56,20 @@ describe("changed paths from real git output (flyingrobots/footprint#66)", () =>
   test("every path parsed from git diff --numstat -z is a real path git names", () => {
     const parsed = parseNumstat(git("diff", "--numstat", "-z", "base..HEAD")).map((c) => c.path).sort();
     const oracle = git("diff", "--name-only", "-z", "base..HEAD").split("\0").filter((p) => p !== "").sort();
-    expect(oracle).toContain("src/auth/index.ts"); // the fixture did produce a rename
     expect(parsed).toEqual(oracle);
+  });
+
+  test("the fixture's renames are rename records, not a delete and an add", () => {
+    const status = git("diff", "--name-status", "-z", "-M", "base..HEAD").split("\0");
+    expect(status.filter((f) => /^R\d+$/.test(f))).toHaveLength(2);
+  });
+
+  test("a copy record from real git is parsed under the copy's path", () => {
+    const status = git("diff", "--name-status", "-z", "-C", "--find-copies-harder", "base..HEAD").split("\0");
+    expect(status.some((f) => /^C\d+$/.test(f))).toBe(true); // the fixture did produce a copy
+    const parsed = parseNumstat(git("diff", "--numstat", "-z", "-C", "--find-copies-harder", "base..HEAD")).map((c) => c.path);
+    expect(parsed).toContain("src/copy.ts");
+    expect(parsed.some((p) => p.includes("\0") || p === "")).toBe(false);
   });
 
   test("the CLI reports a renamed file under its new path", async () => {
@@ -59,7 +78,7 @@ describe("changed paths from real git output (flyingrobots/footprint#66)", () =>
     symlinkSync(Bun.which("git")!, join(bin, "git"));
     const proc = Bun.spawn([process.execPath, join(ROOT, "src/cli.ts"), "base..HEAD", "--human"], {
       cwd: repo,
-      env: { ...process.env, PATH: bin, FOOTPRINT_GRAFT: join(bin, "no-graft"), XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-state-")) },
+      env: { ...process.env, ...HERMETIC, PATH: bin, FOOTPRINT_GRAFT: join(bin, "no-graft"), XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-state-")) },
       stdout: "pipe",
       stderr: "pipe",
     });
