@@ -14,7 +14,10 @@ export function codeSpan(text: string): string {
   const named: Record<string, string> = { "\n": "\\n", "\r": "\\r", "\t": "\\t" };
   const visible = text.replace(/[\u0000-\u001f\u007f]/g, (c) => named[c] ?? `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
   const longest = Math.max(0, ...(visible.match(/`+/g) ?? []).map((run) => run.length));
-  if (longest === 0) return `\`${visible}\``;
+  // CommonMark strips one space from each end of a span whose content starts and ends with one and
+  // is not all spaces, so such a path gets one more space on each side to show it exactly.
+  const padded = /^ .* $/s.test(visible) && visible.trim() !== "" ? ` ${visible} ` : visible;
+  if (longest === 0) return `\`${padded}\``;
   const fence = "`".repeat(longest + 1);
   return `${fence} ${visible} ${fence}`;
 }
