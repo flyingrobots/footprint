@@ -25,13 +25,21 @@ Source and reference: <https://github.com/flyingrobots/footprint>.
 On macOS, `/usr/bin/footprint` is an unrelated Apple memory tool and comes first on `PATH`. Never
 run a bare `footprint`. Use, in this order:
 
-1. **The published package**, when `npm view @flyingrobots/footprint version` answers:
+1. **An installed package**, when `command -v git-footprint` answers: the package ships a
+   `git-footprint` binary, which git runs as `git footprint`, so no name clash applies. For its
+   help, run `git-footprint --help`: git turns `git footprint --help` into a man-page lookup.
+
+   ```bash
+   fp() { git footprint "$@"; }
+   ```
+
+2. **The published package**, when `npm view @flyingrobots/footprint version` answers:
 
    ```bash
    fp() { bunx @flyingrobots/footprint "$@"; }
    ```
 
-2. **Before the package is published**, a clone of `flyingrobots/footprint` with its dependencies
+3. **Before the package is published**, a clone of `flyingrobots/footprint` with its dependencies
    installed. Use one the user already has, or make one in a scratch directory:
 
    ```bash

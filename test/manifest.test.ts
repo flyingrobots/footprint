@@ -94,9 +94,12 @@ describe("the git-footprint binary (flyingrobots/footprint#74)", () => {
     const bin = readJson(join(ROOT, "package.json")).bin as Record<string, string>;
     // With no git-footprint entry the link points at nothing, and git reports no such command.
     symlinkSync(join(ROOT, bin["git-footprint"] ?? "no-git-footprint-in-package-json"), join(dir, "git-footprint"));
-    const r = Bun.spawnSync(["git", "footprint", "--help"], { cwd: ROOT, env: { ...process.env, PATH: dir, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-state-")) }, stdout: "pipe", stderr: "pipe" });
-    expect(r.exitCode).toBe(0);
-    const first = JSON.parse(r.stdout.toString().split("\n")[0]!) as { _schema: { id: string } };
-    expect(first._schema.id).toMatch(/^parley\./);
+    // Not `git footprint --help`: git turns `git <name> --help` into `git help <name>` and looks for
+    // a man page, so it never reaches footprint. An argument footprint refuses is answered by
+    // footprint itself, quickly, with its own structured error.
+    const r = Bun.spawnSync(["git", "footprint", "a..b", "c..d"], { cwd: ROOT, env: { ...process.env, PATH: dir, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "footprint-state-")) }, stdout: "pipe", stderr: "pipe" });
+    expect(r.exitCode).toBe(2);
+    const errors = r.stderr.toString().split("\n").filter((l) => l !== "").map((l) => JSON.parse(l) as { code?: string });
+    expect(errors.map((e) => e.code)).toContain("args.invalid");
   });
 });
